@@ -1,0 +1,126 @@
+# ── Project ────────────────────────────────────────────────────────────
+
+variable "project_id" {
+  description = "GCP project ID"
+  type        = string
+}
+
+variable "region" {
+  description = "GCP region for all resources"
+  type        = string
+  default     = "australia-southeast1"
+}
+
+# ── Naming ─────────────────────────────────────────────────────────────
+
+variable "environment" {
+  description = "Environment label (e.g. prod, staging, dev)"
+  type        = string
+  default     = "prod"
+}
+
+variable "hub_service_name" {
+  description = "Cloud Run service name for the Hub"
+  type        = string
+  default     = "hub"
+}
+
+variable "architect_service_name" {
+  description = "Cloud Run service name for the Architect agent"
+  type        = string
+  default     = "architect-agent"
+}
+
+variable "state_bucket_name" {
+  description = "GCS bucket for all persisted state"
+  type        = string
+  default     = "ois-relay-hub-state"
+}
+
+variable "artifact_repo_name" {
+  description = "Artifact Registry repository name"
+  type        = string
+  default     = "cloud-run-source-deploy"
+}
+
+# ── Auth ───────────────────────────────────────────────────────────────
+
+variable "hub_api_token" {
+  description = "Bearer token for Hub /mcp endpoint authentication"
+  type        = string
+  sensitive   = true
+}
+
+# ── Hub Config ─────────────────────────────────────────────────────────
+
+variable "hub_min_instances" {
+  description = "Minimum Cloud Run instances for Hub (0 = scale to zero)"
+  type        = number
+  default     = 1
+}
+
+variable "hub_max_instances" {
+  description = "Maximum Cloud Run instances for Hub"
+  type        = number
+  default     = 1
+}
+
+variable "hub_image" {
+  description = "Docker image for Hub (full registry path). Leave empty to use Artifact Registry default."
+  type        = string
+  default     = ""
+}
+
+# ── Architect Config ───────────────────────────────────────────────────
+
+variable "architect_min_instances" {
+  description = "Minimum Cloud Run instances for Architect (0 = offline)"
+  type        = number
+  default     = 0
+}
+
+variable "architect_max_instances" {
+  description = "Maximum Cloud Run instances for Architect"
+  type        = number
+  default     = 1
+}
+
+variable "architect_image" {
+  description = "Docker image for Architect (full registry path). Leave empty to use Artifact Registry default."
+  type        = string
+  default     = ""
+}
+
+variable "architect_context_prefix" {
+  description = "GCS prefix for Architect's context store"
+  type        = string
+  default     = "architect-context/"
+}
+
+variable "event_loop_enabled" {
+  description = "Enable Architect's 300s event loop polling"
+  type        = bool
+  default     = true
+}
+
+variable "event_loop_interval" {
+  description = "Seconds between Architect event loop polls"
+  type        = number
+  default     = 300
+}
+
+# ── LLM ────────────────────────────────────────────────────────────────
+
+variable "vertex_ai_location" {
+  description = "Vertex AI location for Gemini model"
+  type        = string
+  default     = "global"
+}
+
+# ── IAM ────────────────────────────────────────────────────────────────
+
+variable "hub_allow_unauthenticated" {
+  description = "Allow unauthenticated access to Hub (app-level token handles auth)"
+  type        = bool
+  default     = true
+}

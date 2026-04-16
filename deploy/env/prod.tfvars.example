@@ -1,0 +1,26 @@
+# ── Production environment ─────────────────────────────────────────────
+# Copy to prod.tfvars and fill in values.
+# NEVER commit prod.tfvars — it contains secrets.
+
+project_id = "your-gcp-project-id"
+region     = "australia-southeast1"
+
+# Auth
+hub_api_token = "your-secret-token-here"
+
+# Naming (defaults are fine for most setups)
+# environment          = "prod"
+# hub_service_name     = "hub"
+# architect_service_name = "architect-agent"
+# state_bucket_name    = "ois-relay-hub-state"
+# artifact_repo_name   = "cloud-run-source-deploy"
+
+# Scaling
+# hub_min_instances       = 1
+# hub_max_instances       = 1
+# architect_min_instances = 0   # 0 = offline until started
+# architect_max_instances = 1
+
+# Images (leave empty to use Artifact Registry convention)
+# hub_image       = ""
+# architect_image = ""

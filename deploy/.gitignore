@@ -1,0 +1,9 @@
+# Terraform state (local backend — do not commit)
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Environment files with secrets
+env/*.tfvars
+!env/*.tfvars.example

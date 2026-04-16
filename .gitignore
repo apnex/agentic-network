@@ -25,6 +25,11 @@ labops-389703.json
 # Backups
 backups/
 
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+
 # Personal scratch
 notes.txt
 raw-notes

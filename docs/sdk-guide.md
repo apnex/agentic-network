@@ -166,7 +166,7 @@ Transport layer: session management, SSE delivery, keepalive, session reaper.
 | `CreateMcpServerFn` | type | Factory for MCP server with tool registration |
 | `NotifyEventFn` | type | Persist-first notification pipeline function |
 
-**Naming verdict:** `HubNetworking` leaks deployment identity into what is structurally a reusable MCP session server. **Recommend: rename to `SessionServer` / `session-server.ts`** — describes what it does (MCP session lifecycle, SSE push, keepalive) without coupling to what it's deployed as. Additionally, server-side and client-side share MCP session wire primitives that could be deduplicated into `@ois/network-adapter`. The conceptual model is **TX/RX**: `McpTransport` is the TX (transmit/client) half and `SessionServer` is the RX (receive/server) half of the same wire protocol — SSE framing, keepalive semantics, session lifecycle, all mirrored. The network-adapter package becomes the canonical wire spec, and each side pulls what it needs. See **idea-48**.
+**Naming verdict:** `HubNetworking` leaks deployment identity into what is structurally a reusable MCP session server. **Recommend: rename to `SessionServer` / `session-server.ts`** — describes what it does (MCP session lifecycle, SSE push, keepalive) without coupling to what it's deployed as. Additionally, server-side and client-side share MCP session wire primitives that could be deduplicated into `@ois/network-adapter`. The conceptual model is **TX/RX**: `McpTransport` is the TX (transmit/client) half and `SessionServer` is the RX (receive/server) half of the same wire protocol — SSE framing, keepalive semantics, session lifecycle, all mirrored. The network-adapter package becomes the canonical wire spec, and each side pulls what it needs. See **idea-51**.
 
 ### 2.2 State & Entity Types — `state.ts`
 
@@ -473,7 +473,7 @@ Python CLI for Director↔Architect conversation. Not a network participant (no 
 | `MemoryEngineerRegistry` | **Future: `MemoryAgentRegistry`** | Same as above |
 | `GcsEngineerRegistry` | **Future: `GcsAgentRegistry`** | Same as above |
 | `get_engineer_status` (tool) | **Future: `get_agent_status`** | Wire-level rename requires coordinated mission |
-| `hub-networking.ts` / `HubNetworking` | **Rename to `session-server.ts` / `SessionServer`** | Leaks deployment identity; structurally a reusable MCP session server (idea-48) |
+| `hub-networking.ts` / `HubNetworking` | **Rename to `session-server.ts` / `SessionServer`** | Leaks deployment identity; structurally a reusable MCP session server (idea-51) |
 | `opencode-plugin/hub-notifications.ts` | **Rename to `plugin.ts`** | File is the full plugin, not just notifications |
 | `state.ts` (hub) | **Future: split by domain** | 900+ lines housing all domain types; split when practical |
 | `gcs-state.ts` (hub) | **Future: split by domain** | 1200+ lines; split to match `entities/` pattern |
