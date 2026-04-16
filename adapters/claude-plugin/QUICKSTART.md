@@ -8,15 +8,7 @@ Install the OIS agent adapter plugin into Claude Code. This bridges Claude Code 
 - Claude Code CLI installed (`claude` available in PATH)
 - Access to a running OIS Hub instance (URL + auth token)
 
-## 1. Install dependencies and build
-
-```bash
-cd adapters/claude-plugin
-npm install
-npm run build
-```
-
-## 2. Configure Hub credentials
+## 1. Configure Hub credentials
 
 Create a config file in your working directory (the project you'll run Claude Code in):
 
@@ -41,23 +33,17 @@ export OIS_HUB_ROLE="engineer"
 
 These `OIS_` variables are shared across all OIS plugins.
 
-## 3. Register the local marketplace
+## 2. Install the plugin
 
-From within Claude Code, run:
+Run the install script (idempotent — safe to re-run):
 
-```
-/plugin marketplace add /path/to/agentic-network
-```
-
-This registers the root `agentic-network/.claude-plugin/marketplace.json` which points to `adapters/claude-plugin` as the plugin source.
-
-## 4. Install the plugin
-
-```
-/plugin install agent-adapter@agentic-network-local
+```bash
+./adapters/claude-plugin/install.sh
 ```
 
-## 5. Launch Claude Code with the plugin
+This builds the plugin, registers the local marketplace, and installs into Claude Code.
+
+## 3. Launch Claude Code with the plugin
 
 ```bash
 claude --dangerously-load-development-channels plugin:agent-adapter@agentic-network-local

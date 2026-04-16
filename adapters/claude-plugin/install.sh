@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 #
-# plugin-install.sh — Clean install of the Claude Code agent-adapter plugin.
+# install.sh — Install the Claude Code agent-adapter plugin.
 #
-# Usage: ./scripts/plugin-install.sh
+# Idempotent — safe to re-run. Builds the plugin, registers the
+# local marketplace, and installs into Claude Code.
+#
+# Usage: ./adapters/claude-plugin/install.sh
 #
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN_DIR="${REPO_ROOT}/adapters/claude-plugin"
+PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$PLUGIN_DIR/../.." && pwd)"
 
 echo "[install] Building plugin ..."
 cd "$PLUGIN_DIR"
