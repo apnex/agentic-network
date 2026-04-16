@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "agentic-network-local",
-  "description": "Local marketplace for agent-platform Claude Code plugins",
+  "name": "agentic-network",
+  "description": "OIS Agentic Network — Claude Code plugins",
   "owner": { "name": "OIS Director", "email": "director@ois.local" },
   "plugins": [
     {
