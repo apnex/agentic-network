@@ -13,7 +13,7 @@ dist/
 # Personal host configuration (not shipped)
 .claude/
 .opencode/
-.mcp.json
+/.mcp.json
 
 # Secrets
 labops-389703.json
