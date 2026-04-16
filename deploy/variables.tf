@@ -124,3 +124,9 @@ variable "hub_allow_unauthenticated" {
   type        = bool
   default     = true
 }
+
+variable "architect_allow_unauthenticated" {
+  description = "Allow unauthenticated access to Architect (for chat interface)"
+  type        = bool
+  default     = true
+}

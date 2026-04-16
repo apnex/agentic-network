@@ -278,3 +278,16 @@ resource "google_cloud_run_v2_service_iam_member" "hub_public" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# ── IAM: Public access to Architect ───────────────────────────────────
+# Required for external chat interface access.
+
+resource "google_cloud_run_v2_service_iam_member" "architect_public" {
+  count = var.architect_allow_unauthenticated ? 1 : 0
+
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.architect.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
