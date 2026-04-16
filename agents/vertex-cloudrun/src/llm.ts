@@ -1,0 +1,238 @@
+/**
+ * LLM Module — Gemini 3.1 Pro via @google/genai
+ *
+ * Two invocation patterns:
+ * - generateText(): single-shot text generation (sandwich handlers)
+ * - generateWithTools(): multi-turn with function calling (Director chat)
+ */
+
+import {
+  GoogleGenAI,
+  FunctionCallingConfigMode,
+  createPartFromFunctionResponse,
+  type Content,
+  type FunctionDeclaration,
+  type Part,
+  Type,
+} from "@google/genai";
+
+const MODEL = "gemini-3.1-pro-preview";
+const MAX_TOOL_ROUNDS = 10; // Prevent infinite tool-calling loops
+
+let ai: GoogleGenAI | null = null;
+
+function getAI(): GoogleGenAI {
+  if (!ai) {
+    ai = new GoogleGenAI({
+      vertexai: true,
+      project: process.env.GOOGLE_CLOUD_PROJECT || "labops-389703",
+      location: process.env.GOOGLE_CLOUD_LOCATION || "global",
+    });
+  }
+  return ai;
+}
+
+// ── System Prompt ──────────────────────────────────────────────────
+
+export const ARCHITECT_SYSTEM_PROMPT = `You are the Architect, a persistent AI agent that helps the Director (a human software architect) plan and execute software engineering tasks.
+
+Your role:
+1. When the Director describes a coding task, translate it into a clear, specific task for the Engineer using the create_task tool (with title and description fields).
+2. Check for completed reports using the get_report tool. Reports include a summary and a reportRef path — use get_document to read the full report when you need details.
+3. Review Engineer proposals using list_proposals, get_document, and create_proposal_review.
+4. Use list_documents to browse historical reports, proposals, and other documents.
+5. Use list_tasks to see all task statuses.
+6. Use get_engineer_status to check which Engineers are currently connected.
+7. Report results back to the Director in clear summaries.
+
+Communication modes:
+- When the Director asks you to DISCUSS, ANALYSE, or REVIEW something, provide your analysis and recommendations directly. Do NOT issue directives to the Engineer unless the Director explicitly asks you to.
+- When the Director asks you to IMPLEMENT, BUILD, CREATE, or EXECUTE something, then create tasks for the Engineer.
+- When unsure, ask the Director for clarification before creating tasks.
+
+Tool role tags:
+- Tools tagged [Architect] are for your use (create_task, get_report, get_engineer_status, create_proposal_review, create_review, close_thread, get_pending_actions, create_audit_entry, resolve_clarification, cancel_task).
+- Tools tagged [Engineer] are for the Engineer's use. Do not call these.
+- Tools tagged [Any] can be used by either role (list_tasks, list_documents, get_document, list_proposals, get_review, create_thread, create_thread_reply, get_thread, list_threads, list_audit_entries).
+
+Guidelines:
+- Be precise in your task descriptions. The Engineer is a coding agent that will interpret your instructions literally.
+- Always check for the Engineer's report after creating a task.
+- Keep your responses concise and focused on the task at hand.
+- When reviewing reports or proposals, provide substantive architectural feedback.
+- Log all autonomous actions via create_audit_entry.`;
+
+// ── Single-Shot Text Generation (Sandwich Pattern) ────────────────
+
+export async function generateText(
+  userPrompt: string,
+  contextSupplement: string = ""
+): Promise<string> {
+  const client = getAI();
+
+  const systemInstruction =
+    ARCHITECT_SYSTEM_PROMPT +
+    (contextSupplement ? "\n\n" + contextSupplement : "");
+
+  const response = await client.models.generateContent({
+    model: MODEL,
+    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    config: {
+      systemInstruction,
+      temperature: 0.2,
+    },
+  });
+
+  return response.text || "";
+}
+
+// ── Multi-Turn with Function Calling (Director Chat) ──────────────
+
+export type ToolExecutor = (
+  name: string,
+  args: Record<string, unknown>
+) => Promise<Record<string, unknown>>;
+
+/**
+ * Convert MCP tool schemas to Gemini FunctionDeclaration format.
+ * Transforms JSON Schema properties into Gemini's Schema type system.
+ */
+export function mcpToolsToFunctionDeclarations(
+  mcpTools: Array<{
+    name: string;
+    description?: string;
+    inputSchema?: Record<string, unknown>;
+  }>
+): FunctionDeclaration[] {
+  return mcpTools
+    .filter((tool) => tool.name && tool.inputSchema)
+    .map((tool) => {
+      const schema = tool.inputSchema!;
+      const properties = (schema.properties || {}) as Record<string, Record<string, unknown>>;
+      const required = (schema.required || []) as string[];
+
+      // Convert JSON Schema properties to Gemini Schema properties
+      const geminiProperties: Record<string, { type: Type; description?: string; enum?: string[] }> = {};
+      for (const [name, prop] of Object.entries(properties)) {
+        const geminiProp: { type: Type; description?: string; enum?: string[] } = {
+          type: mapJsonSchemaType(prop.type as string),
+        };
+        if (prop.description) geminiProp.description = prop.description as string;
+        if (prop.enum) geminiProp.enum = prop.enum as string[];
+        geminiProperties[name] = geminiProp;
+      }
+
+      return {
+        name: tool.name,
+        description: tool.description || `Hub tool: ${tool.name}`,
+        parameters: {
+          type: Type.OBJECT,
+          properties: geminiProperties,
+          required: required.length > 0 ? required : undefined,
+        },
+      };
+    });
+}
+
+function mapJsonSchemaType(type: string | undefined): Type {
+  switch (type) {
+    case "number":
+    case "integer":
+      return Type.NUMBER;
+    case "boolean":
+      return Type.BOOLEAN;
+    case "array":
+      return Type.ARRAY;
+    case "string":
+    default:
+      return Type.STRING;
+  }
+}
+
+/**
+ * Run a multi-turn conversation with function calling.
+ * Returns the final text response after all tool calls are resolved.
+ */
+export async function generateWithTools(
+  history: Content[],
+  userMessage: string,
+  functionDeclarations: FunctionDeclaration[],
+  executeToolCall: ToolExecutor,
+  contextSupplement: string = ""
+): Promise<{ text: string; history: Content[] }> {
+  const client = getAI();
+
+  const systemInstruction =
+    ARCHITECT_SYSTEM_PROMPT +
+    (contextSupplement ? "\n\n" + contextSupplement : "");
+
+  // Add user message to history
+  const contents: Content[] = [
+    ...history,
+    { role: "user", parts: [{ text: userMessage }] },
+  ];
+
+  let rounds = 0;
+
+  while (rounds < MAX_TOOL_ROUNDS) {
+    rounds++;
+
+    const response = await client.models.generateContent({
+      model: MODEL,
+      contents,
+      config: {
+        systemInstruction,
+        tools: [{ functionDeclarations }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: FunctionCallingConfigMode.AUTO,
+          },
+        },
+        temperature: 0.2,
+      },
+    });
+
+    // Add model response to history
+    const modelContent = response.candidates?.[0]?.content;
+    if (modelContent) {
+      contents.push(modelContent);
+    }
+
+    // Check for function calls
+    const functionCalls = response.functionCalls;
+    if (!functionCalls || functionCalls.length === 0) {
+      // No function calls — final text response
+      return { text: response.text || "", history: contents };
+    }
+
+    // Execute each function call
+    const responseParts: Part[] = [];
+    for (const fc of functionCalls) {
+      if (!fc.name) continue;
+
+      console.log(`[LLM] Tool call: ${fc.name}(${JSON.stringify(fc.args || {}).substring(0, 100)})`);
+
+      try {
+        const result = await executeToolCall(fc.name, fc.args ?? {});
+        responseParts.push(
+          createPartFromFunctionResponse(fc.id ?? "", fc.name, result)
+        );
+      } catch (err: any) {
+        responseParts.push(
+          createPartFromFunctionResponse(fc.id ?? "", fc.name, {
+            error: err.message || String(err),
+          })
+        );
+      }
+    }
+
+    // Add function responses
+    contents.push({ role: "user", parts: responseParts });
+  }
+
+  // Hit max rounds
+  return {
+    text: "I reached the maximum number of tool-calling rounds. Please try a more specific request.",
+    history: contents,
+  };
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@ois/claude-plugin",
+  "version": "1.0.0",
+  "description": "Claude Code host bundle — Universal Agent Adapter for the OIS agentic network",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/proxy.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/proxy.js",
+    "dev": "tsx src/proxy.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@ois/network-adapter": "file:ois-network-adapter-2.0.0.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Logs
+*.log
+.ois/
+
+# Personal host configuration (not shipped)
+.claude/
+.opencode/
+.mcp.json
+
+# Secrets
+labops-389703.json
+*.pem
+*.key
+.env
+.env.*
+
+# Backups
+backups/
+
+# Personal scratch
+notes.txt
+raw-notes
+raw-notes.txt
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp

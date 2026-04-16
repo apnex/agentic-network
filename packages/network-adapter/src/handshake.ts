@@ -1,0 +1,253 @@
+/**
+ * Enriched register_role handshake.
+ *
+ * After the bare `register_role({role})` call in `McpAgentClient.runHandshake`
+ * (which proves the wire is alive and the session is bound), the agent
+ * performs this enriched handshake on entry to the `synchronizing` state. It:
+ *
+ *   1. Re-calls `register_role` with full payload (globalInstanceId,
+ *      clientMetadata, advisoryTags).
+ *   2. Parses the response for `engineerId`/`sessionEpoch`/`wasCreated`.
+ *   3. Tracks epoch displacement across reconnects.
+ *   4. Halts on fatal codes (`agent_thrashing_detected`, `role_mismatch`).
+ *
+ * Fatal halt is delegated to a caller-provided `onFatalHalt` callback so
+ * each engineer can implement its own shutdown path (Claude: stdio drain +
+ * `process.exit(2)`; OpenCode: OpenCode lifecycle shutdown).
+ */
+
+import { hostname, platform as osPlatform } from "node:os";
+import type { ILogger, LegacyStringLogger } from "./logger.js";
+import { normalizeToILogger } from "./logger.js";
+
+export const FATAL_CODES: ReadonlySet<string> = new Set([
+  "agent_thrashing_detected",
+  "role_mismatch",
+]);
+
+export interface HandshakeClientMetadata {
+  clientName: string;
+  clientVersion: string;
+  proxyName: string;
+  proxyVersion: string;
+  transport: string;
+  sdkVersion: string;
+  hostname?: string;
+  platform?: string;
+  pid?: number;
+}
+
+export interface HandshakeAdvisoryTags {
+  /** Best-effort, drift-prone. Hub MUST NOT route on this. */
+  llmModel?: string;
+  [key: string]: unknown;
+}
+
+export interface HandshakePayload {
+  role: string;
+  globalInstanceId: string;
+  clientMetadata: HandshakeClientMetadata;
+  advisoryTags: HandshakeAdvisoryTags;
+}
+
+export interface HandshakeResponse {
+  engineerId: string;
+  sessionEpoch: number;
+  wasCreated: boolean;
+}
+
+export interface HandshakeFatalError {
+  code: string;
+  message: string;
+}
+
+/**
+ * Parse an MCP CallTool result for a structured handshake error payload.
+ * Returns the fatal error if the result matches `{isError:true, content:[{text: <json>}]}`
+ * and the JSON body has a `code` in `FATAL_CODES`. Returns null otherwise.
+ */
+export function parseHandshakeError(result: unknown): HandshakeFatalError | null {
+  try {
+    const r = result as { content?: Array<{ text?: string }>; isError?: boolean };
+    if (!r || r.isError !== true || !Array.isArray(r.content) || !r.content[0]?.text) {
+      return null;
+    }
+    const body = JSON.parse(r.content[0].text);
+    if (body && typeof body.code === "string" && FATAL_CODES.has(body.code)) {
+      return { code: body.code, message: String(body.message ?? "") };
+    }
+  } catch {
+    /* not a structured error — fall through */
+  }
+  return null;
+}
+
+/**
+ * Parse a successful handshake response. The adapter's executeTool returns
+ * parsed JSON directly, but some code paths deliver the raw `{content:[{text}]}`
+ * envelope — handle both.
+ */
+export function parseHandshakeResponse(result: unknown): HandshakeResponse | null {
+  try {
+    const r = result as { content?: Array<{ text?: string }> } | Record<string, unknown>;
+    let body: Record<string, unknown>;
+    if (Array.isArray((r as { content?: unknown[] }).content)) {
+      const text = (r as { content: Array<{ text?: string }> }).content[0]?.text;
+      body = text ? JSON.parse(text) : {};
+    } else {
+      body = r as Record<string, unknown>;
+    }
+    if (typeof body.engineerId === "string" && typeof body.sessionEpoch === "number") {
+      return {
+        engineerId: body.engineerId,
+        sessionEpoch: body.sessionEpoch,
+        wasCreated: Boolean(body.wasCreated),
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+export interface HandshakeConfig {
+  role: string;
+  globalInstanceId: string;
+  clientInfo: { name: string; version: string };
+  proxyName: string;
+  proxyVersion: string;
+  transport: string;
+  sdkVersion: string;
+  llmModel?: string;
+}
+
+export interface HandshakeContext {
+  /** Tool executor — typically `transport.request.bind(transport)`. */
+  executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  config: HandshakeConfig;
+  /** Previous session epoch for displacement detection. 0 if unknown. */
+  previousEpoch: number;
+  /**
+   * Structured logger for diagnostics + the canonical `[Handshake] Registered as …`
+   * line. A legacy `(msg: string) => void` is auto-bridged for tests and
+   * shims that haven't migrated to `ILogger` yet.
+   */
+  log: ILogger | LegacyStringLogger;
+  /** Invoked on fatal codes. Implementations should terminate the process. */
+  onFatalHalt?: (err: HandshakeFatalError) => void;
+}
+
+export interface HandshakeResult {
+  /** Parsed response, or null if the handshake failed (non-fatally). */
+  response: HandshakeResponse | null;
+  /** New epoch to persist for the next reconnect's displacement check. */
+  epoch: number;
+}
+
+/**
+ * Build the enriched register_role payload.
+ */
+export function buildHandshakePayload(config: HandshakeConfig): HandshakePayload {
+  return {
+    role: config.role,
+    globalInstanceId: config.globalInstanceId,
+    clientMetadata: {
+      clientName: config.clientInfo.name,
+      clientVersion: config.clientInfo.version,
+      proxyName: config.proxyName,
+      proxyVersion: config.proxyVersion,
+      transport: config.transport,
+      sdkVersion: config.sdkVersion,
+      hostname: hostname(),
+      platform: osPlatform(),
+      pid: process.pid,
+    },
+    advisoryTags: {
+      llmModel: config.llmModel ?? "unknown",
+    },
+  };
+}
+
+/**
+ * Perform the enriched handshake. Never throws on tool-call failure — a
+ * transport or session error is logged and returned as
+ * `{response:null, epoch:previousEpoch}` so the caller can continue state
+ * sync. A fatal code (`agent_thrashing_detected`, `role_mismatch`) triggers
+ * `onFatalHalt` and then also returns null.
+ */
+export async function performHandshake(
+  ctx: HandshakeContext
+): Promise<HandshakeResult> {
+  const log = normalizeToILogger(ctx.log, "Handshake");
+  const payload = buildHandshakePayload(ctx.config);
+
+  let result: unknown;
+  try {
+    result = await ctx.executeTool("register_role", payload as unknown as Record<string, unknown>);
+  } catch (err) {
+    log.log(
+      "agent.handshake.tool_call_failed",
+      { error: String(err) },
+      `[Handshake] tool-call failed (non-fatal, retry on reconnect): ${err}`
+    );
+    return { response: null, epoch: ctx.previousEpoch };
+  }
+
+  const fatal = parseHandshakeError(result);
+  if (fatal) {
+    log.log(
+      "agent.handshake.fatal",
+      { code: fatal.code, message: fatal.message },
+      `[Handshake] FATAL ${fatal.code}: ${fatal.message}`
+    );
+    if (ctx.onFatalHalt) ctx.onFatalHalt(fatal);
+    return { response: null, epoch: ctx.previousEpoch };
+  }
+
+  const response = parseHandshakeResponse(result);
+  if (!response) {
+    log.log(
+      "agent.handshake.parse_failed",
+      undefined,
+      "[Handshake] response parse failed (non-fatal)"
+    );
+    return { response: null, epoch: ctx.previousEpoch };
+  }
+
+  if (ctx.previousEpoch > 0 && response.sessionEpoch - ctx.previousEpoch > 1) {
+    log.log(
+      "agent.handshake.epoch_jump",
+      { from: ctx.previousEpoch, to: response.sessionEpoch },
+      `[Handshake] sessionEpoch jumped from ${ctx.previousEpoch} to ${response.sessionEpoch} — in-flight RPCs from prior epoch are abandoned`
+    );
+  }
+  log.log(
+    "agent.handshake.registered",
+    {
+      engineerId: response.engineerId,
+      epoch: response.sessionEpoch,
+      wasCreated: response.wasCreated,
+    },
+    `[Handshake] Registered as ${response.engineerId} (epoch=${response.sessionEpoch}${response.wasCreated ? ", newly created" : ""})`
+  );
+
+  return { response, epoch: response.sessionEpoch };
+}
+
+/**
+ * Build a fatal-halt function with a stdio drain delay. Engineers that use
+ * stdio transports (Claude) MUST use this to avoid losing the halt message
+ * to an unflushed buffer. Engineers that do not (OpenCode) can implement
+ * their own `onFatalHalt` directly.
+ */
+export function makeStdioFatalHalt(
+  log: (msg: string) => void,
+  exit: (code: number) => void = process.exit.bind(process) as (code: number) => void,
+  drainMs = 100
+): (err: HandshakeFatalError) => void {
+  return (err) => {
+    const text = `[FATAL:${err.code}] ${err.message}`;
+    log(text);
+    setTimeout(() => exit(2), drainMs);
+  };
+}

@@ -1,0 +1,454 @@
+/**
+ * TestOrchestrator — E2E Test Harness for the PolicyRouter.
+ *
+ * Provides a fully in-memory, transport-free test environment for
+ * multi-agent workflow simulation. All 13 policies are registered
+ * on a shared PolicyRouter with in-memory stores.
+ *
+ * Architecture:
+ *   TestOrchestrator (singleton per test)
+ *     ├── PolicyRouter (shared, stateless)
+ *     ├── AllStores (shared, in-memory)
+ *     ├── EventCapture (shared, records all emit() calls)
+ *     ├── ActorFacade("architect") — pre-bound context
+ *     └── ActorFacade("engineer-N") — pre-bound context per engineer
+ */
+
+import {
+  PolicyRouter,
+  registerTaskPolicy,
+  registerSystemPolicy,
+  registerTelePolicy,
+  registerAuditPolicy,
+  registerDocumentPolicy,
+  registerSessionPolicy,
+  registerIdeaPolicy,
+  registerMissionPolicy,
+  registerTurnPolicy,
+  registerClarificationPolicy,
+  registerReviewPolicy,
+  registerProposalPolicy,
+  registerThreadPolicy,
+} from "../../src/policy/index.js";
+import type { AllStores, IPolicyContext, PolicyResult } from "../../src/policy/types.js";
+import {
+  MemoryTaskStore,
+  MemoryEngineerRegistry,
+  MemoryProposalStore,
+  MemoryThreadStore,
+  MemoryAuditStore,
+} from "../../src/state.js";
+import { MemoryIdeaStore } from "../../src/entities/idea.js";
+import { MemoryMissionStore } from "../../src/entities/mission.js";
+import { MemoryTurnStore } from "../../src/entities/turn.js";
+import { MemoryTeleStore } from "../../src/entities/tele.js";
+
+// ── Captured Event ──────────────────────────────────────────────────
+
+export interface CapturedEvent {
+  event: string;
+  data: Record<string, unknown>;
+  targetRoles: string[];
+  timestamp: number;
+}
+
+// ── Event Capture ───────────────────────────────────────────────────
+
+export class EventCapture {
+  readonly events: CapturedEvent[] = [];
+
+  capture(event: string, data: Record<string, unknown>, targetRoles?: string[]): void {
+    this.events.push({
+      event,
+      data,
+      targetRoles: targetRoles || [],
+      timestamp: Date.now(),
+    });
+  }
+
+  /** Assert that an event was emitted. Returns the first match. */
+  expectEvent(event: string): CapturedEvent {
+    const found = this.events.find((e) => e.event === event);
+    if (!found) {
+      throw new Error(
+        `Expected event "${event}" but it was never emitted. ` +
+        `Emitted events: [${this.events.map((e) => e.event).join(", ")}]`
+      );
+    }
+    return found;
+  }
+
+  /** Assert that an event was emitted targeting a specific role. */
+  expectEventFor(event: string, role: string): CapturedEvent {
+    const found = this.events.find(
+      (e) => e.event === event && e.targetRoles.includes(role)
+    );
+    if (!found) {
+      const matches = this.events.filter((e) => e.event === event);
+      if (matches.length === 0) {
+        throw new Error(`Expected event "${event}" for role "${role}" but "${event}" was never emitted.`);
+      }
+      throw new Error(
+        `Event "${event}" was emitted but not targeting role "${role}". ` +
+        `Target roles: [${matches.map((m) => m.targetRoles.join(",")).join("; ")}]`
+      );
+    }
+    return found;
+  }
+
+  /** Assert that an event was NOT emitted. */
+  expectNoEvent(event: string): void {
+    const found = this.events.find((e) => e.event === event);
+    if (found) {
+      throw new Error(`Expected no "${event}" event but one was emitted.`);
+    }
+  }
+
+  /** Assert events were emitted in a specific order. */
+  expectEventSequence(eventNames: string[]): void {
+    let searchFrom = 0;
+    for (const name of eventNames) {
+      const idx = this.events.findIndex((e, i) => i >= searchFrom && e.event === name);
+      if (idx === -1) {
+        throw new Error(
+          `Expected event sequence [${eventNames.join(", ")}] but "${name}" not found ` +
+          `after position ${searchFrom}. Actual: [${this.events.map((e) => e.event).join(", ")}]`
+        );
+      }
+      searchFrom = idx + 1;
+    }
+  }
+
+  /** Count events, optionally filtered by name. */
+  count(event?: string): number {
+    if (!event) return this.events.length;
+    return this.events.filter((e) => e.event === event).length;
+  }
+
+  /** Get all events targeting a specific role. */
+  forRole(role: string): CapturedEvent[] {
+    return this.events.filter((e) => e.targetRoles.includes(role));
+  }
+
+  /** Get all events of a specific type. */
+  forEvent(event: string): CapturedEvent[] {
+    return this.events.filter((e) => e.event === event);
+  }
+
+  /** Clear all captured events. */
+  clear(): void {
+    this.events.length = 0;
+  }
+}
+
+// ── E2E Error ───────────────────────────────────────────────────────
+
+export class E2EError extends Error {
+  constructor(
+    message: string,
+    public readonly toolName: string,
+    public readonly rawResult: PolicyResult,
+  ) {
+    super(message);
+    this.name = "E2EError";
+  }
+}
+
+// ── Actor Facade ────────────────────────────────────────────────────
+
+export class ActorFacade {
+  private registered = false;
+
+  constructor(
+    private readonly router: PolicyRouter,
+    private readonly stores: AllStores,
+    private readonly eventCapture: EventCapture,
+    private readonly role: "architect" | "engineer",
+    private readonly sessionId: string,
+    private readonly config: { storageBackend: string; gcsBucket: string },
+  ) {}
+
+  /** Build a fresh IPolicyContext for this actor. */
+  private ctx(): IPolicyContext {
+    return {
+      stores: this.stores,
+      emit: async (event, data, targetRoles) => {
+        this.eventCapture.capture(event, data, targetRoles);
+      },
+      sessionId: this.sessionId,
+      clientIp: "127.0.0.1",
+      role: this.role,
+      internalEvents: [],
+      config: this.config,
+    };
+  }
+
+  /** Ensure this actor's role is registered (auto-called on first use). */
+  private async ensureRegistered(): Promise<void> {
+    if (this.registered) return;
+    await this.router.handle("register_role", { role: this.role }, this.ctx());
+    this.registered = true;
+  }
+
+  /** Parse result, throw E2EError if isError. */
+  private parse(toolName: string, result: PolicyResult): Record<string, unknown> {
+    const text = result.content[0]?.text;
+    const parsed = text ? JSON.parse(text) : {};
+    if (result.isError) {
+      const msg = parsed.error || parsed.message || text || "Unknown error";
+      throw new E2EError(msg, toolName, result);
+    }
+    return parsed;
+  }
+
+  /** Raw tool call — returns PolicyResult without parsing/throwing. */
+  async call(toolName: string, args: Record<string, unknown>): Promise<PolicyResult> {
+    await this.ensureRegistered();
+    return this.router.handle(toolName, args, this.ctx());
+  }
+
+  // ── Task lifecycle ──────────────────────────────────────────────
+
+  async createTask(title: string, description: string, opts?: {
+    correlationId?: string; sourceThreadId?: string;
+    idempotencyKey?: string; dependsOn?: string[];
+  }): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("create_task", {
+      title, description, ...opts,
+    }, this.ctx());
+    return this.parse("create_task", result);
+  }
+
+  async getTask(): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("get_task", {}, this.ctx());
+    return this.parse("get_task", result);
+  }
+
+  async createReport(taskId: string, report: string, summary: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("create_report", {
+      taskId, report, summary,
+    }, this.ctx());
+    return this.parse("create_report", result);
+  }
+
+  async listTasks(): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("list_tasks", {}, this.ctx());
+    return this.parse("list_tasks", result);
+  }
+
+  async cancelTask(taskId: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("cancel_task", { taskId }, this.ctx());
+    return this.parse("cancel_task", result);
+  }
+
+  // ── Clarification ───────────────────────────────────────────────
+
+  async requestClarification(taskId: string, question: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("create_clarification", {
+      taskId, question,
+    }, this.ctx());
+    return this.parse("create_clarification", result);
+  }
+
+  async resolveClarification(taskId: string, answer: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("resolve_clarification", {
+      taskId, answer,
+    }, this.ctx());
+    return this.parse("resolve_clarification", result);
+  }
+
+  async getClarification(taskId: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("get_clarification", { taskId }, this.ctx());
+    return this.parse("get_clarification", result);
+  }
+
+  // ── Review ──────────────────────────────────────────────────────
+
+  async createReview(taskId: string, assessment: string, decision?: "approved" | "rejected"): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const args: Record<string, unknown> = { taskId, assessment };
+    if (decision) args.decision = decision;
+    const result = await this.router.handle("create_review", args, this.ctx());
+    return this.parse("create_review", result);
+  }
+
+  async getReview(taskId: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("get_review", { taskId }, this.ctx());
+    return this.parse("get_review", result);
+  }
+
+  // ── Proposal lifecycle ──────────────────────────────────────────
+
+  async createProposal(title: string, summary: string, body: string, opts?: {
+    correlationId?: string;
+    proposedExecutionPlan?: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("create_proposal", {
+      title, summary, body, ...opts,
+    }, this.ctx());
+    return this.parse("create_proposal", result);
+  }
+
+  async reviewProposal(proposalId: string, decision: string, feedback: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("create_proposal_review", {
+      proposalId, decision, feedback,
+    }, this.ctx());
+    return this.parse("create_proposal_review", result);
+  }
+
+  async getProposal(proposalId: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("get_proposal", { proposalId }, this.ctx());
+    return this.parse("get_proposal", result);
+  }
+
+  async closeProposal(proposalId: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("close_proposal", { proposalId }, this.ctx());
+    return this.parse("close_proposal", result);
+  }
+
+  // ── Thread lifecycle ────────────────────────────────────────────
+
+  async createThread(title: string, message: string, opts?: {
+    maxRounds?: number; correlationId?: string; semanticIntent?: string;
+  }): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("create_thread", {
+      title, message, ...opts,
+    }, this.ctx());
+    return this.parse("create_thread", result);
+  }
+
+  async replyToThread(threadId: string, message: string, opts?: {
+    converged?: boolean; intent?: string; semanticIntent?: string;
+    convergenceAction?: { type: string; templateData: { title: string; description: string } };
+  }): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("create_thread_reply", {
+      threadId, message, ...opts,
+    }, this.ctx());
+    return this.parse("create_thread_reply", result);
+  }
+
+  async getThread(threadId: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("get_thread", { threadId }, this.ctx());
+    return this.parse("get_thread", result);
+  }
+
+  async closeThread(threadId: string): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("close_thread", { threadId }, this.ctx());
+    return this.parse("close_thread", result);
+  }
+
+  // ── System ──────────────────────────────────────────────────────
+
+  async getPendingActions(): Promise<Record<string, unknown>> {
+    await this.ensureRegistered();
+    const result = await this.router.handle("get_pending_actions", {}, this.ctx());
+    return this.parse("get_pending_actions", result);
+  }
+}
+
+// ── Test Orchestrator ───────────────────────────────────────────────
+
+export class TestOrchestrator {
+  readonly router: PolicyRouter;
+  readonly stores: AllStores;
+  readonly events: EventCapture;
+
+  private readonly config = { storageBackend: "memory", gcsBucket: "" };
+  private actorCache = new Map<string, ActorFacade>();
+
+  private constructor() {
+    this.events = new EventCapture();
+    this.stores = this.createStores();
+    this.router = this.createRouter();
+  }
+
+  /** Create a fresh TestOrchestrator with all 13 policies registered. */
+  static create(): TestOrchestrator {
+    return new TestOrchestrator();
+  }
+
+  /** Get the Architect actor facade. */
+  asArchitect(): ActorFacade {
+    const key = "architect";
+    if (!this.actorCache.has(key)) {
+      this.actorCache.set(key, new ActorFacade(
+        this.router, this.stores, this.events,
+        "architect", "session-architect",
+        this.config,
+      ));
+    }
+    return this.actorCache.get(key)!;
+  }
+
+  /** Get an Engineer actor facade. Supports multiple engineers. */
+  asEngineer(engineerId: string = "default"): ActorFacade {
+    const key = `engineer-${engineerId}`;
+    if (!this.actorCache.has(key)) {
+      this.actorCache.set(key, new ActorFacade(
+        this.router, this.stores, this.events,
+        "engineer", `session-engineer-${engineerId}`,
+        this.config,
+      ));
+    }
+    return this.actorCache.get(key)!;
+  }
+
+  /** Reset all state for a clean scenario. */
+  reset(): void {
+    this.events.clear();
+    this.actorCache.clear();
+    // Replace stores with fresh instances
+    Object.assign(this.stores, this.createStores());
+  }
+
+  // ── Private ─────────────────────────────────────────────────────
+
+  private createStores(): AllStores {
+    return {
+      task: new MemoryTaskStore(),
+      engineerRegistry: new MemoryEngineerRegistry(),
+      proposal: new MemoryProposalStore(),
+      thread: new MemoryThreadStore(),
+      audit: new MemoryAuditStore(),
+      idea: new MemoryIdeaStore(),
+      mission: new MemoryMissionStore(),
+      turn: new MemoryTurnStore(),
+      tele: new MemoryTeleStore(),
+    };
+  }
+
+  private createRouter(): PolicyRouter {
+    const router = new PolicyRouter(() => {});
+    registerTaskPolicy(router);
+    registerSystemPolicy(router);
+    registerTelePolicy(router);
+    registerAuditPolicy(router);
+    registerDocumentPolicy(router);
+    registerSessionPolicy(router);
+    registerIdeaPolicy(router);
+    registerMissionPolicy(router);
+    registerTurnPolicy(router);
+    registerClarificationPolicy(router);
+    registerReviewPolicy(router);
+    registerProposalPolicy(router);
+    registerThreadPolicy(router);
+    return router;
+  }
+}

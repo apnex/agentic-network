@@ -1,0 +1,73 @@
+/**
+ * Tele Entity — A declaration of perfection / qualitative asymptote.
+ *
+ * Static registry entry representing an end-state or guiding axiom.
+ * No lifecycle — active once defined. Immutable after creation.
+ *
+ * Examples:
+ *   "Absolute State Fidelity"
+ *   "Zero Notification Loss"
+ *   "Indestructible SSE Resilience"
+ */
+
+// ── Types ────────────────────────────────────────────────────────────
+
+export interface Tele {
+  id: string;
+  name: string;
+  description: string;
+  successCriteria: string; // Markdown describing the measurable target
+  createdAt: string;
+}
+
+// ── Interface ────────────────────────────────────────────────────────
+
+export interface ITeleStore {
+  defineTele(
+    name: string,
+    description: string,
+    successCriteria: string
+  ): Promise<Tele>;
+
+  getTele(teleId: string): Promise<Tele | null>;
+
+  listTele(): Promise<Tele[]>;
+}
+
+// ── Memory Implementation ────────────────────────────────────────────
+
+export class MemoryTeleStore implements ITeleStore {
+  private entries = new Map<string, Tele>();
+  private counter = 0;
+
+  async defineTele(
+    name: string,
+    description: string,
+    successCriteria: string
+  ): Promise<Tele> {
+    this.counter++;
+    const id = `tele-${this.counter}`;
+    const now = new Date().toISOString();
+
+    const tele: Tele = {
+      id,
+      name,
+      description,
+      successCriteria,
+      createdAt: now,
+    };
+
+    this.entries.set(id, tele);
+    console.log(`[MemoryTeleStore] Tele defined: ${id} — ${name}`);
+    return { ...tele };
+  }
+
+  async getTele(teleId: string): Promise<Tele | null> {
+    const tele = this.entries.get(teleId);
+    return tele ? { ...tele } : null;
+  }
+
+  async listTele(): Promise<Tele[]> {
+    return Array.from(this.entries.values()).map((t) => ({ ...t }));
+  }
+}
