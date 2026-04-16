@@ -33,7 +33,7 @@ export OIS_HUB_ROLE="engineer"
 export HUB_PLUGIN_AUTO_PROMPT="true"
 ```
 
-The `OIS_` variables are shared across all OIS plugins. Legacy names (`MCP_HUB_URL`, `HUB_API_TOKEN`, `HUB_PLUGIN_ROLE`) are still supported as fallbacks.
+The `OIS_` variables are shared across all OIS plugins.
 
 ## 2. Register the plugin
 

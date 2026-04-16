@@ -54,9 +54,9 @@ function loadConfig(): HubConfig {
     }
   }
 
-  const hubUrl = process.env.OIS_HUB_URL || process.env.HUB_URL || fileConfig.hubUrl || "";
-  const hubToken = process.env.OIS_HUB_TOKEN || process.env.HUB_TOKEN || fileConfig.hubToken || "";
-  const role = process.env.OIS_HUB_ROLE || process.env.HUB_ROLE || fileConfig.role || "engineer";
+  const hubUrl = process.env.OIS_HUB_URL || fileConfig.hubUrl || "";
+  const hubToken = process.env.OIS_HUB_TOKEN || fileConfig.hubToken || "";
+  const role = process.env.OIS_HUB_ROLE || fileConfig.role || "engineer";
 
   if (!hubUrl || !hubToken) {
     console.error("ERROR: Hub credentials not found. Checked .opencode/hub-config.json and OIS_HUB_URL/OIS_HUB_TOKEN env vars");

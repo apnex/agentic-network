@@ -100,9 +100,9 @@ function loadConfig(directory: string): HubConfig {
   } catch {
     /* no config file — use defaults */
   }
-  if (process.env.OIS_HUB_URL || process.env.MCP_HUB_URL) cfg.hubUrl = process.env.OIS_HUB_URL || process.env.MCP_HUB_URL!
-  if (process.env.OIS_HUB_TOKEN || process.env.HUB_API_TOKEN) cfg.hubToken = process.env.OIS_HUB_TOKEN || process.env.HUB_API_TOKEN!
-  if (process.env.OIS_HUB_ROLE || process.env.HUB_PLUGIN_ROLE) cfg.role = process.env.OIS_HUB_ROLE || process.env.HUB_PLUGIN_ROLE!
+  if (process.env.OIS_HUB_URL) cfg.hubUrl = process.env.OIS_HUB_URL
+  if (process.env.OIS_HUB_TOKEN) cfg.hubToken = process.env.OIS_HUB_TOKEN
+  if (process.env.OIS_HUB_ROLE) cfg.role = process.env.OIS_HUB_ROLE
   if (process.env.HUB_PLUGIN_AUTO_PROMPT)
     cfg.autoPrompt = process.env.HUB_PLUGIN_AUTO_PROMPT.toLowerCase() !== "false"
   return cfg

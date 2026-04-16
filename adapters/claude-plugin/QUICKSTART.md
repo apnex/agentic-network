@@ -39,7 +39,7 @@ export OIS_HUB_TOKEN="your-auth-token"
 export OIS_HUB_ROLE="engineer"
 ```
 
-These `OIS_` variables are shared across all OIS plugins. Legacy names (`HUB_URL`, `HUB_TOKEN`, `HUB_ROLE`) are still supported as fallbacks.
+These `OIS_` variables are shared across all OIS plugins.
 
 ## 3. Register the local marketplace
 
