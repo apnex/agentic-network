@@ -2,8 +2,8 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Copy the shared hub-connection package
-COPY ois-hub-connection-1.3.0.tgz ./
+# Copy the shared network adapter package
+COPY ois-network-adapter-2.0.0.tgz ./
 
 # Install dependencies
 COPY package.json package-lock.json* ./
