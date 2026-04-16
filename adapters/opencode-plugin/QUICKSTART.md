@@ -2,13 +2,37 @@
 
 Install the OIS agent adapter plugin into OpenCode. This bridges OpenCode into the OIS agentic network as an Engineer agent via the MCP Relay Hub.
 
-## Prerequisites
+## Quick install (from GitHub)
+
+No clone required. Point your OpenCode plugin config at the repo directly:
+
+```jsonc
+// .opencode/config.json
+{
+  "plugins": {
+    "hub-notifications": {
+      "github": "apnex/agentic-network",
+      "path": "adapters/opencode-plugin/hub-notifications.ts"
+    }
+  }
+}
+```
+
+Then configure credentials (see step 1 below) and launch OpenCode as usual.
+
+---
+
+## Developer install (from clone)
+
+Use this path if you need to modify the plugin, deploy other components, or work on the codebase.
+
+### Prerequisites
 
 - OpenCode with plugin support and `@opencode-ai/plugin` SDK
 - Bun runtime (the plugin uses `Bun.serve` for the local MCP proxy)
 - Access to a running OIS Hub instance (URL + auth token)
 
-## 1. Configure Hub credentials
+### 1. Configure Hub credentials
 
 In your project directory (where you run OpenCode), create a config file:
 
@@ -35,7 +59,7 @@ export HUB_PLUGIN_AUTO_PROMPT="true"
 
 The `OIS_` variables are shared across all OIS plugins.
 
-## 2. Register the plugin
+### 2. Register the plugin
 
 Add the plugin to your OpenCode configuration, pointing to the `hub-notifications.ts` file:
 
@@ -52,7 +76,7 @@ Add the plugin to your OpenCode configuration, pointing to the `hub-notification
 
 The plugin exports `HubPlugin` which OpenCode loads at startup.
 
-## 3. Launch OpenCode
+### 3. Launch OpenCode
 
 Start OpenCode in your project directory as usual. The plugin initialises in the background:
 

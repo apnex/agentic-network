@@ -2,13 +2,34 @@
 
 Install the OIS agent adapter plugin into Claude Code. This bridges Claude Code into the OIS agentic network as an Engineer agent via the MCP Relay Hub.
 
-## Prerequisites
+## Quick install (from GitHub)
+
+No clone required. Run these in any terminal:
+
+```bash
+claude plugin marketplace add github:apnex/agentic-network
+claude plugin install agent-adapter@agentic-network
+```
+
+Then configure credentials (see step 1 below) and launch:
+
+```bash
+claude --dangerously-load-development-channels plugin:agent-adapter@agentic-network
+```
+
+---
+
+## Developer install (from clone)
+
+Use this path if you need to modify the plugin, deploy other components, or work on the codebase.
+
+### Prerequisites
 
 - Node.js 18+
 - Claude Code CLI installed (`claude` available in PATH)
 - Access to a running OIS Hub instance (URL + auth token)
 
-## 1. Configure Hub credentials
+### 1. Configure Hub credentials
 
 Create a config file in your working directory (the project you'll run Claude Code in):
 
@@ -33,7 +54,7 @@ export OIS_HUB_ROLE="engineer"
 
 These `OIS_` variables are shared across all OIS plugins.
 
-## 2. Install the plugin
+### 2. Install the plugin
 
 Run the install script (idempotent — safe to re-run):
 
@@ -43,7 +64,7 @@ Run the install script (idempotent — safe to re-run):
 
 This builds the plugin, registers the local marketplace, and installs into Claude Code.
 
-## 3. Launch Claude Code with the plugin
+### 3. Launch Claude Code with the plugin
 
 ```bash
 claude --dangerously-load-development-channels plugin:agent-adapter@agentic-network-local
