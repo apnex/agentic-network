@@ -34,10 +34,12 @@ EOF
 Alternatively, set environment variables (these override the config file):
 
 ```bash
-export HUB_URL="https://your-hub-instance.run.app"
-export HUB_TOKEN="your-auth-token"
-export HUB_ROLE="engineer"
+export OIS_HUB_URL="https://your-hub-instance.run.app"
+export OIS_HUB_TOKEN="your-auth-token"
+export OIS_HUB_ROLE="engineer"
 ```
+
+These `OIS_` variables are shared across all OIS plugins. Legacy names (`HUB_URL`, `HUB_TOKEN`, `HUB_ROLE`) are still supported as fallbacks.
 
 ## 3. Register the local marketplace
 
@@ -83,7 +85,7 @@ You should see Hub tools available when you type `/` in Claude Code. The adapter
 | Source | Location | Priority |
 |---|---|---|
 | Config file | `<workdir>/.opencode/hub-config.json` | Default |
-| Environment | `HUB_URL`, `HUB_TOKEN`, `HUB_ROLE` | Overrides config file |
+| Environment | `OIS_HUB_URL`, `OIS_HUB_TOKEN`, `OIS_HUB_ROLE` | Overrides config file |
 
 | Field | Required | Default | Description |
 |---|---|---|---|
@@ -93,6 +95,6 @@ You should see Hub tools available when you type `/` in Claude Code. The adapter
 
 ## Troubleshooting
 
-- **"Hub credentials not found"** — Neither config file nor env vars are set. Check the path and ensure `.opencode/hub-config.json` exists in the directory where you launch Claude Code.
+- **"Hub credentials not found"** — Neither config file nor env vars are set. Check that `.opencode/hub-config.json` exists in your working directory, or set `OIS_HUB_URL` and `OIS_HUB_TOKEN`.
 - **Plugin not found** — Ensure the marketplace was added with the correct absolute path to the `agentic-network` root directory.
 - **Build errors** — Run `npm install` again. The `@ois/network-adapter` dependency resolves from a local tarball (`ois-network-adapter-2.0.0.tgz`) which must be present in the plugin directory.

@@ -27,11 +27,13 @@ EOF
 Alternatively, set environment variables (these override the config file):
 
 ```bash
-export MCP_HUB_URL="https://your-hub-instance.run.app/mcp"
-export HUB_API_TOKEN="your-auth-token"
-export HUB_PLUGIN_ROLE="engineer"
+export OIS_HUB_URL="https://your-hub-instance.run.app/mcp"
+export OIS_HUB_TOKEN="your-auth-token"
+export OIS_HUB_ROLE="engineer"
 export HUB_PLUGIN_AUTO_PROMPT="true"
 ```
+
+The `OIS_` variables are shared across all OIS plugins. Legacy names (`MCP_HUB_URL`, `HUB_API_TOKEN`, `HUB_PLUGIN_ROLE`) are still supported as fallbacks.
 
 ## 2. Register the plugin
 
@@ -73,7 +75,7 @@ A rate limiter (30s) prevents prompt flooding. Events arriving during cooldown a
 | Source | Location | Priority |
 |---|---|---|
 | Config file | `<workdir>/.opencode/hub-config.json` | Default |
-| Environment | `MCP_HUB_URL`, `HUB_API_TOKEN`, `HUB_PLUGIN_ROLE`, `HUB_PLUGIN_AUTO_PROMPT` | Overrides config file |
+| Environment | `OIS_HUB_URL`, `OIS_HUB_TOKEN`, `OIS_HUB_ROLE`, `HUB_PLUGIN_AUTO_PROMPT` | Overrides config file |
 
 | Field | Required | Default | Description |
 |---|---|---|---|
@@ -84,7 +86,7 @@ A rate limiter (30s) prevents prompt flooding. Events arriving during cooldown a
 
 ## Troubleshooting
 
-- **No Hub connection** — Check that `hubUrl` and `hubToken` are set in `.opencode/hub-config.json` or via environment variables. The URL must include the `/mcp` path.
+- **No Hub connection** — Check that `hubUrl` and `hubToken` are set in `.opencode/hub-config.json` or via `OIS_HUB_URL` and `OIS_HUB_TOKEN`. The URL must include the `/mcp` path.
 - **Tools not appearing** — The plugin starts the Hub connection in the background after a short delay. Wait a few seconds, then check available tools.
 - **Bun not found** — The local MCP proxy requires Bun runtime. Install from https://bun.sh.
 - **Prompt flooding** — If notifications arrive too frequently, the 30s rate limiter queues them. Set `autoPrompt: false` to disable push-to-LLM entirely.
