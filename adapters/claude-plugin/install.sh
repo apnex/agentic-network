@@ -22,8 +22,7 @@ echo "[install] Registering local marketplace ..."
 claude plugin marketplace add "$REPO_ROOT"
 
 echo "[install] Installing agent-adapter plugin ..."
-claude plugin install agent-adapter@agentic-network-local
+claude plugin install agent-adapter@agentic-network
 
 echo ""
-echo "[install] Done. Launch with:"
-echo "  claude --dangerously-load-development-channels plugin:agent-adapter@agentic-network-local"
+echo "[install] Done. Restart Claude Code to activate the plugin."
