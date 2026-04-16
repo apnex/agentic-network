@@ -62,6 +62,10 @@ if (STORAGE_BACKEND === "gcs") {
   turnStore = new GcsTurnStore(GCS_BUCKET);
   teleStore = new GcsTeleStore(GCS_BUCKET);
 } else {
+  if (process.env.NODE_ENV === "production") {
+    console.error("[Hub] FATAL: STORAGE_BACKEND is 'memory' in production. Set STORAGE_BACKEND=gcs to prevent silent state loss.");
+    process.exit(1);
+  }
   console.log("[Hub] Using in-memory storage backend");
   taskStore = new MemoryTaskStore();
   engineerRegistry = new MemoryEngineerRegistry();
