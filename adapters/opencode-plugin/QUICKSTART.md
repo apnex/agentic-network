@@ -13,8 +13,8 @@ Install the OIS agent adapter plugin into OpenCode. This bridges OpenCode into t
 In your project directory (where you run OpenCode), create a config file:
 
 ```bash
-mkdir -p .opencode
-cat > .opencode/hub-config.json << 'EOF'
+mkdir -p .ois
+cat > .ois/hub-config.json << 'EOF'
 {
   "hubUrl": "https://your-hub-instance.run.app/mcp",
   "hubToken": "your-auth-token",
@@ -74,7 +74,7 @@ A rate limiter (30s) prevents prompt flooding. Events arriving during cooldown a
 
 | Source | Location | Priority |
 |---|---|---|
-| Config file | `<workdir>/.opencode/hub-config.json` | Default |
+| Config file | `<workdir>/.ois/hub-config.json` | Default |
 | Environment | `OIS_HUB_URL`, `OIS_HUB_TOKEN`, `OIS_HUB_ROLE`, `HUB_PLUGIN_AUTO_PROMPT` | Overrides config file |
 
 | Field | Required | Default | Description |
@@ -86,11 +86,11 @@ A rate limiter (30s) prevents prompt flooding. Events arriving during cooldown a
 
 ## Troubleshooting
 
-- **No Hub connection** — Check that `hubUrl` and `hubToken` are set in `.opencode/hub-config.json` or via `OIS_HUB_URL` and `OIS_HUB_TOKEN`. The URL must include the `/mcp` path.
+- **No Hub connection** — Check that `hubUrl` and `hubToken` are set in `.ois/hub-config.json` or via `OIS_HUB_URL` and `OIS_HUB_TOKEN`. The URL must include the `/mcp` path.
 - **Tools not appearing** — The plugin starts the Hub connection in the background after a short delay. Wait a few seconds, then check available tools.
 - **Bun not found** — The local MCP proxy requires Bun runtime. Install from https://bun.sh.
 - **Prompt flooding** — If notifications arrive too frequently, the 30s rate limiter queues them. Set `autoPrompt: false` to disable push-to-LLM entirely.
 
 ## Diagnostics
 
-The plugin writes diagnostic logs to `<workdir>/.opencode/hub-plugin.log` and structured notification logs to `~/.ois/notifications.log`.
+The plugin writes diagnostic logs to `<workdir>/.ois/hub-plugin.log` and structured notification logs to `~/.ois/notifications.log`.

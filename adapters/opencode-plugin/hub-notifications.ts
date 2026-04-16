@@ -9,7 +9,7 @@
  *   - Rate-limited prompt queue + deferred backlog (promptAsync is expensive)
  *   - Tool discovery sync (tools/list_changed after Hub reconnect)
  *
- * Configuration: .opencode/hub-config.json (env vars override)
+ * Configuration: .ois/hub-config.json (env vars override)
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
@@ -58,8 +58,8 @@ const activeProxyServers: Server[] = []
 // ── Diagnostic logger (stderr-safe, writes to hub-plugin.log) ───────
 
 function initLogger(directory: string): void {
-  diagLogPath = join(directory, ".opencode", "hub-plugin.log")
-  notificationLogPath = join(directory, ".opencode", "hub-plugin-notifications.log")
+  diagLogPath = join(directory, ".ois", "hub-plugin.log")
+  notificationLogPath = join(directory, ".ois", "hub-plugin-notifications.log")
   try {
     mkdirSync(dirname(diagLogPath), { recursive: true })
   } catch {
@@ -94,7 +94,7 @@ function loadConfig(directory: string): HubConfig {
     role: "engineer",
   }
   try {
-    const configPath = join(directory, ".opencode", "hub-config.json")
+    const configPath = join(directory, ".ois", "hub-config.json")
     const raw = readFileSync(configPath, "utf-8")
     cfg = { ...cfg, ...JSON.parse(raw) }
   } catch {

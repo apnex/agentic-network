@@ -42,7 +42,7 @@ interface HubConfig {
 
 function loadConfig(): HubConfig {
   const workDir = process.env.WORK_DIR || process.cwd();
-  const configPath = resolve(workDir, ".opencode", "hub-config.json");
+  const configPath = resolve(workDir, ".ois", "hub-config.json");
 
   let fileConfig: Partial<HubConfig> = {};
   if (existsSync(configPath)) {
@@ -59,7 +59,7 @@ function loadConfig(): HubConfig {
   const role = process.env.OIS_HUB_ROLE || fileConfig.role || "engineer";
 
   if (!hubUrl || !hubToken) {
-    console.error("ERROR: Hub credentials not found. Checked .opencode/hub-config.json and OIS_HUB_URL/OIS_HUB_TOKEN env vars");
+    console.error("ERROR: Hub credentials not found. Checked .ois/hub-config.json and OIS_HUB_URL/OIS_HUB_TOKEN env vars");
     process.exit(1);
   }
 
