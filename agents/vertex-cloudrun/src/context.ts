@@ -31,9 +31,16 @@ const DECISIONS_PATH = "decisions.json";
 // GCS-persisted dedup. The event loop's getPendingActions() is the
 // sole catch-up mechanism, which is naturally idempotent.
 
+// Short TTL so bursts of sandwich handlers within one EventLoop tick
+// reuse a single assembled context, while the cache still invalidates
+// between the 300s ticks and before any stale data lingers in the
+// Director chat path.
+const AUTONOMOUS_CONTEXT_TTL_MS = 30_000;
+
 export class ContextStore {
   private bucket: string;
   private prefix: string;
+  private autonomousContextCache: { text: string; expiresAt: number } | null = null;
 
   constructor(config: ContextConfig) {
     this.bucket = config.bucket;
@@ -149,6 +156,7 @@ export class ContextStore {
     // Keep last 50 reviews
     const trimmed = reviews.slice(-50);
     await this.writeJson(REVIEW_HISTORY_PATH, trimmed);
+    this.invalidateAutonomousContext();
   }
 
   // ── Thread History ───────────────────────────────────────────────
@@ -177,6 +185,7 @@ export class ContextStore {
 
     const trimmed = threads.slice(-50);
     await this.writeJson(THREAD_HISTORY_PATH, trimmed);
+    this.invalidateAutonomousContext();
   }
 
   // ── Decisions Log ────────────────────────────────────────────────
@@ -195,6 +204,7 @@ export class ContextStore {
 
     const trimmed = decisions.slice(-100);
     await this.writeJson(DECISIONS_PATH, trimmed);
+    this.invalidateAutonomousContext();
   }
 
   // ── Context Builders ─────────────────────────────────────────────
@@ -217,8 +227,30 @@ export class ContextStore {
    * Build context for autonomous handlers (sandwich pattern).
    * Returns a compressed system prompt supplement with project knowledge.
    * Includes: architecture overview, ADRs, recent decisions, reviews, threads.
+   *
+   * Cached with a short TTL so a burst of sandwich handlers within one
+   * EventLoop tick reuses the same assembly rather than each re-reading
+   * GCS. State changes that matter (new decisions/reviews/threads) are
+   * written by `appendDecision` / `appendReview` / `appendThreadSummary`
+   * — those invalidate the cache explicitly.
    */
   async buildAutonomousContext(): Promise<string> {
+    const now = Date.now();
+    if (this.autonomousContextCache && this.autonomousContextCache.expiresAt > now) {
+      return this.autonomousContextCache.text;
+    }
+    const text = await this.buildAutonomousContextUncached();
+    this.autonomousContextCache = { text, expiresAt: now + AUTONOMOUS_CONTEXT_TTL_MS };
+    return text;
+  }
+
+  /** Invalidate the autonomous-context cache (called after any write
+   * that changes what the context would contain). */
+  private invalidateAutonomousContext(): void {
+    this.autonomousContextCache = null;
+  }
+
+  private async buildAutonomousContextUncached(): Promise<string> {
     const [architecture, adrFiles, reviews, threads, decisions] = await Promise.all([
       this.readText("wisdom/ARCHITECTURE.md"),
       this.listWisdomFiles("wisdom/decisions/"),

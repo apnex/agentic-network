@@ -27,6 +27,40 @@ interface Session {
 // In-memory session store (GCS-backed history provides persistence)
 const sessions = new Map<string, Session>();
 
+// Cap in-memory session.history to keep token cost bounded. Each
+// Director exchange can add 3-20 Content entries due to tool-loop
+// rounds; without a cap, a long session (or a reload-then-continue)
+// sends the full transcript back to Gemini on every message.
+const MAX_SESSION_HISTORY_ENTRIES = 150;
+
+/**
+ * Trim a Content[] to the last `max` entries while keeping the
+ * result a valid Gemini conversation: must start with a user turn
+ * whose first part is text (not a functionResponse), so we never
+ * orphan a model functionCall or leave dangling tool-response parts.
+ */
+function trimSessionHistory(history: Content[], max: number): Content[] {
+  if (history.length <= max) return history;
+  // Scan forward from the earliest acceptable cut point for the next
+  // fresh user-text turn (a new Director message boundary).
+  for (let i = history.length - max; i < history.length; i++) {
+    const entry = history[i];
+    if (entry.role !== "user") continue;
+    const hasText = entry.parts?.some((p: any) => typeof p.text === "string");
+    if (hasText) return history.slice(i);
+  }
+  // No safe boundary in the tail — drop everything but the most recent
+  // user turn we can find. Rare; only happens if the whole tail is a
+  // single pathological tool-loop burst.
+  for (let i = history.length - 1; i >= 0; i--) {
+    const entry = history[i];
+    if (entry.role !== "user") continue;
+    const hasText = entry.parts?.some((p: any) => typeof p.text === "string");
+    if (hasText) return history.slice(i);
+  }
+  return [];
+}
+
 // Cached function declarations from Hub tools
 let cachedFunctionDeclarations: FunctionDeclaration[] = [];
 
@@ -116,7 +150,7 @@ export function createDirectorChatRouter(
 
       // Merge: use persisted history if in-memory is empty
       if (session.history.length === 0 && persistedHistory.length > 0) {
-        session.history = persistedHistory;
+        session.history = trimSessionHistory(persistedHistory, MAX_SESSION_HISTORY_ENTRIES);
       }
 
       const { text, history } = await generateWithTools(
@@ -127,8 +161,13 @@ export function createDirectorChatRouter(
         contextSupplement
       );
 
-      // Update session history
-      session.history = history;
+      // Update session history — trim to cap so tool-loop rounds
+      // don't compound across messages.
+      const trimmed = trimSessionHistory(history, MAX_SESSION_HISTORY_ENTRIES);
+      if (trimmed.length < history.length) {
+        console.log(`[DirectorChat] Trimmed session history ${history.length} → ${trimmed.length} entries`);
+      }
+      session.history = trimmed;
 
       // Store model response in context
       await context.appendDirectorMessage("model", text);
