@@ -8,6 +8,13 @@ region     = "australia-southeast1"
 # Auth
 hub_api_token = "your-secret-token-here"
 
+# Mission-18 identity + Mission-19 labels (Architect)
+# Generate the UUID once with `uuidgen` and keep it stable across applies —
+# changing it creates a new Agent entity and orphans the old queue (see
+# migrate_agent_queue in hub tools).
+architect_global_instance_id = "00000000-0000-0000-0000-000000000000"
+# architect_labels           = "{\"env\":\"prod\"}"   # default
+
 # Naming (defaults are fine for most setups)
 # environment          = "prod"
 # hub_service_name     = "hub"

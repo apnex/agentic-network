@@ -242,6 +242,14 @@ resource "google_cloud_run_v2_service" "architect" {
         name  = "GOOGLE_CLOUD_LOCATION"
         value = var.vertex_ai_location
       }
+      env {
+        name  = "OIS_GLOBAL_INSTANCE_ID"
+        value = var.architect_global_instance_id
+      }
+      env {
+        name  = "OIS_HUB_LABELS"
+        value = var.architect_labels
+      }
 
       resources {
         limits = {

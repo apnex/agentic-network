@@ -109,6 +109,17 @@ variable "event_loop_interval" {
   default     = 300
 }
 
+variable "architect_global_instance_id" {
+  description = "Stable Mission-18 globalInstanceId for the Architect Agent entity. Generate once with uuidgen and keep in tfvars — changing this creates a new Agent and orphans the queue on the old engineerId (use migrate_agent_queue to recover)."
+  type        = string
+}
+
+variable "architect_labels" {
+  description = "Mission-19 routing labels for the Architect Agent, as JSON string. Stamped on first Agent create and immutable (INV-AG1)."
+  type        = string
+  default     = "{\"env\":\"prod\"}"
+}
+
 # ── LLM ────────────────────────────────────────────────────────────────
 
 variable "vertex_ai_location" {
