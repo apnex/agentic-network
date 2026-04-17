@@ -17,7 +17,7 @@ All communication flows through a central **Hub** using the MCP (Model Context P
 ```
 ┌──────────┐     architect-chat.sh      ┌────────────────────────────────────┐
 │ Director │ ◄─────────────────────────► │ Architect (Cloud Run, Node.js)     │
-│ (human)  │     POST /chat/message      │   Gemini 3.1 Pro (@google/genai)   │
+│ (human)  │     POST /chat/message      │   gemini-3-flash-preview           │
 └──────────┘                             │   Express HTTP server              │
                                          │   Sandwich pattern handlers        │
                                          │   Unified GCS context store        │
@@ -116,7 +116,7 @@ Tools are organized into domain modules in `src/tools/` with strict dependency i
 The governance and planning agent. Reviews work, issues directives, manages threads.
 
 - **Runtime:** Node.js 22 on Cloud Run
-- **LLM:** Gemini 3.1 Pro via `@google/genai` (Vertex AI)
+- **LLM:** `gemini-3-flash-preview` via `@google/genai` (Vertex AI). The model ID is hardcoded at `agents/vertex-cloudrun/src/llm.ts:19`; see ADR-012 for the error-surfacing and context-economy contracts around Gemini calls.
 - **Hub connection:** `hub-adapter.ts` → `@ois/network-adapter` `McpAgentClient` with `manualSync: true` (shared with Plugin)
 - **Director interface:** `POST /chat/session`, `POST /chat/message` (multi-turn with function calling)
 

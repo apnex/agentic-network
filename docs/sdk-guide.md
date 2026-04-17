@@ -386,7 +386,7 @@ No public exports — self-contained entry point. Internally uses `McpAgentClien
 
 ## 5. `agents/vertex-cloudrun/` — Architect Agent
 
-Cloud Run Node.js agent running Gemini 3.1 Pro. Sandwich-pattern autonomous agent.
+Cloud Run Node.js agent running `gemini-3-flash-preview` via Vertex AI (`@google/genai`). Sandwich-pattern autonomous agent. See ADR-012 for the error-surfacing (HTTP 200 + classified message) and context-economy (30s autonomous-context TTL, 150-entry session.history cap, 429 retry in the tool loop) contracts.
 
 ### 5.1 Hub Adapter — `hub-adapter.ts`
 

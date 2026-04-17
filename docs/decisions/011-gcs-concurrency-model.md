@@ -125,3 +125,41 @@ Each is commented in code with a reference back to this ADR.
 - Unit tests: `hub/test/unit/gcs-occ-primitives.test.ts` (8 tests covering happy-path, retry-then-succeed, retry exhaustion, missing-path, transform-error propagation, non-precondition writer-error propagation, and backoff bounds).
 - Phase 1 audit reference: `docs/history/mission-20-phase1-audit.md`.
 - Mission brief: `docs/history/mission-20-gcs-concurrency-hardening.md`.
+
+## Phase 3 Delivered (2026-04-17)
+
+All P1 sites from the Phase 1 audit are eliminated; the P2 site catalogue has concurrency-reproduction coverage.
+
+### P1 resolutions
+
+- **Thread messages split** (`hub/src/gcs-state.ts` `GcsThreadStore.openThread` / `replyToThread`). Each message now lives one-per-file under `threads/{id}/messages/{seq}.json` via `createOnly`. The reply transform no longer RMWs a `messages[]` array on the thread scalar — it touches only scalar fields (`currentTurn`, `roundCount`, `status`, `lastMessageConverged`). Two-consecutive-`converged=true` detection is driven by the new `Thread.lastMessageConverged` scalar instead of a lookback into the messages collection. Hydration happens on read (`getThread` / `replyToThread` return) by listing the per-file directory and sorting by numeric seq. `listThreads` filters out the nested message files.
+
+- **Turn / Mission / Task virtual-view migration** (`hub/src/entities/turn.ts`, `hub/src/entities/gcs/gcs-turn.ts`, plus `Mission.turnId` and `Task.turnId`). `ITurnStore.linkMission` / `linkTask` removed from the interface and both implementations. `Turn.missionIds` and `Turn.taskIds` are computed on every read from the owning `Mission.turnId` / `Task.turnId` fields via a new `hydrate()` method, mirroring the `Mission.tasks` / `Mission.ideas` virtual-view pattern introduced for task-223.
+
+- **Audit daily-Markdown rollup deleted** (`hub/src/gcs-state.ts` `GcsAuditStore.createEntry`). The `audit/log-YYYY-MM-DD.md` write, the in-process `auditLock`, and the `writeMarkdown` call are all gone. `audit/{id}.json` per-file entries are the system of record; any rollup can be regenerated offline.
+
+### P2 reproduction coverage
+
+17 migrated P2 sites now have concurrency-reproduction tests in `hub/test/unit/gcs-p2-repro.test.ts` (19 tests total — 16 pre-existing + 3 added for the Thread per-file split). Test harness `hub/test/unit/_gcs-fake.ts` models `@google-cloud/storage` with per-path generation counters and 412 precondition semantics. Each test fires two concurrent mutations via `Promise.all`; a `preconditionFailureCount` probe guards against microtask scheduling changes silently eliminating the race.
+
+### Scope deferrals
+
+- **`BaseEntityFields` refactor** (thread-111 follow-up). Extract the `id` / `createdAt` / `updatedAt` / `labels` / `turnId` fields common to Mission / Task into a shared type. Deferred as an independent future task to keep Phase 3 reviewable.
+- **Sibling RMW in the Architect agent** (`agents/vertex-cloudrun/src/context.ts`, private `readJson` / `writeJson` helpers on four history files). Out-of-scope per the mission brief. Separate from Mission-20; partially addressed by ADR-012's context-economy changes but the RMW pattern itself remains.
+- **idea-72** — "Advanced Cognitive Engineering: on-demand historical context retrieval for Architect." Logged against the Architect-side context bloat observed during the Phase 3 window. Independent of the GCS concurrency programme.
+
+### Residual risk
+
+- **Cross-path atomicity is still eventually-consistent.** A Thread open that writes both the scalar and `messages/1.json`, or any helper that touches multiple GCS paths, can leave an intermediate state on partial failure. This ADR's write-path invariant prevents *lost updates* within a path; multi-path atomicity is out of scope and accepted as the cost of using GCS as the system of record.
+- **P3 sites (`getAndIncrementCounter`, `getNextDirective` / `getNextReport` under the `taskLock`, registry mirrors) remain under the `max-instances=1` pin** per ADR-009. Lifting the pin reclassifies them; the named primitives are the prerequisite, not the gate.
+
+### Commit index
+
+| Phase | Commit | Summary |
+|-------|--------|---------|
+| Phase 1 — audit | `23d2612` | Confirmed GCS RMW audit (`docs/history/mission-20-phase1-audit.md`) |
+| Phase 2 — primitives | `41c20a9` | Named GCS concurrency primitives (`createOnly` / `updateExisting` / `upsert`) |
+| Phase 3 — P2 repro harness | `58b62f0` | 16 reproduction tests + `_gcs-fake.ts` harness |
+| Phase 3 — P1 eliminations | `f295c6d` | Audit rollup deleted, Turn/Task virtual-view, Thread messages per-file |
+
+Closeout detail: `docs/history/mission-20-phase3-closeout.md`.

@@ -22,7 +22,7 @@ For formal workflow specifications (state machines, FSM transitions, cross-domai
 | **Oversight** | Reviews Architect assessments, monitors engineer status |
 | **Does NOT** | Write code, call Hub tools directly, or interact with the Engineer directly |
 
-### 2.2 Architect (Cloud Agent — Gemini on Vertex AI)
+### 2.2 Architect (Cloud Agent — `gemini-3-flash-preview` on Vertex AI)
 
 | Responsibility | Description |
 |---|---|
@@ -230,7 +230,7 @@ Engineer                    Hub                         Architect
 | Component | Technology | Location |
 |---|---|---|
 | **Hub** | TypeScript/Express + MCP SDK | Cloud Run, `australia-southeast1` |
-| **Architect** | Node.js/TypeScript + Vertex AI (Gemini) | Cloud Run, `australia-southeast1` |
+| **Architect** | Node.js/TypeScript + Vertex AI (`gemini-3-flash-preview`) | Cloud Run, `australia-southeast1` |
 | **Engineer** | Claude Code / OpenCode + MCP plugin | Local developer machine |
 | **State** | GCS Bucket (`gs://ois-relay-hub-state`) | `australia-southeast1` |
 | **Auth** | Bearer token (`HUB_API_TOKEN`) | All MCP endpoints |
@@ -294,7 +294,7 @@ Engineer                    Hub                         Architect
 | Phase | Focus | Key Deliverable |
 |---|---|---|
 | 1-4 | MVP | Basic bidirectional comms (Hub + CLI + Agent Engine) |
-| 5 | Cloud Run | Architect on Cloud Run with Gemini |
+| 5 | Cloud Run | Architect on Cloud Run with Gemini (currently `gemini-3-flash-preview`) |
 | 6a | Real coding agent | OpenCode as Engineer via remote MCP |
 | 7 | Resilience | GCS persistence, Bearer auth, task state machine |
 | 8 | Workflows | Summary+reference reports, webhooks, auto-review |
