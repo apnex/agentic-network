@@ -30,6 +30,8 @@ export interface Task {
   status: TaskStatus;
   /** Mission-19: routing labels inherited from creator at submit-time. */
   labels: Record<string, string>;
+  /** Mission-20 Phase 3: owning Turn for virtual-view composition. */
+  turnId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -263,6 +265,15 @@ export interface Thread {
   messages: ThreadMessage[];
   /** Mission-19: routing labels inherited from creator at open-time. */
   labels: Record<string, string>;
+  /**
+   * Mission-20 Phase 3: the `converged` flag of the most recent message,
+   * tracked as a scalar so the reply transform no longer needs to RMW
+   * the `messages[]` array to evaluate two-in-a-row convergence. In the
+   * GCS backend, messages themselves now live one-per-file under
+   * `threads/{id}/messages/{seq}.json`. Optional for forward compat with
+   * pre-Phase-3 stored threads (treated as `false`).
+   */
+  lastMessageConverged?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -443,6 +454,7 @@ export class MemoryTaskStore implements ITaskStore {
       revisionCount: 0,
       status: hasDeps ? "blocked" : "pending",
       labels: labels || {},
+      turnId: null,
       createdAt: now,
       updatedAt: now,
     });

@@ -1,5 +1,11 @@
 /**
  * GCS-backed Turn Store.
+ *
+ * `missionIds` and `taskIds` are computed as a virtual view on every
+ * read — see `hub/src/entities/turn.ts` for the rationale (mirrors the
+ * Mission.tasks / Mission.ideas pattern; there are no legacy writers
+ * to coordinate with, so this is the cheapest P1 migration per
+ * `docs/history/mission-20-phase1-audit.md §2.1`).
  */
 
 import {
@@ -11,11 +17,17 @@ import {
   GcsPathNotFound,
 } from "../../gcs-state.js";
 import type { Turn, TurnStatus, ITurnStore } from "../turn.js";
+import type { ITaskStore } from "../../state.js";
+import type { IMissionStore } from "../mission.js";
 
 export class GcsTurnStore implements ITurnStore {
   private bucket: string;
 
-  constructor(bucket: string) {
+  constructor(
+    bucket: string,
+    private readonly missionStore: IMissionStore,
+    private readonly taskStore: ITaskStore,
+  ) {
     this.bucket = bucket;
     console.log(`[GcsTurnStore] Using bucket: gs://${bucket}`);
   }
@@ -44,11 +56,12 @@ export class GcsTurnStore implements ITurnStore {
 
     await createOnly<Turn>(this.bucket, `turns/${id}.json`, turn);
     console.log(`[GcsTurnStore] Turn created: ${id} — ${title}`);
-    return { ...turn, missionIds: [...turn.missionIds], taskIds: [...turn.taskIds], tele: [...turn.tele] };
+    return this.hydrate(turn);
   }
 
   async getTurn(turnId: string): Promise<Turn | null> {
-    return await readJson<Turn>(this.bucket, `turns/${turnId}.json`);
+    const turn = await readJson<Turn>(this.bucket, `turns/${turnId}.json`);
+    return turn ? this.hydrate(turn) : null;
   }
 
   async listTurns(statusFilter?: TurnStatus): Promise<Turn[]> {
@@ -62,7 +75,7 @@ export class GcsTurnStore implements ITurnStore {
         turns.push(t);
       }
     }
-    return turns;
+    return Promise.all(turns.map((t) => this.hydrate(t)));
   }
 
   async updateTurn(
@@ -79,44 +92,23 @@ export class GcsTurnStore implements ITurnStore {
         return t;
       });
       console.log(`[GcsTurnStore] Turn updated: ${turnId} → status=${turn.status}`);
-      return { ...turn, missionIds: [...turn.missionIds], taskIds: [...turn.taskIds], tele: [...turn.tele] };
+      return this.hydrate(turn);
     } catch (err) {
       if (err instanceof GcsPathNotFound) return null;
       throw err;
     }
   }
 
-  async linkMission(turnId: string, missionId: string): Promise<void> {
-    const path = `turns/${turnId}.json`;
-    try {
-      await updateExisting<Turn>(this.bucket, path, (turn) => {
-        if (!turn.missionIds.includes(missionId)) {
-          turn.missionIds.push(missionId);
-          turn.updatedAt = new Date().toISOString();
-          console.log(`[GcsTurnStore] Linked mission ${missionId} to ${turnId}`);
-        }
-        return turn;
-      });
-    } catch (err) {
-      if (err instanceof GcsPathNotFound) throw new Error(`Turn not found: ${turnId}`);
-      throw err;
-    }
-  }
-
-  async linkTask(turnId: string, taskId: string): Promise<void> {
-    const path = `turns/${turnId}.json`;
-    try {
-      await updateExisting<Turn>(this.bucket, path, (turn) => {
-        if (!turn.taskIds.includes(taskId)) {
-          turn.taskIds.push(taskId);
-          turn.updatedAt = new Date().toISOString();
-          console.log(`[GcsTurnStore] Linked task ${taskId} to ${turnId}`);
-        }
-        return turn;
-      });
-    } catch (err) {
-      if (err instanceof GcsPathNotFound) throw new Error(`Turn not found: ${turnId}`);
-      throw err;
-    }
+  private async hydrate(stored: Turn): Promise<Turn> {
+    const [missions, tasks] = await Promise.all([
+      this.missionStore.listMissions(),
+      this.taskStore.listTasks(),
+    ]);
+    return {
+      ...stored,
+      missionIds: missions.filter((m) => m.turnId === stored.id).map((m) => m.id),
+      taskIds: tasks.filter((t) => t.turnId === stored.id).map((t) => t.id),
+      tele: [...stored.tele],
+    };
   }
 }

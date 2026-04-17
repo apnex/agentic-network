@@ -29,6 +29,7 @@ export function createTestContext(overrides?: Partial<TestPolicyContext>): TestP
 
   const task = new MemoryTaskStore();
   const idea = new MemoryIdeaStore();
+  const mission = new MemoryMissionStore(task, idea);
   const stores: AllStores = {
     task,
     engineerRegistry: new MemoryEngineerRegistry(),
@@ -36,8 +37,8 @@ export function createTestContext(overrides?: Partial<TestPolicyContext>): TestP
     thread: new MemoryThreadStore(),
     audit: new MemoryAuditStore(),
     idea,
-    mission: new MemoryMissionStore(task, idea),
-    turn: new MemoryTurnStore(),
+    mission,
+    turn: new MemoryTurnStore(mission, task),
     tele: new MemoryTeleStore(),
   };
 

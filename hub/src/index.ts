@@ -59,7 +59,7 @@ if (STORAGE_BACKEND === "gcs") {
   // New entities — GCS-backed for persistence across restarts
   ideaStore = new GcsIdeaStore(GCS_BUCKET);
   missionStore = new GcsMissionStore(GCS_BUCKET, taskStore, ideaStore);
-  turnStore = new GcsTurnStore(GCS_BUCKET);
+  turnStore = new GcsTurnStore(GCS_BUCKET, missionStore, taskStore);
   teleStore = new GcsTeleStore(GCS_BUCKET);
 } else {
   if (process.env.NODE_ENV === "production") {
@@ -75,7 +75,7 @@ if (STORAGE_BACKEND === "gcs") {
   notificationStore = new MemoryNotificationStore();
   ideaStore = new MemoryIdeaStore();
   missionStore = new MemoryMissionStore(taskStore, ideaStore);
-  turnStore = new MemoryTurnStore();
+  turnStore = new MemoryTurnStore(missionStore, taskStore);
   teleStore = new MemoryTeleStore();
 }
 

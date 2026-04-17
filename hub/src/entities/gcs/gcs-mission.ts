@@ -48,6 +48,7 @@ export class GcsMissionStore implements IMissionStore {
       tasks: [],
       ideas: [],
       correlationId: id,
+      turnId: null,
       createdAt: now,
       updatedAt: now,
     };

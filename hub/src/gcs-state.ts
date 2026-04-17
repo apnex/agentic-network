@@ -18,6 +18,7 @@ import type {
   Proposal,
   ProposalStatus,
   Thread,
+  ThreadMessage,
   ThreadStatus,
   ThreadAuthor,
   ThreadIntent,
@@ -495,6 +496,7 @@ export class GcsTaskStore implements ITaskStore {
       revisionCount: 0,
       status: hasDeps ? "blocked" : "pending",
       labels: labels || {},
+      turnId: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -1270,8 +1272,12 @@ export class GcsThreadStore implements IThreadStore {
     const id = `thread-${num}`;
     const now = new Date().toISOString();
     const otherParty: ThreadAuthor = author === "engineer" ? "architect" : "engineer";
+    const firstMessage: ThreadMessage = { author, text: message, timestamp: now, converged: false, intent: null, semanticIntent: null };
 
-    const thread: Thread = {
+    // Stored thread scalar holds no messages[] — messages live one-per-file
+    // under threads/{id}/messages/{seq}.json so the reply-path transform
+    // never RMWs an array (ADR-011 Phase 3).
+    const scalar: Thread = {
       id,
       title,
       status: "active",
@@ -1283,15 +1289,17 @@ export class GcsThreadStore implements IThreadStore {
       currentSemanticIntent: null,
       correlationId: correlationId || null,
       convergenceAction: null,
-      messages: [{ author, text: message, timestamp: now, converged: false, intent: null, semanticIntent: null }],
+      messages: [],
       labels: labels || {},
+      lastMessageConverged: false,
       createdAt: now,
       updatedAt: now,
     };
 
-    await createOnly<Thread>(this.bucket, `threads/${id}.json`, thread);
+    await createOnly<Thread>(this.bucket, `threads/${id}.json`, scalar);
+    await createOnly<ThreadMessage>(this.bucket, `threads/${id}/messages/1.json`, firstMessage);
     console.log(`[GcsThreadStore] Thread opened: ${id} — ${title}`);
-    return { ...thread };
+    return { ...scalar, messages: [firstMessage] };
   }
 
   async replyToThread(threadId: string, message: string, author: ThreadAuthor, converged = false, intent: ThreadIntent = null, semanticIntent: SemanticIntent = null): Promise<Thread | null> {
@@ -1302,32 +1310,48 @@ export class GcsThreadStore implements IThreadStore {
         if (current.currentTurn !== author) throw new TransitionRejected("not this author's turn");
 
         const now = new Date().toISOString();
-        current.messages.push({ author, text: message, timestamp: now, converged, intent, semanticIntent });
         current.roundCount++;
         current.outstandingIntent = intent;
         if (semanticIntent) current.currentSemanticIntent = semanticIntent;
         current.currentTurn = author === "engineer" ? "architect" : "engineer";
         current.updatedAt = now;
 
-        // Check convergence
-        const msgs = current.messages;
-        if (msgs.length >= 2 && msgs[msgs.length - 1].converged && msgs[msgs.length - 2].converged) {
+        // Scalar convergence: two consecutive messages both flagged
+        // converged=true. The previous message's flag is carried on the
+        // scalar itself, so the transform doesn't need to touch the
+        // per-file messages.
+        if (converged && (current.lastMessageConverged ?? false)) {
           current.status = "converged";
         }
+        current.lastMessageConverged = converged;
 
-        // Check round limit
         if (current.roundCount >= current.maxRounds && current.status === "active") {
           current.status = "round_limit";
         }
         return current;
       });
+
+      const newMessage: ThreadMessage = {
+        author,
+        text: message,
+        timestamp: thread.updatedAt,
+        converged,
+        intent,
+        semanticIntent,
+      };
+      await createOnly<ThreadMessage>(
+        this.bucket,
+        `threads/${threadId}/messages/${thread.roundCount}.json`,
+        newMessage,
+      );
+
       if (thread.status === "converged") {
         console.log(`[GcsThreadStore] Thread converged: ${threadId}`);
       } else if (thread.status === "round_limit") {
         console.log(`[GcsThreadStore] Thread hit round limit: ${threadId}`);
       }
       console.log(`[GcsThreadStore] Reply on ${threadId} by ${author} (round ${thread.roundCount}/${thread.maxRounds})`);
-      return { ...thread };
+      return { ...thread, messages: await this.loadMessages(threadId, thread) };
     } catch (err) {
       if (err instanceof TransitionRejected || err instanceof GcsPathNotFound) return null;
       throw err;
@@ -1335,7 +1359,9 @@ export class GcsThreadStore implements IThreadStore {
   }
 
   async getThread(threadId: string): Promise<Thread | null> {
-    return await readJson<Thread>(this.bucket, `threads/${threadId}.json`);
+    const scalar = await readJson<Thread>(this.bucket, `threads/${threadId}.json`);
+    if (!scalar) return null;
+    return { ...scalar, messages: await this.loadMessages(threadId, scalar) };
   }
 
   async listThreads(status?: ThreadStatus): Promise<Thread[]> {
@@ -1343,6 +1369,9 @@ export class GcsThreadStore implements IThreadStore {
     const threads: Thread[] = [];
     for (const file of files) {
       if (!file.endsWith(".json")) continue;
+      // Filter out per-message files (threads/<id>/messages/<seq>.json).
+      // Top-level thread scalars are `threads/<id>.json` only.
+      if (file.slice("threads/".length).includes("/")) continue;
       const t = await readJson<Thread>(this.bucket, file);
       if (t) {
         if (status && t.status !== status) continue;
@@ -1350,6 +1379,28 @@ export class GcsThreadStore implements IThreadStore {
       }
     }
     return threads;
+  }
+
+  /**
+   * Hydrate a thread's messages. Reads per-file messages under
+   * `threads/{id}/messages/{seq}.json` ordered by numeric seq. Falls
+   * back to the scalar's inline `messages` when no per-file entries
+   * exist — supports legacy threads written before the Phase 3 split.
+   */
+  private async loadMessages(threadId: string, scalar: Thread): Promise<ThreadMessage[]> {
+    const files = await listFiles(this.bucket, `threads/${threadId}/messages/`);
+    if (files.length === 0) return scalar.messages ?? [];
+    const entries: { seq: number; msg: ThreadMessage }[] = [];
+    for (const file of files) {
+      if (!file.endsWith(".json")) continue;
+      const basename = file.split("/").pop()!;
+      const seq = Number(basename.replace(/\.json$/, ""));
+      if (!Number.isFinite(seq)) continue;
+      const msg = await readJson<ThreadMessage>(this.bucket, file);
+      if (msg) entries.push({ seq, msg });
+    }
+    entries.sort((a, b) => a.seq - b.seq);
+    return entries.map((e) => e.msg);
   }
 
   async closeThread(threadId: string): Promise<boolean> {
@@ -1388,7 +1439,6 @@ export class GcsThreadStore implements IThreadStore {
 
 export class GcsAuditStore implements IAuditStore {
   private bucket: string;
-  private auditLock = new AsyncLock();
 
   constructor(bucket: string) {
     this.bucket = bucket;
@@ -1410,34 +1460,7 @@ export class GcsAuditStore implements IAuditStore {
       relatedEntity: relatedEntity || null,
     };
 
-    // Write as JSON for structured querying
     await createOnly<AuditEntry>(this.bucket, `audit/${id}.json`, entry);
-
-    // Also write a human-readable log line to a daily Markdown file
-    const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-    const logPath = `audit/log-${dateStr}.md`;
-    const logLine = `| ${now.toISOString()} | ${actor} | ${action} | ${details.substring(0, 120)} | ${relatedEntity || "—"} |\n`;
-
-    await this.auditLock.acquire();
-    try {
-      // Read existing log or create header
-      let existing: string | null = null;
-      try {
-        const [content] = await storage.bucket(this.bucket).file(logPath).download();
-        existing = content.toString("utf-8");
-      } catch (err: any) {
-        if (err.code !== 404) throw err;
-      }
-
-      if (!existing) {
-        existing = `# Audit Log — ${dateStr}\n\n| Timestamp | Actor | Action | Details | Entity |\n| --- | --- | --- | --- | --- |\n`;
-      }
-      existing += logLine;
-      await writeMarkdown(this.bucket, logPath, existing);
-    } finally {
-      this.auditLock.release();
-    }
-
     console.log(`[GcsAuditStore] ${actor}/${action}: ${details.substring(0, 80)}`);
     return { ...entry };
   }
@@ -1445,8 +1468,6 @@ export class GcsAuditStore implements IAuditStore {
   async listEntries(limit = 50, actor?: AuditEntry["actor"]): Promise<AuditEntry[]> {
     const files = await listFiles(this.bucket, "audit/");
     const entries: AuditEntry[] = [];
-
-    // Only read JSON files (skip daily log Markdown files)
     const jsonFiles = files.filter((f) => f.endsWith(".json")).sort().reverse();
 
     for (const file of jsonFiles) {

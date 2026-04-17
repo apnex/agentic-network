@@ -32,6 +32,8 @@ export interface Mission {
   /** Virtual view — computed on read from `IIdeaStore` by `missionId`. */
   ideas: string[];
   correlationId: string | null;
+  /** Mission-20 Phase 3: owning Turn for virtual-view composition. */
+  turnId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,6 +86,7 @@ export class MemoryMissionStore implements IMissionStore {
       tasks: [],
       ideas: [],
       correlationId: id,
+      turnId: null,
       createdAt: now,
       updatedAt: now,
     };

@@ -6,7 +6,16 @@
  *
  * Groups Missions and Tasks. References Tele (teleological goals)
  * as guiding axioms for the cycle.
+ *
+ * `missionIds` and `taskIds` are returned on every read as a virtual
+ * view — missions and tasks whose `turnId === turn.id`. They are never
+ * stored on the Turn object. Mirrors the `Mission.tasks` / `Mission.ideas`
+ * virtual-view pattern introduced for the task-223 lost-update fix
+ * (see `docs/decisions/011-gcs-concurrency-model.md`).
  */
+
+import type { ITaskStore } from "../state.js";
+import type { IMissionStore } from "./mission.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -17,7 +26,9 @@ export interface Turn {
   title: string;
   scope: string;       // Free-text markdown description of objectives
   status: TurnStatus;
+  /** Virtual view — computed on read from `IMissionStore` by `turnId`. */
   missionIds: string[];
+  /** Virtual view — computed on read from `ITaskStore` by `turnId`. */
   taskIds: string[];
   tele: string[];       // Tele IDs — teleological goals for this turn
   correlationId: string | null;
@@ -42,12 +53,6 @@ export interface ITurnStore {
     turnId: string,
     updates: { status?: TurnStatus; scope?: string; tele?: string[] }
   ): Promise<Turn | null>;
-
-  /** Append a mission ID (idempotent) */
-  linkMission(turnId: string, missionId: string): Promise<void>;
-
-  /** Append a task ID (idempotent) */
-  linkTask(turnId: string, taskId: string): Promise<void>;
 }
 
 // ── Memory Implementation ────────────────────────────────────────────
@@ -55,6 +60,11 @@ export interface ITurnStore {
 export class MemoryTurnStore implements ITurnStore {
   private turns = new Map<string, Turn>();
   private counter = 0;
+
+  constructor(
+    private readonly missionStore: IMissionStore,
+    private readonly taskStore: ITaskStore,
+  ) {}
 
   async createTurn(
     title: string,
@@ -80,14 +90,12 @@ export class MemoryTurnStore implements ITurnStore {
 
     this.turns.set(id, turn);
     console.log(`[MemoryTurnStore] Turn created: ${id} — ${title}`);
-    return { ...turn, missionIds: [...turn.missionIds], taskIds: [...turn.taskIds], tele: [...turn.tele] };
+    return this.hydrate(turn);
   }
 
   async getTurn(turnId: string): Promise<Turn | null> {
     const turn = this.turns.get(turnId);
-    return turn
-      ? { ...turn, missionIds: [...turn.missionIds], taskIds: [...turn.taskIds], tele: [...turn.tele] }
-      : null;
+    return turn ? this.hydrate(turn) : null;
   }
 
   async listTurns(statusFilter?: TurnStatus): Promise<Turn[]> {
@@ -95,12 +103,7 @@ export class MemoryTurnStore implements ITurnStore {
     const filtered = statusFilter
       ? all.filter((t) => t.status === statusFilter)
       : all;
-    return filtered.map((t) => ({
-      ...t,
-      missionIds: [...t.missionIds],
-      taskIds: [...t.taskIds],
-      tele: [...t.tele],
-    }));
+    return Promise.all(filtered.map((t) => this.hydrate(t)));
   }
 
   async updateTurn(
@@ -116,26 +119,19 @@ export class MemoryTurnStore implements ITurnStore {
     turn.updatedAt = new Date().toISOString();
 
     console.log(`[MemoryTurnStore] Turn updated: ${turnId} → status=${turn.status}`);
-    return { ...turn, missionIds: [...turn.missionIds], taskIds: [...turn.taskIds], tele: [...turn.tele] };
+    return this.hydrate(turn);
   }
 
-  async linkMission(turnId: string, missionId: string): Promise<void> {
-    const turn = this.turns.get(turnId);
-    if (!turn) throw new Error(`Turn not found: ${turnId}`);
-    if (!turn.missionIds.includes(missionId)) {
-      turn.missionIds.push(missionId);
-      turn.updatedAt = new Date().toISOString();
-      console.log(`[MemoryTurnStore] Linked mission ${missionId} to ${turnId}`);
-    }
-  }
-
-  async linkTask(turnId: string, taskId: string): Promise<void> {
-    const turn = this.turns.get(turnId);
-    if (!turn) throw new Error(`Turn not found: ${turnId}`);
-    if (!turn.taskIds.includes(taskId)) {
-      turn.taskIds.push(taskId);
-      turn.updatedAt = new Date().toISOString();
-      console.log(`[MemoryTurnStore] Linked task ${taskId} to ${turnId}`);
-    }
+  private async hydrate(stored: Turn): Promise<Turn> {
+    const [missions, tasks] = await Promise.all([
+      this.missionStore.listMissions(),
+      this.taskStore.listTasks(),
+    ]);
+    return {
+      ...stored,
+      missionIds: missions.filter((m) => m.turnId === stored.id).map((m) => m.id),
+      taskIds: tasks.filter((t) => t.turnId === stored.id).map((t) => t.id),
+      tele: [...stored.tele],
+    };
   }
 }

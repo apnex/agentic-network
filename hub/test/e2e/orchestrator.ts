@@ -427,6 +427,7 @@ export class TestOrchestrator {
   private createStores(): AllStores {
     const task = new MemoryTaskStore();
     const idea = new MemoryIdeaStore();
+    const mission = new MemoryMissionStore(task, idea);
     return {
       task,
       engineerRegistry: new MemoryEngineerRegistry(),
@@ -434,8 +435,8 @@ export class TestOrchestrator {
       thread: new MemoryThreadStore(),
       audit: new MemoryAuditStore(),
       idea,
-      mission: new MemoryMissionStore(task, idea),
-      turn: new MemoryTurnStore(),
+      mission,
+      turn: new MemoryTurnStore(mission, task),
       tele: new MemoryTeleStore(),
     };
   }
