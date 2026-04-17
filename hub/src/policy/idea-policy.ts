@@ -57,14 +57,36 @@ async function updateIdea(args: Record<string, unknown>, ctx: IPolicyContext): P
   const status = args.status as IdeaStatus | undefined;
   const missionId = args.missionId as string | undefined;
   const tags = args.tags as string[] | undefined;
+  const text = args.text as string | undefined;
 
-  const updates: { status?: IdeaStatus; missionId?: string; tags?: string[] } = {};
+  // Engineer gate: tool is [Any] so Engineers can edit text / tags and
+  // flip open ↔ triaged. Architect-only operations stay restricted —
+  // mission linking is an architectural decision (idea-49), and
+  // dismissal / incorporation are terminal states the Architect owns.
+  const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
+  if (callerRole === "engineer") {
+    if (missionId !== undefined) {
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ error: "Authorization denied: only Architect may link an idea to a mission (missionId)" }) }],
+        isError: true,
+      };
+    }
+    if (status === "dismissed" || status === "incorporated") {
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ error: `Authorization denied: only Architect may set idea status '${status}'` }) }],
+        isError: true,
+      };
+    }
+  }
+
+  const updates: { status?: IdeaStatus; missionId?: string; tags?: string[]; text?: string } = {};
   if (status) updates.status = status;
   if (missionId) {
     updates.missionId = missionId;
     if (!status) updates.status = "incorporated";
   }
   if (tags) updates.tags = tags;
+  if (text !== undefined) updates.text = text;
 
   // FSM guard: validate status transition if status is changing
   if (updates.status) {
@@ -118,12 +140,13 @@ export function registerIdeaPolicy(router: PolicyRouter): void {
 
   router.register(
     "update_idea",
-    "[Architect] Update an idea's status, link to a mission, or modify tags.",
+    "[Any] Update an idea. Any caller may edit text, tags, and transition status between 'open' and 'triaged'. Architect-only: setting status to 'dismissed' or 'incorporated', and linking to a mission (missionId).",
     {
       ideaId: z.string().describe("The idea ID to update"),
-      status: z.enum(["open", "triaged", "dismissed", "incorporated"]).optional().describe("New status"),
-      missionId: z.string().optional().describe("Link to a mission (sets status to 'incorporated' if not already)"),
+      status: z.enum(["open", "triaged", "dismissed", "incorporated"]).optional().describe("New status (Engineer limited to 'open' and 'triaged')"),
+      missionId: z.string().optional().describe("Link to a mission (Architect-only; sets status to 'incorporated' if not already)"),
       tags: z.array(z.string()).optional().describe("Replace tags"),
+      text: z.string().optional().describe("Replace idea text"),
     },
     updateIdea,
   );

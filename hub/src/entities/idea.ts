@@ -38,7 +38,7 @@ export interface IIdeaStore {
 
   updateIdea(
     ideaId: string,
-    updates: { status?: IdeaStatus; missionId?: string; tags?: string[] }
+    updates: { status?: IdeaStatus; missionId?: string; tags?: string[]; text?: string }
   ): Promise<Idea | null>;
 }
 
@@ -90,7 +90,7 @@ export class MemoryIdeaStore implements IIdeaStore {
 
   async updateIdea(
     ideaId: string,
-    updates: { status?: IdeaStatus; missionId?: string; tags?: string[] }
+    updates: { status?: IdeaStatus; missionId?: string; tags?: string[]; text?: string }
   ): Promise<Idea | null> {
     const idea = this.ideas.get(ideaId);
     if (!idea) return null;
@@ -98,6 +98,7 @@ export class MemoryIdeaStore implements IIdeaStore {
     if (updates.status) idea.status = updates.status;
     if (updates.missionId !== undefined) idea.missionId = updates.missionId;
     if (updates.tags) idea.tags = updates.tags;
+    if (updates.text !== undefined) idea.text = updates.text;
     idea.updatedAt = new Date().toISOString();
 
     console.log(`[MemoryIdeaStore] Idea updated: ${ideaId} → status=${idea.status}`);

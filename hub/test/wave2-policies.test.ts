@@ -11,6 +11,7 @@ import { registerIdeaPolicy } from "../src/policy/idea-policy.js";
 import { registerMissionPolicy } from "../src/policy/mission-policy.js";
 import { registerTurnPolicy } from "../src/policy/turn-policy.js";
 import { createTestContext } from "../src/policy/test-utils.js";
+import { MemoryEngineerRegistry } from "../src/state.js";
 import type { IPolicyContext } from "../src/policy/types.js";
 
 const noop = () => {};
@@ -106,6 +107,102 @@ describe("IdeaPolicy", () => {
       status: "triaged",
     }, ctx);
     expect(result.isError).toBe(true);
+  });
+
+  it("update_idea modifies text (closes idea-26)", async () => {
+    const createResult = await router.handle("create_idea", { text: "Original" }, ctx);
+    const { ideaId } = JSON.parse(createResult.content[0].text);
+
+    await router.handle("update_idea", { ideaId, text: "Revised wording" }, ctx);
+    const listResult = await router.handle("list_ideas", {}, ctx);
+    const { ideas } = JSON.parse(listResult.content[0].text);
+    const updated = ideas.find((i: any) => i.id === ideaId);
+    expect(updated.text).toBe("Revised wording");
+  });
+
+  // ── Engineer RBAC (idea-49 / -52) ────────────────────────────────
+  describe("Engineer role RBAC", () => {
+    const asEngineer = (c: IPolicyContext) => {
+      (c.stores.engineerRegistry as MemoryEngineerRegistry).setSessionRole(c.sessionId, "engineer");
+      return c;
+    };
+
+    it("Engineer may edit text and tags", async () => {
+      const createResult = await router.handle("create_idea", { text: "Needs edit" }, ctx);
+      const { ideaId } = JSON.parse(createResult.content[0].text);
+      asEngineer(ctx);
+
+      const textResult = await router.handle("update_idea", { ideaId, text: "Edited by engineer" }, ctx);
+      expect(textResult.isError).toBeUndefined();
+
+      const tagsResult = await router.handle("update_idea", { ideaId, tags: ["bug", "fix"] }, ctx);
+      expect(tagsResult.isError).toBeUndefined();
+    });
+
+    it("Engineer may transition status open → triaged", async () => {
+      const createResult = await router.handle("create_idea", { text: "Triage me" }, ctx);
+      const { ideaId } = JSON.parse(createResult.content[0].text);
+      asEngineer(ctx);
+
+      const result = await router.handle("update_idea", { ideaId, status: "triaged" }, ctx);
+      expect(result.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.status).toBe("triaged");
+    });
+
+    it("Engineer is rejected when setting status='dismissed'", async () => {
+      const createResult = await router.handle("create_idea", { text: "Dismiss?" }, ctx);
+      const { ideaId } = JSON.parse(createResult.content[0].text);
+      asEngineer(ctx);
+
+      const result = await router.handle("update_idea", { ideaId, status: "dismissed" }, ctx);
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toMatch(/only Architect may set idea status 'dismissed'/);
+    });
+
+    it("Engineer is rejected when setting status='incorporated'", async () => {
+      const createResult = await router.handle("create_idea", { text: "Incorporate?" }, ctx);
+      const { ideaId } = JSON.parse(createResult.content[0].text);
+      asEngineer(ctx);
+
+      const result = await router.handle("update_idea", { ideaId, status: "incorporated" }, ctx);
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toMatch(/only Architect may set idea status 'incorporated'/);
+    });
+
+    it("Engineer is rejected when setting missionId", async () => {
+      const createResult = await router.handle("create_idea", { text: "Link?" }, ctx);
+      const { ideaId } = JSON.parse(createResult.content[0].text);
+      asEngineer(ctx);
+
+      const result = await router.handle("update_idea", { ideaId, missionId: "mission-1" }, ctx);
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toMatch(/only Architect may link an idea to a mission/);
+    });
+
+    it("Architect retains full capability (dismiss + missionId)", async () => {
+      const missionResult = await router.handle("create_mission", {
+        title: "M",
+        description: "d",
+      }, ctx);
+      const { missionId } = JSON.parse(missionResult.content[0].text);
+      const createResult = await router.handle("create_idea", { text: "Arch can do all" }, ctx);
+      const { ideaId } = JSON.parse(createResult.content[0].text);
+
+      // Default ctx role is architect (registry returns "unknown" which
+      // short-circuits the outer RBAC check; engineer-only gate in the
+      // handler does not fire because callerRole !== "engineer").
+      const linkResult = await router.handle("update_idea", { ideaId, missionId }, ctx);
+      expect(linkResult.isError).toBeUndefined();
+
+      const create2 = await router.handle("create_idea", { text: "To dismiss" }, ctx);
+      const { ideaId: id2 } = JSON.parse(create2.content[0].text);
+      const dismissResult = await router.handle("update_idea", { ideaId: id2, status: "dismissed" }, ctx);
+      expect(dismissResult.isError).toBeUndefined();
+    });
   });
 });
 

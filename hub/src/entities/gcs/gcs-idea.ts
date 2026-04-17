@@ -67,7 +67,7 @@ export class GcsIdeaStore implements IIdeaStore {
 
   async updateIdea(
     ideaId: string,
-    updates: { status?: IdeaStatus; missionId?: string; tags?: string[] }
+    updates: { status?: IdeaStatus; missionId?: string; tags?: string[]; text?: string }
   ): Promise<Idea | null> {
     const path = `ideas/${ideaId}.json`;
     try {
@@ -75,6 +75,7 @@ export class GcsIdeaStore implements IIdeaStore {
         if (updates.status) idea.status = updates.status;
         if (updates.missionId !== undefined) idea.missionId = updates.missionId;
         if (updates.tags) idea.tags = updates.tags;
+        if (updates.text !== undefined) idea.text = updates.text;
         idea.updatedAt = new Date().toISOString();
         return idea;
       });
