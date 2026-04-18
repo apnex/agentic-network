@@ -1362,7 +1362,9 @@ describe("ThreadPolicy — cascade infrastructure (M24-T4)", () => {
     const result = await runCascade(archCtx, thread!, fakeActions as any, "test summary");
     expect(result.report).toHaveLength(1);
     expect(result.report[0].status).toBe("failed");
-    expect(result.report[0].error).toMatch(/no cascade handler registered/);
+    // Phase 1 of M-Cascade-Perfection renamed the registry — message
+    // reflects "ActionSpec" rather than "cascade handler".
+    expect(result.report[0].error).toMatch(/no ActionSpec registered/);
     expect(result.anyFailure).toBe(true);
   });
 
@@ -1389,17 +1391,24 @@ describe("ThreadPolicy — cascade infrastructure (M24-T4)", () => {
     expect(result.report.map((r: any) => r.status)).toEqual(["executed", "failed"]);
   });
 
-  it("registerCascadeHandler + getCascadeHandler round-trips", async () => {
-    const { registerCascadeHandler, getCascadeHandler } = await import("../src/policy/cascade.js");
-    const fn = async () => ({ status: "executed" as const, entityId: null });
-    // Use an unused-in-practice handler slot to avoid poisoning the
-    // in-process registry. Register under create_clarification (no
-    // built-in handler in this task) and restore afterward.
-    const before = getCascadeHandler("create_clarification");
-    registerCascadeHandler("create_clarification", fn);
-    expect(getCascadeHandler("create_clarification")).toBe(fn);
+  it("registerActionSpec + getActionSpec round-trip", async () => {
+    // Phase 1 of M-Cascade-Perfection: the procedural CascadeHandler
+    // API was deleted in favour of the declarative ActionSpec registry.
+    // This test asserts spec round-trip rather than handler round-trip.
+    const { registerActionSpec, getActionSpec } = await import("../src/policy/cascade-spec.js");
+    const { z } = await import("zod");
+    const before = getActionSpec("create_clarification");
+    const probe = {
+      type: "create_clarification" as const,
+      kind: "audit_only" as const,
+      payloadSchema: z.object({ question: z.string(), context: z.string() }),
+      auditAction: "test_audit",
+      execute: async () => null,
+    };
+    registerActionSpec(probe);
+    expect(getActionSpec("create_clarification")).toBe(probe);
     // Restore
-    if (before) registerCascadeHandler("create_clarification", before);
+    if (before) registerActionSpec(before);
   });
 
   it("cascadeIdempotencyKey returns {sourceThreadId, sourceActionId}", async () => {
@@ -2060,15 +2069,21 @@ describe("Phase 2 invariants (M24-T11)", () => {
 
   // ── Cascade execute-failure → cascade_failed terminal (INV-TH19) ──
 
-  it("INV-TH19: execute-phase failure transitions thread to cascade_failed (via failing handler)", async () => {
-    // Register a handler that always fails for an unused action type —
-    // doesn't poison the shared registry because the cleanup below
-    // removes it. Simulates a handler throwing post-commit due to
-    // infrastructure failure (GCS write error, etc.).
-    const { registerCascadeHandler, getCascadeHandler } = await import("../src/policy/cascade.js");
-    const before = getCascadeHandler("create_clarification");
-    registerCascadeHandler("create_clarification", async () => {
-      throw new Error("simulated handler failure");
+  it("INV-TH19: execute-phase failure transitions thread to cascade_failed (via failing spec)", async () => {
+    // Phase 1 of M-Cascade-Perfection: swap the create_clarification
+    // ActionSpec for a probe whose execute always throws. Restored in
+    // the finally block so adjacent tests see the canonical spec.
+    const { registerActionSpec, getActionSpec } = await import("../src/policy/cascade-spec.js");
+    const before = getActionSpec("create_clarification");
+    const { z } = await import("zod");
+    registerActionSpec({
+      type: "create_clarification",
+      kind: "audit_only",
+      payloadSchema: z.object({ question: z.string(), context: z.string() }),
+      auditAction: "test_simulated_failure_no_audit",
+      execute: async () => {
+        throw new Error("simulated handler failure");
+      },
     });
 
     try {
@@ -2076,7 +2091,7 @@ describe("Phase 2 invariants (M24-T11)", () => {
       const threadId = JSON.parse(r.content[0].text).threadId;
 
       // Engineer stages a create_clarification action that the
-      // registered-failing handler will throw on during execute.
+      // replaced-failing spec will throw on during execute.
       await router.handle("create_thread_reply", {
         threadId, message: "stage", converged: true, summary: "x",
         stagedActions: [{
@@ -2084,7 +2099,7 @@ describe("Phase 2 invariants (M24-T11)", () => {
           payload: { question: "q", context: "c" },
         }],
       }, engCtx);
-      // Architect converges → gate promotes → cascade runs → handler throws
+      // Architect converges → gate promotes → cascade runs → spec throws
       await router.handle("create_thread_reply", {
         threadId, message: "c", converged: true,
       }, archCtx);
@@ -2107,8 +2122,9 @@ describe("Phase 2 invariants (M24-T11)", () => {
       const audits = await archCtx.stores.audit.listEntries(50);
       expect(audits.some((a) => a.action === "thread_cascade_failed" && a.relatedEntity === threadId)).toBe(true);
     } finally {
-      // Restore the original handler so adjacent tests see a clean registry.
-      if (before) registerCascadeHandler("create_clarification", before);
+      // Restore the canonical create_clarification spec so adjacent tests
+      // see a clean registry.
+      if (before) registerActionSpec(before);
     }
   });
 
@@ -2342,5 +2358,138 @@ describe("Cascade-path SSE parity (dispatch-helpers)", () => {
       (e: any) => e.event === "task_issued",
     ).length;
     expect(finalCount).toBe(1);
+  });
+});
+
+// ── M-Cascade-Perfection Phase 1 (ADR-015): depth guard (INV-TH25) ───
+
+describe("runCascade — depth guard (INV-TH25)", () => {
+  let router: PolicyRouter;
+  let archCtx: IPolicyContext;
+
+  beforeEach(async () => {
+    await import("../src/policy/cascade-actions/index.js");
+    router = new PolicyRouter(noop);
+    registerThreadPolicy(router);
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+    archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
+  });
+
+  it("depth < MAX_CASCADE_DEPTH executes normally", async () => {
+    const { runCascade, MAX_CASCADE_DEPTH } = await import("../src/policy/cascade.js");
+    expect(MAX_CASCADE_DEPTH).toBe(3);
+    const r = await router.handle("create_thread", { title: "t", message: "m" }, archCtx);
+    const threadId = JSON.parse(r.content[0].text).threadId;
+    const thread = await archCtx.stores.thread.getThread(threadId);
+    const actions = [
+      {
+        id: "action-1", type: "close_no_action" as const, status: "committed" as const,
+        proposer: { role: "engineer" as const, agentId: null },
+        timestamp: new Date().toISOString(),
+        payload: { reason: "ok" },
+      },
+    ];
+    const result = await runCascade(archCtx, thread!, actions as any, "s", 0);
+    expect(result.report[0].status).toBe("executed");
+  });
+
+  it("depth == MAX_CASCADE_DEPTH returns deferred-failed entries without executing", async () => {
+    const { runCascade, MAX_CASCADE_DEPTH } = await import("../src/policy/cascade.js");
+    const r = await router.handle("create_thread", { title: "t", message: "m" }, archCtx);
+    const threadId = JSON.parse(r.content[0].text).threadId;
+    const thread = await archCtx.stores.thread.getThread(threadId);
+    const actions = [
+      {
+        id: "action-1", type: "close_no_action" as const, status: "committed" as const,
+        proposer: { role: "engineer" as const, agentId: null },
+        timestamp: new Date().toISOString(),
+        payload: { reason: "ok" },
+      },
+      {
+        id: "action-2", type: "create_task" as const, status: "committed" as const,
+        proposer: { role: "engineer" as const, agentId: null },
+        timestamp: new Date().toISOString(),
+        payload: { title: "T", description: "d" },
+      },
+    ];
+    const result = await runCascade(archCtx, thread!, actions as any, "s", MAX_CASCADE_DEPTH);
+    expect(result.anyFailure).toBe(true);
+    expect(result.executedCount).toBe(0);
+    expect(result.skippedCount).toBe(0);
+    expect(result.failedCount).toBe(2);
+    for (const entry of result.report) {
+      expect(entry.status).toBe("failed");
+      expect(entry.error).toMatch(/MAX_CASCADE_DEPTH/);
+    }
+    // No entities were actually spawned
+    const tasks = await archCtx.stores.task.listTasks();
+    expect(tasks.filter((t) => t.sourceThreadId === threadId)).toHaveLength(0);
+  });
+});
+
+// ── M-Cascade-Perfection Phase 1: ActionSpec kind semantics ──────────
+
+describe("ActionSpec kinds (ADR-015)", () => {
+  let archCtx: IPolicyContext;
+
+  beforeEach(async () => {
+    await import("../src/policy/cascade-actions/index.js");
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+  });
+
+  it("all 8 autonomous action types have registered ActionSpecs", async () => {
+    const { listActionSpecs } = await import("../src/policy/cascade-spec.js");
+    const types = new Set(listActionSpecs());
+    for (const type of [
+      "close_no_action", "create_task", "create_proposal", "create_idea",
+      "update_idea", "update_mission_status", "propose_mission", "create_clarification",
+    ]) {
+      expect(types.has(type as any)).toBe(true);
+    }
+  });
+
+  it("audit-only spec omits dispatch + findByCascadeKey", async () => {
+    const { getActionSpec } = await import("../src/policy/cascade-spec.js");
+    const spec = getActionSpec("close_no_action");
+    expect(spec).toBeDefined();
+    expect(spec!.kind).toBe("audit_only");
+    expect(spec!.dispatch).toBeUndefined();
+    expect(spec!.findByCascadeKey).toBeUndefined();
+  });
+
+  it("spawn spec declares findByCascadeKey + dispatch", async () => {
+    const { getActionSpec } = await import("../src/policy/cascade-spec.js");
+    const spec = getActionSpec("create_task");
+    expect(spec).toBeDefined();
+    expect(spec!.kind).toBe("spawn");
+    expect(spec!.findByCascadeKey).toBeDefined();
+    expect(spec!.dispatch).toBeDefined();
+  });
+
+  it("update spec omits findByCascadeKey (update-by-nature idempotent)", async () => {
+    const { getActionSpec } = await import("../src/policy/cascade-spec.js");
+    const spec = getActionSpec("update_idea");
+    expect(spec).toBeDefined();
+    expect(spec!.kind).toBe("update");
+    expect(spec!.findByCascadeKey).toBeUndefined();
+  });
+
+  it("unregisterActionSpec removes a spec cleanly", async () => {
+    const { registerActionSpec, getActionSpec, unregisterActionSpec } = await import("../src/policy/cascade-spec.js");
+    const { z } = await import("zod");
+    const before = getActionSpec("create_clarification");
+    const probe = {
+      type: "create_clarification" as const,
+      kind: "audit_only" as const,
+      payloadSchema: z.object({ question: z.string(), context: z.string() }),
+      auditAction: "test_audit",
+      execute: async () => null,
+    };
+    registerActionSpec(probe);
+    expect(getActionSpec("create_clarification")).toBe(probe);
+    unregisterActionSpec("create_clarification");
+    expect(getActionSpec("create_clarification")).toBeUndefined();
+    // Restore canonical
+    if (before) registerActionSpec(before);
   });
 });

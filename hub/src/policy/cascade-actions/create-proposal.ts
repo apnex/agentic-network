@@ -1,57 +1,38 @@
 /**
- * Cascade handler: create_proposal (M24-T5, ADR-014).
+ * Cascade ActionSpec: create_proposal.
  *
  * Spawns a Proposal with cascade back-link metadata. Idempotent via
- * the {sourceThreadId, sourceActionId} natural key.
- *
- * Payload shape: { title, description, correlationId? }
- *   - Proposal store splits `title` / `summary` / `body`. We use the
- *     payload's `description` as both the summary (listing UI) and
- *     the body (full text); if future needs diverge, split the payload
- *     into {summary, body} in a schema amendment.
+ * {sourceThreadId, sourceActionId}. Payload: { title, description,
+ * correlationId? } — description serves as both summary and body
+ * until the schema splits them.
  */
 
-import { registerCascadeHandler, cascadeIdempotencyKey } from "../cascade.js";
+import { registerActionSpec } from "../cascade-spec.js";
+import { CreateProposalActionPayloadSchema } from "../staged-action-payloads.js";
 import { dispatchProposalSubmitted } from "../dispatch-helpers.js";
+import type { Proposal } from "../../state.js";
 
-registerCascadeHandler("create_proposal", async ({ ctx, thread, action, sourceThreadSummary }) => {
-  if (action.type !== "create_proposal") {
-    return { status: "failed", error: `expected create_proposal, got ${action.type}` };
-  }
-  const payload = action.payload;
-  const key = cascadeIdempotencyKey(thread, action);
-
-  const existing = await ctx.stores.proposal.findByCascadeKey(key);
-  if (existing) {
-    await ctx.stores.audit.logEntry(
-      "hub",
-      "action_already_executed",
-      `Cascade create_proposal skipped for ${thread.id}/${action.id}: proposal ${existing.id} already spawned from this pair.`,
-      thread.id,
+registerActionSpec({
+  type: "create_proposal",
+  kind: "spawn",
+  payloadSchema: CreateProposalActionPayloadSchema,
+  auditAction: "thread_create_proposal",
+  findByCascadeKey: (ctx, key) => ctx.stores.proposal.findByCascadeKey(key),
+  execute: async (ctx, payload, _action, thread, backlink): Promise<Proposal> => {
+    const p = payload as { title: string; description: string; correlationId?: string };
+    return ctx.stores.proposal.submitProposal(
+      p.title,
+      p.description,
+      p.description,
+      p.correlationId ?? undefined,
+      undefined,
+      thread.labels,
+      backlink,
     );
-    return { status: "skipped_idempotent", entityId: existing.id };
-  }
-
-  const proposal = await ctx.stores.proposal.submitProposal(
-    payload.title,
-    payload.description, // summary
-    payload.description, // body
-    payload.correlationId ?? undefined,
-    undefined, // executionPlan
-    thread.labels,
-    { sourceThreadId: key.sourceThreadId, sourceActionId: key.sourceActionId, sourceThreadSummary },
-  );
-
-  await ctx.stores.audit.logEntry(
-    "hub",
-    "thread_create_proposal",
-    `Proposal ${proposal.id} spawned from thread ${thread.id}/${action.id}. Title: ${payload.title}. Summary: ${sourceThreadSummary}.`,
-    proposal.id,
-  );
-
-  // Same proposal_submitted event the direct tool fires — architects
-  // in matching label scope get the push, not just the audit trail.
-  await dispatchProposalSubmitted(ctx, proposal, thread.labels, false);
-
-  return { status: "executed", entityId: proposal.id };
+  },
+  auditDetails: (entity, action, thread, summary) => {
+    const p = action.payload as { title: string };
+    return `Proposal ${(entity as Proposal).id} spawned from thread ${thread.id}/${action.id}. Title: ${p.title}. Summary: ${summary}.`;
+  },
+  dispatch: (ctx, entity, thread) => dispatchProposalSubmitted(ctx, entity as Proposal, thread.labels, false),
 });

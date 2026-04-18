@@ -1,25 +1,24 @@
 /**
- * Cascade handler: update_mission_status (M24-T9, ADR-014).
+ * Cascade ActionSpec: update_mission_status.
  *
- * Status-only transitions per ADR-014 scope-of-commitment principle:
- * scope edits (description, goal amendments) widen authorization and
- * remain Director-gated. Autonomous cascade only flips the FSM.
+ * Status-only transitions per ADR-014 §21 scope-of-commitment
+ * principle — scope edits (description, goals) remain Director-gated.
+ * Kind "update" — null return from execute = no-op idempotent skip
+ * (already at target status).
  *
- * Valid transitions (enforced here) — proposed → active | abandoned;
- * active → completed | abandoned; completed/abandoned are terminal.
+ * Allowed FSM: proposed → {active, abandoned}; active → {completed, abandoned};
+ * completed / abandoned terminal. Invalid transitions throw → failed.
  *
- * Payload shape: { missionId, status }
+ * Dispatch: mission_activated fires only on proposed → active.
  */
 
-import { registerCascadeHandler } from "../cascade.js";
+import { registerActionSpec } from "../cascade-spec.js";
+import { UpdateMissionStatusActionPayloadSchema } from "../staged-action-payloads.js";
 import { dispatchMissionActivated } from "../dispatch-helpers.js";
-import type { MissionStatus } from "../../entities/mission.js";
+import type { Mission, MissionStatus } from "../../entities/mission.js";
 
 const VALID_MISSION_STATUSES: ReadonlySet<string> = new Set<MissionStatus>(["proposed", "active", "completed", "abandoned"]);
 
-/** Allowed FSM transitions. Terminal states ("completed", "abandoned")
- * have no outgoing edges — re-issuing the same terminal is a no-op the
- * handler rejects so the caller knows the action wasn't applied. */
 const ALLOWED_TRANSITIONS: Record<MissionStatus, ReadonlySet<MissionStatus>> = {
   proposed: new Set<MissionStatus>(["active", "abandoned"]),
   active: new Set<MissionStatus>(["completed", "abandoned"]),
@@ -27,58 +26,45 @@ const ALLOWED_TRANSITIONS: Record<MissionStatus, ReadonlySet<MissionStatus>> = {
   abandoned: new Set<MissionStatus>(),
 };
 
-registerCascadeHandler("update_mission_status", async ({ ctx, thread, action, sourceThreadSummary }) => {
-  if (action.type !== "update_mission_status") {
-    return { status: "failed", error: `expected update_mission_status, got ${action.type}` };
-  }
-  const payload = action.payload;
-  const missionId = payload.missionId;
-  const targetStatus = payload.status as MissionStatus;
+// Sidecar — remember the target status decided in execute so dispatch
+// can fire mission_activated conditionally on the proposed → active edge.
+const lastTarget = new Map<string, MissionStatus>();
 
-  if (!VALID_MISSION_STATUSES.has(targetStatus)) {
-    return { status: "failed", error: `invalid mission status "${targetStatus}" — expected one of: ${Array.from(VALID_MISSION_STATUSES).join(", ")}` };
-  }
+registerActionSpec({
+  type: "update_mission_status",
+  kind: "update",
+  payloadSchema: UpdateMissionStatusActionPayloadSchema,
+  auditAction: "thread_update_mission_status",
+  execute: async (ctx, payload, _action, _thread, _backlink): Promise<Mission | null> => {
+    const p = payload as { missionId: string; status: MissionStatus };
+    if (!VALID_MISSION_STATUSES.has(p.status)) {
+      throw new Error(`invalid mission status "${p.status}" — expected one of: ${Array.from(VALID_MISSION_STATUSES).join(", ")}`);
+    }
+    const mission = await ctx.stores.mission.getMission(p.missionId);
+    if (!mission) throw new Error(`mission ${p.missionId} not found`);
+    if (mission.status === p.status) return null; // no-op idempotent skip
 
-  const mission = await ctx.stores.mission.getMission(missionId);
-  if (!mission) {
-    return { status: "failed", error: `mission ${missionId} not found` };
-  }
+    const allowedFrom = ALLOWED_TRANSITIONS[mission.status] ?? new Set();
+    if (!allowedFrom.has(p.status)) {
+      throw new Error(`invalid transition: mission ${p.missionId} is ${mission.status}; cannot move to ${p.status}`);
+    }
 
-  // Idempotent on a match — already at target status; treat as skipped
-  // so consumers know nothing changed but nothing went wrong.
-  if (mission.status === targetStatus) {
-    await ctx.stores.audit.logEntry(
-      "hub",
-      "action_already_executed",
-      `Cascade update_mission_status skipped for ${thread.id}/${action.id}: mission ${missionId} already at status ${targetStatus}.`,
-      missionId,
-    );
-    return { status: "skipped_idempotent", entityId: missionId };
-  }
-
-  const allowedFrom = ALLOWED_TRANSITIONS[mission.status] ?? new Set();
-  if (!allowedFrom.has(targetStatus)) {
-    return { status: "failed", error: `invalid transition: mission ${missionId} is ${mission.status}; cannot move to ${targetStatus}` };
-  }
-
-  const updated = await ctx.stores.mission.updateMission(missionId, { status: targetStatus });
-  if (!updated) {
-    return { status: "failed", error: `mission ${missionId} updateMission returned null` };
-  }
-
-  await ctx.stores.audit.logEntry(
-    "hub",
-    "thread_update_mission_status",
-    `Mission ${missionId} status ${mission.status} → ${targetStatus} from thread ${thread.id}/${action.id}. Summary: ${sourceThreadSummary}.`,
-    missionId,
-  );
-
-  // Same mission_activated event the direct updateMission fires on
-  // the proposed → active edge. Other transitions stay silent —
-  // matches direct-path behaviour; revisit if listeners emerge.
-  if (targetStatus === "active") {
-    await dispatchMissionActivated(ctx, updated);
-  }
-
-  return { status: "executed", entityId: missionId };
+    const updated = await ctx.stores.mission.updateMission(p.missionId, { status: p.status });
+    if (!updated) throw new Error(`mission ${p.missionId} updateMission returned null`);
+    lastTarget.set(p.missionId, p.status);
+    return updated;
+  },
+  auditDetails: (entity, action, thread, summary) => {
+    const p = action.payload as { missionId: string; status: string };
+    const mission = entity as Mission | null;
+    const prior = mission ? (lastTarget.get(p.missionId) ?? mission.status) : "(unknown)";
+    return `Mission ${p.missionId} status transitioned to ${p.status} from thread ${thread.id}/${action.id}. Prior resolved target: ${prior}. Summary: ${summary}.`;
+  },
+  dispatch: async (ctx, entity, _thread) => {
+    const mission = entity as Mission;
+    if (mission.status === "active" && lastTarget.get(mission.id) === "active") {
+      await dispatchMissionActivated(ctx, mission);
+      lastTarget.delete(mission.id);
+    }
+  },
 });

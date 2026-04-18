@@ -1,68 +1,41 @@
 /**
- * Cascade handler: create_task (M24-T5, ADR-014).
+ * Cascade ActionSpec: create_task.
  *
  * Spawns a Task with cascade back-link metadata. Idempotent via the
  * {sourceThreadId, sourceActionId} natural key — re-execution returns
- * skipped_idempotent referencing the prior-spawned task's ID.
+ * the prior-spawned Task's id and runner reports skipped_idempotent.
  *
- * Payload shape: { title, description, correlationId? }
- *   - `directive` on the Task is filled from `description` (the LLM's
- *     verbose spec) so engineers see the full intent in get_task;
- *     `title` and `description` are also persisted as separate fields
- *     so list_tasks UIs can render a short header.
+ * Payload: { title, description, correlationId? }
  */
 
-import { registerCascadeHandler, cascadeIdempotencyKey } from "../cascade.js";
+import { registerActionSpec } from "../cascade-spec.js";
+import { CreateTaskActionPayloadSchema } from "../staged-action-payloads.js";
 import { dispatchTaskSpawned } from "../dispatch-helpers.js";
+import type { Task } from "../../state.js";
 
-registerCascadeHandler("create_task", async ({ ctx, thread, action, sourceThreadSummary }) => {
-  if (action.type !== "create_task") {
-    return { status: "failed", error: `expected create_task, got ${action.type}` };
-  }
-  const payload = action.payload;
-  const key = cascadeIdempotencyKey(thread, action);
-
-  // INV-TH20: idempotency pre-check. If a Task already exists for this
-  // thread+action pair, return the prior ID instead of double-spawning.
-  const existing = await ctx.stores.task.findByCascadeKey(key);
-  if (existing) {
-    await ctx.stores.audit.logEntry(
-      "hub",
-      "action_already_executed",
-      `Cascade create_task skipped for ${thread.id}/${action.id}: task ${existing.id} already spawned from this pair.`,
-      thread.id,
+registerActionSpec({
+  type: "create_task",
+  kind: "spawn",
+  payloadSchema: CreateTaskActionPayloadSchema,
+  auditAction: "thread_create_task",
+  findByCascadeKey: (ctx, key) => ctx.stores.task.findByCascadeKey(key),
+  execute: async (ctx, payload, _action, thread, backlink): Promise<Task | null> => {
+    const p = payload as { title: string; description: string; correlationId?: string };
+    const taskId = await ctx.stores.task.submitDirective(
+      p.description,
+      p.correlationId ?? undefined,
+      undefined,
+      p.title,
+      p.description,
+      undefined,
+      thread.labels,
+      backlink,
     );
-    return { status: "skipped_idempotent", entityId: existing.id };
-  }
-
-  // Spawn. `directive` carries the description so engineers get the
-  // full brief on get_task; correlationId propagates through if set.
-  const taskId = await ctx.stores.task.submitDirective(
-    payload.description,
-    payload.correlationId ?? undefined,
-    undefined, // idempotencyKey — distinct from cascade natural key
-    payload.title,
-    payload.description,
-    undefined, // dependsOn
-    thread.labels,
-    { sourceThreadId: key.sourceThreadId, sourceActionId: key.sourceActionId, sourceThreadSummary },
-  );
-
-  await ctx.stores.audit.logEntry(
-    "hub",
-    "thread_create_task",
-    `Task ${taskId} spawned from thread ${thread.id}/${action.id}. Title: ${payload.title}. Summary: ${sourceThreadSummary}.`,
-    taskId,
-  );
-
-  // Fire the same SSE event the direct create_task tool does so
-  // engineers in the matching label scope get a task_issued push —
-  // not just the audit entry. Shared helper keeps the payload shape
-  // in lock-step with task-policy.ts:submitTask.
-  const spawnedTask = await ctx.stores.task.getTask(taskId);
-  if (spawnedTask) {
-    await dispatchTaskSpawned(ctx, spawnedTask, thread.labels);
-  }
-
-  return { status: "executed", entityId: taskId };
+    return (await ctx.stores.task.getTask(taskId)) ?? null;
+  },
+  auditDetails: (entity, action, thread, summary) => {
+    const p = action.payload as { title: string };
+    return `Task ${(entity as Task | null)?.id} spawned from thread ${thread.id}/${action.id}. Title: ${p.title}. Summary: ${summary}.`;
+  },
+  dispatch: (ctx, entity, thread) => dispatchTaskSpawned(ctx, entity as Task, thread.labels),
 });

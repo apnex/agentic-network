@@ -11,6 +11,7 @@
  * load — no explicit wiring call needed.
  */
 
+import "./close-no-action.js";
 import "./create-task.js";
 import "./create-proposal.js";
 import "./create-idea.js";

@@ -1,37 +1,25 @@
 /**
- * Cascade handler: create_clarification (M24-T9, ADR-014).
+ * Cascade ActionSpec: create_clarification.
  *
- * Records a clarification request raised during the thread. Unlike
- * task-scoped clarifications (ITaskStore.requestClarification), these
- * are thread-scoped and captured as audit entries for Director review
- * — no dedicated Clarification entity exists in the Phase 2 schema.
- *
- * Payload shape: { question, context }
- *
- * Idempotency: audit-only means no queryable entity to dedupe against.
- * A double-execute would write two audit entries. Acceptable because
- * cascade runs exactly once per convergence today; if future retry
- * machinery lands, a Clarification entity + findByCascadeKey will be
- * needed. Tracked as a follow-up.
+ * Audit-only — records a Director-review question raised in-thread.
+ * No dedicated Clarification entity in current schema; the audit
+ * entry IS the record. Idempotency: audit entries are append-only,
+ * so a double-execute writes two entries (acceptable caveat — cascade
+ * fires exactly once per convergence today). When a first-class
+ * Clarification entity lands (future mission), convert to kind="spawn".
  */
 
-import { registerCascadeHandler } from "../cascade.js";
+import { registerActionSpec } from "../cascade-spec.js";
+import { CreateClarificationActionPayloadSchema } from "../staged-action-payloads.js";
 
-registerCascadeHandler("create_clarification", async ({ ctx, thread, action, sourceThreadSummary }) => {
-  if (action.type !== "create_clarification") {
-    return { status: "failed", error: `expected create_clarification, got ${action.type}` };
-  }
-  const payload = action.payload;
-
-  await ctx.stores.audit.logEntry(
-    "hub",
-    "thread_create_clarification",
-    `Clarification raised from thread ${thread.id}/${action.id}. Question: ${payload.question} Context: ${payload.context} Summary: ${sourceThreadSummary}.`,
-    thread.id,
-  );
-
-  // No spawned entity — audit-only. Return null entityId so consumers
-  // (ConvergenceReport readers) can distinguish audit-only executed
-  // actions from entity-spawning ones.
-  return { status: "executed", entityId: null };
+registerActionSpec({
+  type: "create_clarification",
+  kind: "audit_only",
+  payloadSchema: CreateClarificationActionPayloadSchema,
+  auditAction: "thread_create_clarification",
+  execute: async () => null,
+  auditDetails: (_entity, action, thread, summary) => {
+    const p = action.payload as { question: string; context: string };
+    return `Clarification raised from thread ${thread.id}/${action.id}. Question: ${p.question} Context: ${p.context} Summary: ${summary}.`;
+  },
 });
