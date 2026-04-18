@@ -132,59 +132,79 @@ Additional fields:
 
 ---
 
-### 1.3 Thread (Threads 2.0 — Mission-21 Phase 1)
+### 1.3 Thread (Threads 2.0 — Mission-21 Phase 1 + Phase 2 ratified design)
 
 ```
 Entity: Thread
-States: active, converged, round_limit, closed
+States: active, converged, round_limit, closed, abandoned (P2 spec), cascade_failed (P2 spec)
 Initial: active
-Terminal: closed
+Terminal: closed | abandoned | cascade_failed
 Additional fields:
   labels                 — Record<string, string>; Mission-19 routing metadata inherited from the opener Agent at create-time
-  convergenceActions     — StagedAction[]; staged / revised / retracted / committed / executed / failed lifecycle (ADR-013)
-  summary                — string; negotiated narrative of the thread's outcome, required non-empty at convergence (ADR-013)
-  participants           — ThreadParticipant[]; {role, agentId, joinedAt, lastActiveAt} upserted on every reply, open tracking
+  convergenceActions     — StagedAction[]; staged / revised / retracted / committed / executed / failed lifecycle (ADR-013, ADR-014)
+  summary                — string; negotiated narrative, required non-empty at convergence (ADR-013); frozen at commit onto every cascade-spawned entity (INV-TH23)
+  participants           — ThreadParticipant[]; {role, agentId, joinedAt, lastActiveAt}; upsert semantics depend on routing mode (INV-TH14, INV-TH18)
+  recipientAgentId       — string | null; opener-declared counterparty for Targeted routing mode (Phase 1 hardening, INV-TH16)
+  currentTurnAgentId     — string | null; per-turn agent pin alongside role (Phase 1 hardening, INV-TH17)
+  routingMode            — "targeted" | "broadcast" | "context_bound" (P2 spec, INV-TH18); declared at open, immutable
+  context                — { entityType, entityId } | null (P2 spec); populated when routingMode=context_bound
   ThreadMessage.authorAgentId — Agent.engineerId attached per message (multi-Engineer threads observable)
 ```
 
 #### Transitions
 
-| From         | To           | Trigger                                              | Actor     |
-| ------------ | ------------ | ---------------------------------------------------- | --------- |
-| (initial)    | active       | `create_thread`                                      | Any       |
-| active       | active       | `create_thread_reply` (normal reply, turn flips)     | Any       |
-| active       | converged    | `create_thread_reply` (both parties signalled `converged=true`, gate passes — see INV-TH11/TH12) | Any    |
-| active       | round_limit  | `create_thread_reply` (roundCount >= maxRounds)      | System    |
-| active       | closed       | `close_thread`                                       | Architect |
-| converged    | closed       | cascade handler (auto-close after executing committed actions — Phase 1 `close_no_action`) | System |
-| converged    | closed       | `close_thread`                                       | Architect |
-| round_limit  | closed       | `close_thread`                                       | Architect |
+| From         | To              | Trigger                                              | Actor     |
+| ------------ | --------------- | ---------------------------------------------------- | --------- |
+| (initial)    | active          | `create_thread`                                      | Any       |
+| active       | active          | `create_thread_reply` (normal reply, turn flips)     | Any       |
+| active       | converged       | `create_thread_reply` (both parties signalled `converged=true`, gate passes — see INV-TH11/TH12/TH19) | Any    |
+| active       | round_limit     | `create_thread_reply` (roundCount >= maxRounds)      | System    |
+| active       | closed          | `close_thread` (stewardship; Architect-only)         | Architect |
+| active       | abandoned (P2)  | `leave_thread` (participant-initiated) OR reaper idle-expiry (INV-TH21) | Participant / Hub |
+| converged    | closed          | cascade handler (auto-close after executing committed actions — Phase 1 `close_no_action`) | System |
+| converged    | cascade_failed (P2) | cascade handler infrastructure failure during execute phase (INV-TH19) | System    |
+| converged    | closed          | `close_thread`                                       | Architect |
+| round_limit  | closed          | `close_thread`                                       | Architect |
+| abandoned    | (terminal)      | —                                                    | —         |
+| cascade_failed | (terminal)    | —                                                    | —         |
 
 #### Invariants
 
 | ID       | Invariant                                                                       | Tested By                                |
 | -------- | ------------------------------------------------------------------------------- | ---------------------------------------- |
 | INV-TH1  | Only the current turn holder can reply                                          | `e2e-chaos.test.ts` "reply when not your turn" |
-| INV-TH2  | Turn alternates between architect and engineer after each reply                 | `e2e-foundation.test.ts` "thread tracks turn" |
+| INV-TH2  | Turn alternates across participants after each reply (by `{role, agentId}` — see INV-TH17 for agent pin) | `e2e-foundation.test.ts` "thread tracks turn"; `threads-2-smoke.test.ts` WF-TH-02 |
 | INV-TH3  | Convergence requires both parties to signal `converged: true`                   | `e2e-foundation.test.ts` "both parties converge" |
-| INV-TH4  | `thread_message` targets the opposite role from the author                      | `e2e-foundation.test.ts` "thread convergence" |
-| INV-TH5  | `thread_converged` targets architect (for follow-through)                       | `e2e-foundation.test.ts` "thread convergence" |
+| INV-TH4  | `thread_message` targets the other participants, not the opposite role in the abstract (see INV-TH16; legacy text said "opposite role" before participant-scoped routing shipped) | `threads-2-smoke.test.ts` WF-TH-10, WF-TH-11 |
+| INV-TH5  | `thread_converged` and `thread_convergence_completed` target participants (see INV-TH16); Phase 2 merges these into `thread_convergence_finalized` (INV-TH18–19) | `threads-2-smoke.test.ts` WF-TH-05, WF-TH-12 |
 | INV-TH6  | Replies to non-active threads are rejected                                      | NONE                                     |
-| INV-TH7  | `close_thread` can close a thread in any state                                  | NONE (no status guard in store)          |
+| INV-TH7  | `close_thread` is Architect-only stewardship; participants use `leave_thread` (P2 spec) | NONE (plugin-layer role guard observed on thread-123) |
 | INV-TH9  | A Thread's `labels` are set at `create_thread` from the opener Agent's labels and are immutable | `test/mission-19/labels.test.ts` "thread inherits opener labels" |
 | **INV-TH11** | **`converged=true` is rejected via `ThreadConvergenceGateError` unless `convergenceActions` has ≥1 entry with `status="staged"` at the moment of the transition (the forcing function that ends the prose-promise bug class — ADR-013)** | `wave3b-policies.test.ts` "rejects converged=true when convergenceActions empty" |
 | **INV-TH12** | **`converged=true` is rejected via `ThreadConvergenceGateError` unless `summary` is non-empty at the moment of the transition** | `wave3b-policies.test.ts` "rejects converged=true when summary empty" |
 | **INV-TH13** | **On convergence, all `status="staged"` actions atomically flip to `status="committed"` inside the same CAS transaction that sets `thread.status="converged"`. Cascade handler then iterates committed actions in array order.** | `wave3b-policies.test.ts` "convergence commits staged actions atomically" |
-| **INV-TH14** | **Participant upsert is symmetric: any reply by `{role, agentId}` not already in `participants[]` appends; existing entries update `lastActiveAt`. No pinning — multiple Engineers under matching labels can reply in the same thread (engineer-to-engineer collaboration).** | `wave3b-policies.test.ts` "participants array upserts" |
+| **INV-TH14** | **Participant upsert is symmetric: any reply by `{role, agentId}` not already in `participants[]` appends; existing entries update `lastActiveAt`. In Phase 2, upsert semantics are constrained by `routingMode` per INV-TH18 (Targeted = closed at open; Broadcast coerces to closed on first reply; Context-bound = dynamic).** | `wave3b-policies.test.ts` "participants array upserts"; `threads-2-smoke.test.ts` WF-TH-09 |
 | **INV-TH15** | **`ThreadMessage.authorAgentId` is set from the replying Agent's `engineerId` on every reply. Null only when the caller hasn't completed the M18 handshake (legacy / test context).** | `wave3b-policies.test.ts` "authorAgentId attached to every ThreadMessage" |
+| **INV-TH16** *(ratified, live)* | **Thread dispatches (`thread_message`, `thread_converged`, `thread_convergence_completed`) are participant-scoped via `Selector.engineerIds` derived from `participants[]` (excluding the author on replies). Role-broadcast fallback applies only when no participant has a resolved `agentId` (pre-M18 legacy). Ratified in thread-125 with live prod evidence from thread-122/123/124 showing zero architect audit entries on pure engineer↔engineer threads.** | `wave3b-policies.test.ts` "participant-scoped dispatch"; `threads-2-smoke.test.ts` WF-TH-10, WF-TH-11 |
+| **INV-TH17** *(ratified, live)* | **Reply turn is pinned by `currentTurnAgentId` in addition to `currentTurn` role. A reply whose `authorAgentId` does not match the pinned agentId is rejected — the only way engineer↔engineer threads are coherent (same role, distinct agents). `currentTurnAgentId` flips on each reply to the next non-author participant.** | `wave3b-policies.test.ts` "agent-pinned turn"; `threads-2-smoke.test.ts` WF-TH-02, WF-TH-11, WF-TH-15 |
+| **INV-TH18** *(P2 spec, ratified thread-125)* | **Routing mode is one of `targeted | broadcast | context_bound`, declared at `create_thread` and immutable for the thread's lifetime. Targeted = closed 2-party set at open; Broadcast coerces to Targeted on first reply; Context-bound = dynamic membership resolved from the bound entity's current assignee(s). Legacy role+label fallback when participants lack agentIds is eliminated in Phase 2.** | TBD — `M-Phase2-Impl` |
+| **INV-TH19** *(P2 spec, ratified thread-125)* | **Cascade atomicity via validate-then-execute at the gate: every staged action's validator runs before `staged→committed` promotion; any validator failure rejects the whole convergence, leaves thread `active`, no rollback. Post-gate execute-phase infrastructure failures route the thread to `cascade_failed` terminal (high-priority alert), never revert committed state.** | TBD — `M-Phase2-Impl` |
+| **INV-TH20** *(P2 spec, ratified thread-125)* | **Idempotency key for cascade action execution is the natural `{sourceThreadId, sourceActionId}` pair. Cascade handler checks for an existing entity with this pair before create; if found, skip, audit `action_already_executed`, mark in `ConvergenceReport`. No client-supplied idempotency key required.** | TBD — `M-Phase2-Impl` |
+| **INV-TH21** *(P2 spec, ratified thread-125)* | **Thread expiry: any thread in `active` status with `now - updatedAt > thread.idleExpiryMs` (default 7 days, deployment-configurable) is reaped by a periodic Hub task (~1h cadence) and transitioned to `abandoned` with audit action `thread_reaper_abandoned`. Distinguishes from participant-initiated `leave_thread` in audit/metrics.** | TBD — `M-Phase2-Impl` |
+| **INV-TH22** *(P2 spec, ratified thread-125)* | **`StagedAction.proposer` carries `{role, agentId}` rather than role alone. Essential for audit/provenance in P2P threads where multiple agents share a role (engineer↔engineer).** | TBD — `M-Phase2-Impl` |
+| **INV-TH23** *(P2 spec, ratified thread-125; Summary-as-Living-Record)* | **Every entity spawned by the cascade carries first-class metadata `sourceThreadId`, `sourceActionId`, and `sourceThreadSummary` (the `Thread.summary` frozen at the moment of commit). The consensus narrative is preserved immutably on the spawned entity even if the source thread is later archived.** | TBD — `M-Phase2-Impl` |
 
-**Phase 1 vocabulary:** `StagedActionType = "close_no_action"` only. Phase 2 widens to `create_task`, `create_proposal`, `create_idea`, `create_mission`, `update_mission`, `update_idea`.
+**Phase 1 vocabulary (live):** `StagedActionType = "close_no_action"` only. Phase 2 ratified (spec, awaiting `M-Phase2-Impl`): `close_no_action | create_task | create_proposal | create_idea | update_idea | update_mission_status | propose_mission | create_clarification` as autonomous-via-convergence actions. Director-gated (scope-widening, never autonomous): `create_mission | update_mission_scope | cancel_task`. Scope-of-commitment principle: actions widening authorization scope require Director; actions within existing scope are autonomous.
+
+**Phase 2 additions (spec, awaiting `M-Phase2-Impl`):** `leave_thread` tool (participant-only; thread → `abandoned`; auto-retracts leaver's staged actions); `list_available_peers(role?, matchLabels?)` discovery tool (returns `{agentId, role, labels}`); `thread_convergence_finalized` merged event superseding `thread_converged` + `thread_convergence_completed` (carries full `ConvergenceReport`); Director first-class participation with reserved `director-*` agentId prefix and chat-injection notification surface.
 
 **Removed in 2.0 cutover:** singular `convergenceAction` field, `setConvergenceAction` store method, old `handleThreadConvergedWithAction` single-type branch. Pre-cutover threads in non-terminal states were admin-closed. See ADR-013.
 
-**Former INV-TH10** (Entities auto-spawned by `convergenceAction` inherit labels) is subsumed by Phase 2 per-action cascade semantics and will be restated then.
+**Former INV-TH10** (Entities auto-spawned by `convergenceAction` inherit labels) is subsumed by INV-TH23 (Summary-as-Living-Record) and the Phase 2 per-action cascade; retired.
 
-**Former gap** (`escalated` phantom state): retained in the `ThreadStatus` enum for backwards compatibility but not emitted by any store code. Candidate for removal in a future cleanup.
+**Former gap** (`escalated` phantom state): retained in the `ThreadStatus` enum for backwards compatibility but not emitted by any store code. Candidate for removal during `M-Phase3-Polish` legacy sweep.
+
+**Provenance** for INV-TH16 through INV-TH23: ratified in thread-125 (2026-04-18) between greg (engineer, `eng-0d2c690e7dd5`) and architect (`eng-ddec09b296d0`); 8 rounds; full architectural record frozen in `thread-125.summary` per INV-TH23. See ADR-014 for the canonical design document.
 
 ---
 
