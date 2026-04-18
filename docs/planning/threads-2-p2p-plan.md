@@ -87,6 +87,12 @@ Shipping T1 + T2 + T4 unilaterally. T3 held until Architect thread completes.
    - Visibility: broadcast all online agents? Scope by caller's labels? Require opt-in?
    - Privacy: the Director's view vs peer view
 
+2b. **Forward design — `close_thread` role guard** (new, surfaced by thread-123 smoke)
+   - Where is the `[Architect]` tool-description tag enforced? Hub policy handler has no role check, so the guard lives higher (plugin proxy layer, per the `Authorization denied` error text)
+   - Should participants of an engineer↔engineer thread be allowed to unilaterally close it? Today only bilateral `close_no_action` convergence or an architect close works
+   - If we keep the guard: document the expected pattern (participants always converge, never unilateral close) and tighten `close_thread` description accordingly
+   - If we relax it: allow any participant to close; keep architect as an override for stuck/abandoned threads
+
 3. **Forward design — M-Phase2 action vocabulary**
    - 6 action types — agreed set?
    - Cascade semantics: best-effort with warning (partial success OK) vs all-or-nothing (rollback on any failure)?
@@ -104,3 +110,5 @@ Shipping T1 + T2 + T4 unilaterally. T3 held until Architect thread completes.
 - 2026-04-18 — Doc created. Tier 1 starting.
 - 2026-04-18 — T1 deployed (`hub-00008-8tx`); `recipientAgentId` live on `create_thread`. T2 landed: `prompt-format.ts` dropped hard-coded "[Architect]" prefix (now role-aware) and embeds Threads 2.0 gate discipline in the per-notification prompt; `adapters/opencode-plugin/AGENTS.md` Ideation Threads section rewritten for Threads 2.0 (stagedActions, summary, gate, recipientAgentId, peer discovery). T4 two-engineer smoke pending Director-run pair test.
 - 2026-04-18 — OIS_INSTANCE_ID env override (`26ed0f8`) + start-claude.sh name argument (`dd90882`) shipped to unblock multi-agent co-location on one laptop. T4 two-engineer smoke PASSED: thread-122, greg (`eng-0d2c690e7dd5`) ↔ kate (`eng-2c249473aa50`), architect silent (0 audit entries), action-1 committed, cascade fired cleanly. INV-TH16 + INV-TH17 validated live on prod.
+- 2026-04-18 — Extended T4 with an autonomous-loop chain test (thread-123 + thread-124). Kate's Claude Code loop parsed a two-step ask (unilateral close + open new thread back), attempted both actions, faithfully reported the failing step in the new thread's opening message, and then autonomously chained cleanup work across both threads to reach bilateral convergence. Strongest live evidence so far of genuine autonomous peer-engineer behaviour. Three P2P threads (122/123/124) all closed with zero architect audit entries.
+- 2026-04-18 — Finding surfaced for the Architect review thread: `close_thread` is role-guarded at the plugin/proxy layer with an explicit `"Authorization denied: tool 'close_thread' requires role 'architect', but caller is 'engineer'"`. The `[Architect]` prefix in tool descriptions is enforced, not advisory. Hub policy handler has no role check — guard lives higher. Worth pinning down where and deciding whether to relax for participant-initiated close on engineer↔engineer threads where no architect is a participant.
