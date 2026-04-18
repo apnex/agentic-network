@@ -60,7 +60,7 @@ For formal workflow specifications (state machines, FSM transitions, cross-domai
 | **WF-006** Mission Lifecycle | Architect creates missions, links tasks and ideas, tracks to completion |
 | **WF-008** Event Loop | Architect polls `get_pending_actions` every 300s as SSE backup |
 
-See [Workflow Registry](specs/workflow-registry.md) for full step-by-step specifications, state machine diagrams, and cross-domain interaction maps.
+See [Workflow Registry](specs/workflow-registry.md) for full step-by-step specifications, state machine diagrams, and cross-domain interaction maps. For the authoritative **schema and persistence model** of each first-class entity (Task, Agent, Mission, Idea, Thread, Proposal, Turn, Tele, Audit, Document), see the [Entity Registry](specs/entities.md) — the sibling sovereign spec for entity shape (the Workflow Registry remains sovereign for FSM transitions).
 
 ### 3.1 Task Execution (WF-001)
 
