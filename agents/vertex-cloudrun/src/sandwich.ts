@@ -315,10 +315,22 @@ async function attemptThreadReply(
     const THREAD_REPLY_TOOLS = [
       "create_thread_reply",
       "get_document",
+      // Mission orchestration (workflow-action set; interim bridge until
+      // Phase 2 cascade vocabulary ships):
       "create_mission",
       "update_mission",
       "create_task",
       "create_audit_entry",
+      // Read-only inspection + stewardship (added 2026-04-18 after
+      // thread-130 fix-up surfaced the gap — Architect needs these to
+      // audit task decompositions and close stranded threads without
+      // Director intervention):
+      "list_tasks",
+      "get_task",
+      "get_thread",
+      "list_threads",
+      "close_thread",
+      "get_pending_actions",
     ];
     const allTools = (await hub.listTools()) as Array<{
       name: string;
