@@ -177,6 +177,36 @@ export type ToolExecutor = (
  * Convert MCP tool schemas to Gemini FunctionDeclaration format.
  * Transforms JSON Schema properties into Gemini's Schema type system.
  */
+interface GeminiSchema {
+  type: Type;
+  description?: string;
+  enum?: string[];
+  items?: GeminiSchema;
+}
+
+/**
+ * Recursively build a Gemini Schema from a JSON Schema node. Arrays
+ * MUST carry an `items` schema under Vertex's validator — without it
+ * the whole GenerateContent request is rejected with
+ * `function_declarations[N].parameters.properties[field].items:
+ * missing field` 400 INVALID_ARGUMENT (observed 2026-04-18).
+ */
+function buildGeminiSchema(prop: Record<string, unknown>): GeminiSchema {
+  const schema: GeminiSchema = {
+    type: mapJsonSchemaType(prop.type as string | undefined),
+  };
+  if (prop.description) schema.description = prop.description as string;
+  if (prop.enum) schema.enum = prop.enum as string[];
+  if (prop.type === "array") {
+    // Fallback to string element when items is missing on the incoming
+    // schema — Vertex requires *something*, and Hub-side schemas have
+    // historically been string[] where items is present.
+    const itemsNode = (prop.items as Record<string, unknown> | undefined) ?? { type: "string" };
+    schema.items = buildGeminiSchema(itemsNode);
+  }
+  return schema;
+}
+
 export function mcpToolsToFunctionDeclarations(
   mcpTools: Array<{
     name: string;
@@ -191,15 +221,9 @@ export function mcpToolsToFunctionDeclarations(
       const properties = (schema.properties || {}) as Record<string, Record<string, unknown>>;
       const required = (schema.required || []) as string[];
 
-      // Convert JSON Schema properties to Gemini Schema properties
-      const geminiProperties: Record<string, { type: Type; description?: string; enum?: string[] }> = {};
+      const geminiProperties: Record<string, GeminiSchema> = {};
       for (const [name, prop] of Object.entries(properties)) {
-        const geminiProp: { type: Type; description?: string; enum?: string[] } = {
-          type: mapJsonSchemaType(prop.type as string),
-        };
-        if (prop.description) geminiProp.description = prop.description as string;
-        if (prop.enum) geminiProp.enum = prop.enum as string[];
-        geminiProperties[name] = geminiProp;
+        geminiProperties[name] = buildGeminiSchema(prop);
       }
 
       return {
