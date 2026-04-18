@@ -153,12 +153,16 @@ async function call(
   return (result ?? {}) as Record<string, unknown>;
 }
 
-/** Look up a single task's current state via list_tasks + filter. */
+/** Look up a single task's current state via list_tasks + filter.
+ * Request the max page size so freshly-created tasks (latest IDs) are
+ * visible regardless of how much backlog the Hub has accumulated. The
+ * Hub's list_tasks default limit is 100 (idea-70); commits 813e493+
+ * paginate every list tool. */
 async function getTaskStatus(
   client: McpAgentClient,
   taskId: string
 ): Promise<Record<string, unknown>> {
-  const res = await call(client, "list_tasks", {});
+  const res = await call(client, "list_tasks", { limit: 500 });
   const tasks = res.tasks as Array<Record<string, unknown>>;
   const task = tasks.find((t) => t.id === taskId);
   assert(!!task, `task ${taskId} not found in list_tasks`);
@@ -211,7 +215,7 @@ async function cleanupRunArtifacts(
 
   // Tasks: cancel any non-terminal task from this run.
   try {
-    const res = await call(architect, "list_tasks", {});
+    const res = await call(architect, "list_tasks", { limit: 500 });
     const tasks = (res.tasks as Array<Record<string, unknown>>) ?? [];
     for (const t of mineByTitle(tasks)) {
       if (TERMINAL_TASK.has(t.status as string)) continue;
@@ -225,7 +229,7 @@ async function cleanupRunArtifacts(
 
   // Threads: close any non-closed thread from this run.
   try {
-    const res = await call(architect, "list_threads", {});
+    const res = await call(architect, "list_threads", { limit: 500 });
     const threads = (res.threads as Array<Record<string, unknown>>) ?? [];
     for (const t of mineByTitle(threads)) {
       if (TERMINAL_THREAD.has(t.status as string)) continue;
@@ -240,7 +244,7 @@ async function cleanupRunArtifacts(
   // Proposals: engineer can close approved → implemented. Submitted /
   // changes_requested cannot be cancelled (no tool); report them.
   try {
-    const res = await call(architect, "list_proposals", {});
+    const res = await call(architect, "list_proposals", { limit: 500 });
     const proposals = (res.proposals as Array<Record<string, unknown>>) ?? [];
     for (const p of mineByTitle(proposals)) {
       const status = p.status as string;
