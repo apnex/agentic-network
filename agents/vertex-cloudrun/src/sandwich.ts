@@ -330,6 +330,7 @@ async function attemptThreadReply(
       "get_thread",
       "list_threads",
       "close_thread",
+      "cancel_task",
       "get_pending_actions",
     ];
     const allTools = (await hub.listTools()) as Array<{
