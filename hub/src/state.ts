@@ -666,6 +666,17 @@ export interface IThreadStore {
    */
   leaveThread(threadId: string, leaverAgentId: string): Promise<Thread | null>;
   /**
+   * Mission-24 Phase 2 (ADR-014, M24-T4, INV-TH19): transition a
+   * converged thread to `cascade_failed` after the async execute
+   * phase encountered a handler failure. "Committed means committed"
+   * — the staged→committed promotion already happened; this just
+   * records the terminal outcome. Returns true on success, false
+   * when the thread doesn't exist or isn't in a transition-eligible
+   * state (converged). Distinct from closeThread so observers can
+   * tell a clean close from a post-gate infrastructure failure.
+   */
+  markCascadeFailed(threadId: string): Promise<boolean>;
+  /**
    * Mission-24 Phase 2 (ADR-014, M24-T7, INV-TH21): scan all active
    * threads and transition to `abandoned` any whose idle time
    * `(now - updatedAt)` exceeds the per-thread `idleExpiryMs` override
@@ -1210,6 +1221,20 @@ export class MemoryThreadStore implements IThreadStore {
         );
       }
 
+      // Mission-24 Phase 2 (M24-T4, INV-TH19): validate staged payloads
+      // BEFORE staged→committed promotion. "Committed means committed" —
+      // once a payload is promoted, the cascade executes and there is
+      // no rollback, so per-action semantic validation must run here.
+      const validation = validateStagedActions(staged);
+      if (!validation.ok) {
+        const detail = validation.errors
+          .map((e) => `${e.actionId} (${e.type}): ${e.error}`)
+          .join("; ");
+        throw new ThreadConvergenceGateError(
+          `Thread convergence rejected: staged action validation failed — ${detail}.`,
+        );
+      }
+
       for (const action of working.convergenceActions) {
         if (action.status === "staged") action.status = "committed";
       }
@@ -1238,6 +1263,18 @@ export class MemoryThreadStore implements IThreadStore {
     const all = Array.from(this.threads.values());
     if (status) return all.filter((t) => t.status === status).map(cloneThread);
     return all.map(cloneThread);
+  }
+
+  async markCascadeFailed(threadId: string): Promise<boolean> {
+    const thread = this.threads.get(threadId);
+    if (!thread) return false;
+    // Only converged threads can transition to cascade_failed.
+    // From any other state, this is a no-op + false return.
+    if (thread.status !== "converged" && thread.status !== "active") return false;
+    thread.status = "cascade_failed";
+    thread.updatedAt = new Date().toISOString();
+    console.log(`[MemoryThreadStore] Thread cascade_failed: ${threadId}`);
+    return true;
   }
 
   async closeThread(threadId: string): Promise<boolean> {
@@ -1447,6 +1484,7 @@ export class MemoryAuditStore implements IAuditStore {
 // ── M18 Shared Helpers ───────────────────────────────────────────────
 
 import { createHash } from "node:crypto";
+import { validateStagedActions } from "./policy/staged-action-payloads.js";
 
 /** sha256(globalInstanceId) — token deliberately NOT mixed in (see thread-79). */
 export function computeFingerprint(globalInstanceId: string): string {

@@ -56,6 +56,7 @@ import {
   THRASHING_WINDOW_MS,
   AGENT_TOUCH_MIN_INTERVAL_MS,
 } from "./state.js";
+import { validateStagedActions } from "./policy/staged-action-payloads.js";
 
 // ── Simple async lock ────────────────────────────────────────────────
 // Prevents concurrent GCS read-modify-write races within a single
@@ -1442,6 +1443,19 @@ export class GcsThreadStore implements IThreadStore {
             );
           }
 
+          // Mission-24 Phase 2 (M24-T4, INV-TH19): validate staged
+          // payloads before staged→committed promotion. Any failure
+          // aborts the transform; CAS leaves the thread untouched.
+          const validation = validateStagedActions(staged);
+          if (!validation.ok) {
+            const detail = validation.errors
+              .map((e) => `${e.actionId} (${e.type}): ${e.error}`)
+              .join("; ");
+            throw new ThreadConvergenceGateError(
+              `Thread convergence rejected: staged action validation failed — ${detail}.`,
+            );
+          }
+
           for (const action of current.convergenceActions) {
             if (action.status === "staged") action.status = "committed";
           }
@@ -1548,6 +1562,25 @@ export class GcsThreadStore implements IThreadStore {
       return true;
     } catch (err) {
       if (err instanceof GcsPathNotFound) return false;
+      throw err;
+    }
+  }
+
+  async markCascadeFailed(threadId: string): Promise<boolean> {
+    const path = `threads/${threadId}.json`;
+    try {
+      await updateExisting<Thread>(this.bucket, path, (thread) => {
+        if (thread.status !== "converged" && thread.status !== "active") {
+          throw new TransitionRejected(`cannot cascade_fail from status ${thread.status}`);
+        }
+        thread.status = "cascade_failed";
+        thread.updatedAt = new Date().toISOString();
+        return thread;
+      });
+      console.log(`[GcsThreadStore] Thread cascade_failed: ${threadId}`);
+      return true;
+    } catch (err) {
+      if (err instanceof TransitionRejected || err instanceof GcsPathNotFound) return false;
       throw err;
     }
   }

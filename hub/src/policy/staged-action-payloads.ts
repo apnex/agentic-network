@@ -132,3 +132,60 @@ export const AUTONOMOUS_STAGED_ACTION_TYPES = [
   "propose_mission",
   "create_clarification",
 ] as const;
+
+// ── Validate phase (M24-T4, INV-TH19) ───────────────────────────────
+
+/**
+ * Shape the gate sees when it asks whether a set of staged actions is
+ * fit to promote. Structural — `action` is described by `{id, type,
+ * payload}` only, so this file stays independent of state.ts (avoids
+ * the policy→state→policy cycle when state.ts calls the validator
+ * from its gate).
+ */
+export interface StagedActionShape {
+  id: string;
+  type: string;
+  status?: string;
+  payload: Record<string, unknown> | unknown;
+}
+
+export interface CascadeValidationError {
+  actionId: string;
+  type: string;
+  error: string;
+}
+
+export type CascadeValidationResult =
+  | { ok: true }
+  | { ok: false; errors: CascadeValidationError[] };
+
+/**
+ * Validate every `staged` action's payload against its registered Zod
+ * schema. Returns `{ ok: true }` when all pass; otherwise a detailed
+ * per-action error list so the caller (state.ts gate) can raise one
+ * `ThreadConvergenceGateError` naming every culprit at once — LLM
+ * callers self-correct in one revise op instead of guess-and-retry.
+ *
+ * Only actions with `status === "staged"` are inspected; already-
+ * committed/retracted/revised entries are past the gate or out of
+ * the promotion set.
+ */
+export function validateStagedActions(actions: ReadonlyArray<StagedActionShape>): CascadeValidationResult {
+  const errors: CascadeValidationError[] = [];
+  for (const a of actions) {
+    if (a.status && a.status !== "staged") continue;
+    const schema = (STAGED_ACTION_PAYLOAD_SCHEMAS as Record<string, z.ZodType>)[a.type];
+    if (!schema) {
+      errors.push({ actionId: a.id, type: a.type, error: `unknown autonomous action type "${a.type}"` });
+      continue;
+    }
+    const parsed = schema.safeParse(a.payload);
+    if (!parsed.success) {
+      const issues = parsed.error.issues
+        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("; ");
+      errors.push({ actionId: a.id, type: a.type, error: issues });
+    }
+  }
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}

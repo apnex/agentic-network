@@ -15,6 +15,7 @@ import { ThreadConvergenceGateError } from "../state.js";
 import type { DomainEvent } from "./types.js";
 import { callerLabels } from "./labels.js";
 import { LIST_PAGINATION_SCHEMA, LIST_LABELS_SCHEMA, applyLabelFilter, paginate } from "./list-filters.js";
+import { runCascade } from "./cascade.js";
 
 // ── Routing Mode Validation (M24-T2, INV-TH18) ──────────────────────
 /**
@@ -409,50 +410,44 @@ async function handleThreadConvergedWithAction(
   }
 
   const sourceThread = await ctx.stores.thread.getThread(threadId);
-  const inheritedLabels = sourceThread?.labels ?? (payload.labels as Record<string, string> | undefined) ?? {};
+  if (!sourceThread) {
+    console.error(`[ThreadPolicy] Cascade aborted: thread ${threadId} not found post-convergence`);
+    return;
+  }
+  const inheritedLabels = sourceThread.labels ?? (payload.labels as Record<string, string> | undefined) ?? {};
   // Include the thread's negotiated summary in audit details — Director
   // notification-A digest surfaces hub/architect audit entries and this
   // gives the human reader the actors' narrative without needing to
   // look the thread up separately.
-  const summaryForAudit = summary.trim() || "(no summary provided)";
+  const summaryForCascade = summary.trim() || sourceThread.summary?.trim() || "(no summary provided)";
 
-  // Mission-24 Phase 2 ConvergenceReport shape (ADR-014 §110):
-  // carried on thread_convergence_finalized. Distinct from
-  // Thread.summary (the negotiated narrative). `warning` fires on any
-  // partial failure; `executedCount` + `failedCount` are convenience
-  // counts so consumers don't recount the per-action entries.
-  const report: Array<{ actionId: string; type: string; status: "executed" | "failed"; error?: string; entityId?: string | null }> = [];
+  // Mission-24 Phase 2 (M24-T4, INV-TH19): validate-then-execute
+  // cascade. Validate phase already ran inside the store gate; this
+  // is the async execute phase. Handlers are registered by type in
+  // cascade.ts; each produces its own ConvergenceReportEntry with
+  // executed/failed/skipped_idempotent status. "Committed means
+  // committed" — per-action failures DO NOT abort the remaining
+  // actions; each gets its attempt, and the thread terminal
+  // classifies on the aggregate.
+  const cascadeResult = await runCascade(ctx, sourceThread, actions, summaryForCascade);
 
-  for (const action of actions) {
-    if (action.type === "close_no_action") {
-      const reason = action.payload.reason?.trim() || "(no reason provided)";
-      try {
-        await ctx.stores.audit.logEntry(
-          "hub",
-          "thread_close_no_action",
-          `Thread ${threadId} closed (close_no_action). Summary: ${summaryForAudit}. Reason: ${reason}`,
-          threadId,
-        );
-        report.push({ actionId: action.id, type: action.type, status: "executed", entityId: null });
-      } catch (err: any) {
-        report.push({ actionId: action.id, type: action.type, status: "failed", error: err?.message ?? String(err) });
-      }
-    } else {
-      // Phase 1: vocabulary limited to close_no_action at the stage tool,
-      // so this branch is unreachable under normal operation. Guard
-      // defensively for Phase 2 widening.
-      report.push({ actionId: action.id, type: action.type, status: "failed", error: `Phase 1 does not support action type "${action.type}"` });
-    }
+  // Terminal transition per ADR-014 INV-TH19: any handler failure →
+  // cascade_failed (audit + terminal); all succeeded/skipped → closed.
+  if (cascadeResult.anyFailure) {
+    await ctx.stores.thread.markCascadeFailed(threadId);
+    await ctx.stores.audit.logEntry(
+      "hub",
+      "thread_cascade_failed",
+      `Thread ${threadId} cascade_failed: ${cascadeResult.failedCount}/${actions.length} handler failure(s). Summary: ${summaryForCascade}.`,
+      threadId,
+    );
+  } else {
+    await ctx.stores.thread.closeThread(threadId);
   }
-
-  await ctx.stores.thread.closeThread(threadId);
-
-  const executedCount = report.filter((r) => r.status === "executed").length;
-  const failedCount = report.length - executedCount;
 
   // INV-TH16: cascade completion is participant-internal. Scope to thread
   // participants so engineer↔engineer threads don't notify unrelated roles.
-  const participantSource = sourceThread?.participants
+  const participantSource = sourceThread.participants
     ?? (payload.participants as Array<{ agentId?: string | null }> | undefined)
     ?? [];
   const cascadeParticipantIds = participantSource
@@ -472,13 +467,17 @@ async function handleThreadConvergedWithAction(
     intent,
     summary,
     committedActionCount: actions.length,
-    executedCount,
-    failedCount,
-    warning: failedCount > 0,
-    report,
+    executedCount: cascadeResult.executedCount,
+    failedCount: cascadeResult.failedCount,
+    skippedCount: cascadeResult.skippedCount,
+    warning: cascadeResult.anyFailure,
+    threadTerminal: cascadeResult.anyFailure ? "cascade_failed" : "closed",
+    report: cascadeResult.report,
   }, finalizedSelector);
 
-  console.log(`[ThreadPolicy] Cascade finalized for ${threadId}: ${executedCount}/${actions.length} executed`);
+  console.log(
+    `[ThreadPolicy] Cascade finalized for ${threadId}: ${cascadeResult.executedCount}/${actions.length} executed, ${cascadeResult.failedCount} failed, ${cascadeResult.skippedCount} skipped`,
+  );
 }
 
 // ── Registration ────────────────────────────────────────────────────

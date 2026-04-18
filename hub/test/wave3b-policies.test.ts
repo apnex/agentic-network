@@ -1189,3 +1189,226 @@ describe("ThreadPolicy — routingMode enforcement (M24-T2)", () => {
     expect(t.context).toEqual({ entityType: "task", entityId: "task-1" });
   });
 });
+
+// ── Mission-24 Phase 2 (M24-T4, INV-TH19): validate-then-execute ─────
+
+describe("ThreadPolicy — cascade infrastructure (M24-T4)", () => {
+  let router: PolicyRouter;
+  let archCtx: IPolicyContext;
+  let engCtx: IPolicyContext;
+  let eng2Ctx: IPolicyContext;
+
+  beforeEach(() => {
+    router = new PolicyRouter(noop);
+    registerThreadPolicy(router);
+
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+    engCtx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
+    eng2Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-2" });
+    archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
+    archCtx.stores.engineerRegistry.setSessionRole("s-eng-1", "engineer");
+    archCtx.stores.engineerRegistry.setSessionRole("s-eng-2", "engineer");
+  });
+
+  /** Open a thread, then reach the bilateral-convergence precondition
+   * (engineer stages a close_no_action + authors summary, architect
+   * has NOT yet converged). Caller finishes by calling architect's
+   * converge on the returned threadId. */
+  async function stageForConvergence(options: {
+    stagedActions?: Array<Record<string, unknown>>;
+    summary?: string;
+  } = {}): Promise<string> {
+    const r = await router.handle("create_thread", { title: "t", message: "m" }, archCtx);
+    const threadId = JSON.parse(r.content[0].text).threadId;
+    await router.handle("create_thread_reply", {
+      threadId,
+      message: "agreed",
+      converged: true,
+      summary: options.summary ?? "Agreed.",
+      stagedActions: options.stagedActions ?? [
+        { kind: "stage", type: "close_no_action", payload: { reason: "done" } },
+      ],
+    }, engCtx);
+    return threadId;
+  }
+
+  // ── Validate phase ────────────────────────────────────────────
+
+  it("validate phase accepts well-formed close_no_action payload", async () => {
+    const threadId = await stageForConvergence();
+    const r = await router.handle("create_thread_reply", {
+      threadId, message: "confirmed", converged: true,
+    }, archCtx);
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(["converged", "closed"]).toContain(parsed.status);
+  });
+
+  it("validate phase rejects convergence when a staged payload is structurally invalid (direct store injection)", async () => {
+    // Simulate an in-store thread whose staged payload was valid when
+    // accepted by an older tool schema but is no longer well-formed
+    // against the current Zod validator. The gate's
+    // validateStagedActions() catches it before promoting to committed.
+    const r = await router.handle("create_thread", { title: "t", message: "m" }, archCtx);
+    const threadId = JSON.parse(r.content[0].text).threadId;
+    // Engineer stages valid close_no_action + converges (round 2)
+    await router.handle("create_thread_reply", {
+      threadId, message: "agreed", converged: true,
+      summary: "Agreed; closing.",
+      stagedActions: [{ kind: "stage", type: "close_no_action", payload: { reason: "ok" } }],
+    }, engCtx);
+
+    // Poison the staged payload so validate phase fires at the gate.
+    const store = archCtx.stores.thread as any;
+    const poisoned = store.threads.get(threadId);
+    poisoned.convergenceActions[0].payload = {}; // drop `reason`
+
+    // Architect converges (round 3) → gate runs validate → rejects.
+    const badConverge = await router.handle("create_thread_reply", {
+      threadId, message: "arch converge", converged: true,
+    }, archCtx);
+    expect(badConverge.isError).toBe(true);
+    const parsed = JSON.parse(badConverge.content[0].text);
+    expect(parsed.error).toMatch(/staged action validation failed/);
+    expect(parsed.error).toMatch(/reason/);
+
+    // Thread did NOT transition; staged action stays staged.
+    const final = JSON.parse((await router.handle("get_thread", { threadId }, archCtx)).content[0].text);
+    expect(final.status).toBe("active");
+    expect(final.convergenceActions[0].status).toBe("staged");
+  });
+
+  // ── Execute phase + ConvergenceReport ────────────────────────
+
+  it("execute phase produces a ConvergenceReport entry per committed action", async () => {
+    const threadId = await stageForConvergence();
+    await router.handle("create_thread_reply", {
+      threadId, message: "confirmed", converged: true,
+    }, archCtx);
+
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized).toBeDefined();
+    expect(finalized.data.report).toHaveLength(1);
+    expect(finalized.data.report[0].actionId).toBe("action-1");
+    expect(finalized.data.report[0].type).toBe("close_no_action");
+    expect(finalized.data.report[0].status).toBe("executed");
+  });
+
+  it("execute phase with all-success transitions thread to closed, not cascade_failed", async () => {
+    const threadId = await stageForConvergence();
+    await router.handle("create_thread_reply", {
+      threadId, message: "confirmed", converged: true,
+    }, archCtx);
+
+    const final = JSON.parse((await router.handle("get_thread", { threadId }, archCtx)).content[0].text);
+    expect(final.status).toBe("closed");
+    expect(final.status).not.toBe("cascade_failed");
+
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.threadTerminal).toBe("closed");
+    expect(finalized.data.warning).toBe(false);
+  });
+
+  it("markCascadeFailed transitions converged → cascade_failed", async () => {
+    // Open + get to converged, then directly invoke markCascadeFailed
+    // and verify the FSM transition. Exercises the store primitive that
+    // runCascade calls when any handler fails.
+    const threadId = await stageForConvergence();
+    await router.handle("create_thread_reply", {
+      threadId, message: "confirmed", converged: true,
+    }, archCtx);
+    // The happy path closed the thread — force it back to converged
+    // via direct store mutation so we can test the primitive.
+    const store = archCtx.stores.thread as any;
+    store.threads.get(threadId).status = "converged";
+    const ok = await archCtx.stores.thread.markCascadeFailed(threadId);
+    expect(ok).toBe(true);
+    const final = JSON.parse((await router.handle("get_thread", { threadId }, archCtx)).content[0].text);
+    expect(final.status).toBe("cascade_failed");
+  });
+
+  it("markCascadeFailed returns false for non-converged threads", async () => {
+    // Open an active thread; it's not eligible for cascade_failed
+    // transition from the closed-state perspective. Method accepts
+    // {active, converged} to allow late failure detection.
+    const r = await router.handle("create_thread", { title: "t", message: "m" }, archCtx);
+    const threadId = JSON.parse(r.content[0].text).threadId;
+    // Active thread — allowed
+    const okActive = await archCtx.stores.thread.markCascadeFailed(threadId);
+    expect(okActive).toBe(true);
+    // Now cascade_failed — further transitions rejected
+    const rejectFromTerminal = await archCtx.stores.thread.markCascadeFailed(threadId);
+    expect(rejectFromTerminal).toBe(false);
+  });
+
+  it("markCascadeFailed returns false for non-existent threadId", async () => {
+    const ok = await archCtx.stores.thread.markCascadeFailed("thread-does-not-exist");
+    expect(ok).toBe(false);
+  });
+
+  // ── Direct runCascade exercise (unit-test the infrastructure) ──
+
+  it("runCascade with unknown action type yields failed report entry", async () => {
+    const { runCascade } = await import("../src/policy/cascade.js");
+    const threadId = await stageForConvergence();
+    const thread = await archCtx.stores.thread.getThread(threadId);
+    const fakeActions = [
+      {
+        id: "action-99", type: "imaginary_type" as any, status: "committed" as const,
+        proposer: { role: "engineer" as const, agentId: null }, timestamp: "2026-04-18T00:00:00.000Z",
+        payload: {},
+      },
+    ];
+    const result = await runCascade(archCtx, thread!, fakeActions as any, "test summary");
+    expect(result.report).toHaveLength(1);
+    expect(result.report[0].status).toBe("failed");
+    expect(result.report[0].error).toMatch(/no cascade handler registered/);
+    expect(result.anyFailure).toBe(true);
+  });
+
+  it("runCascade mixes executed + failed entries into the same report", async () => {
+    const { runCascade } = await import("../src/policy/cascade.js");
+    const threadId = await stageForConvergence();
+    const thread = await archCtx.stores.thread.getThread(threadId);
+    const actions = [
+      {
+        id: "action-1", type: "close_no_action" as const, status: "committed" as const,
+        proposer: { role: "engineer" as const, agentId: null }, timestamp: "2026-04-18T00:00:00.000Z",
+        payload: { reason: "valid" },
+      },
+      {
+        id: "action-2", type: "unknown" as any, status: "committed" as const,
+        proposer: { role: "engineer" as const, agentId: null }, timestamp: "2026-04-18T00:00:00.000Z",
+        payload: {},
+      },
+    ];
+    const result = await runCascade(archCtx, thread!, actions as any, "s");
+    expect(result.executedCount).toBe(1);
+    expect(result.failedCount).toBe(1);
+    expect(result.anyFailure).toBe(true);
+    expect(result.report.map((r: any) => r.status)).toEqual(["executed", "failed"]);
+  });
+
+  it("registerCascadeHandler + getCascadeHandler round-trips", async () => {
+    const { registerCascadeHandler, getCascadeHandler } = await import("../src/policy/cascade.js");
+    const fn = async () => ({ status: "executed" as const, entityId: null });
+    // Use an unused-in-practice handler slot to avoid poisoning the
+    // in-process registry. Register under create_clarification (no
+    // built-in handler in this task) and restore afterward.
+    const before = getCascadeHandler("create_clarification");
+    registerCascadeHandler("create_clarification", fn);
+    expect(getCascadeHandler("create_clarification")).toBe(fn);
+    // Restore
+    if (before) registerCascadeHandler("create_clarification", before);
+  });
+
+  it("cascadeIdempotencyKey returns {sourceThreadId, sourceActionId}", async () => {
+    const { cascadeIdempotencyKey } = await import("../src/policy/cascade.js");
+    const threadId = await stageForConvergence();
+    const thread = await archCtx.stores.thread.getThread(threadId);
+    const action = thread!.convergenceActions[0];
+    const key = cascadeIdempotencyKey(thread!, action);
+    expect(key.sourceThreadId).toBe(thread!.id);
+    expect(key.sourceActionId).toBe(action.id);
+  });
+});
