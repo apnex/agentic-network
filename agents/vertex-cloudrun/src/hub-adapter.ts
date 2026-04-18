@@ -172,15 +172,7 @@ export class HubAdapter {
     }
   }
 
-  async createThreadReply(
-    threadId: string,
-    message: string,
-    converged: boolean = false,
-    intent?: string
-  ): Promise<unknown> {
-    const args: Record<string, unknown> = { threadId, message };
-    if (converged) args.converged = true;
-    if (intent) args.intent = intent;
+  async createThreadReply(args: Record<string, unknown>): Promise<unknown> {
     return await this.callTool("create_thread_reply", args);
   }
 

@@ -8,7 +8,14 @@
 
 import { HubAdapter } from "./hub-adapter.js";
 import { ContextStore } from "./context.js";
-import { generateText } from "./llm.js";
+import {
+  MAX_TOOL_ROUNDS_SENTINEL,
+  filterToolsByName,
+  generateText,
+  generateWithTools,
+  mcpToolsToFunctionDeclarations,
+  type ToolExecutor,
+} from "./llm.js";
 
 export async function sandwichReviewReport(
   hub: HubAdapter,
@@ -234,110 +241,163 @@ export async function sandwichThreadReply(
       framingInstruction = framings[semanticIntent] || framingInstruction;
     }
 
-    // 2. REASON — let the LLM write freely, with metadata tags at the end
+    // 2. REASON — tool-driven: the LLM drives convergence by invoking
+    // create_thread_reply with the real Hub schema (Threads 2.0, ADR-013).
+    // Tool surface is narrowed to avoid spawning tasks/proposals during
+    // ideation — cascade work belongs to sandwichThreadConverged.
+    const THREAD_REPLY_TOOLS = ["create_thread_reply", "get_document"];
+    const allTools = (await hub.listTools()) as Array<{
+      name: string;
+      description?: string;
+      inputSchema?: Record<string, unknown>;
+    }>;
+    const functionDeclarations = mcpToolsToFunctionDeclarations(
+      filterToolsByName(allTools, THREAD_REPLY_TOOLS),
+    );
+    if (functionDeclarations.length === 0) {
+      console.error(
+        `[Sandwich] No thread-reply tools available for ${threadId} — aborting`,
+      );
+      await hub.createAuditEntry(
+        "auto_thread_reply_failed",
+        `Thread reply aborted for ${threadId}: Hub advertised no create_thread_reply tool`,
+        threadId,
+      );
+      return;
+    }
+
+    // Capture the actual create_thread_reply invocation so we can log the
+    // committed payload and update context summary on convergence.
+    let replyArgs: Record<string, unknown> | null = null;
+    let replyResult: Record<string, unknown> | null = null;
+
+    const allowSet = new Set(THREAD_REPLY_TOOLS);
+    const executeToolCall: ToolExecutor = async (name, args) => {
+      // Defensive allow-list: Gemini occasionally reaches for tools named
+      // in the system prompt even when not declared here (observed 2026-04-18
+      // with create_audit_entry). Reject them at the executor so the LLM
+      // sees the error and self-corrects back to the intended surface.
+      if (!allowSet.has(name)) {
+        console.warn(
+          `[Sandwich] thread-reply LLM attempted out-of-scope tool ${name} — rejecting`,
+        );
+        return {
+          error: `Tool ${name} is not available in this context. Only [${THREAD_REPLY_TOOLS.join(", ")}] are permitted on a thread reply. Post your reply via create_thread_reply.`,
+        };
+      }
+      try {
+        if (name === "create_thread_reply") {
+          replyArgs = args;
+        }
+        const result = await hub.callTool(name, args);
+        const wrapped =
+          typeof result === "object" && result !== null
+            ? (result as Record<string, unknown>)
+            : { output: result };
+        const succeeded =
+          !("error" in wrapped) && (wrapped as Record<string, unknown>).success !== false;
+        if (name === "create_thread_reply" && succeeded) {
+          replyResult = wrapped;
+        }
+        return wrapped;
+      } catch (err: any) {
+        return { error: err.message || String(err) };
+      }
+    };
+
     const prompt =
       `You are the Architect participating in ideation thread '${thread.title || ""}' (${threadId}).\n` +
       `Round ${thread.roundCount || "?"}/${thread.maxRounds || "?"}.\n\n` +
       `--- THREAD HISTORY ---${messagesText}--- END HISTORY ---\n` +
-      (documentContext ? `\nThe following documents were referenced in the thread and have been pre-loaded for your review:${documentContext}\n` : "") +
+      (documentContext
+        ? `\nThe following documents were referenced in the thread and have been pre-loaded for your review:${documentContext}\n`
+        : "") +
       `\n${framingInstruction}\n\n` +
-      `IMPORTANT: You do NOT have access to tools in this context. All referenced documents have been pre-loaded above. ` +
-      `Base your response on the thread history, any pre-loaded documents, and your project context.\n\n` +
-      `After your full response, add these two metadata lines at the very end:\n` +
-      `CONVERGED: true (if you fully agree) or false\n` +
-      `INTENT: one of decision_needed, agreement_pending, director_input, implementation_ready, or none`;
+      `You MUST post your reply by calling the create_thread_reply tool exactly once for this thread. ` +
+      `Compose the reply in the tool's \`message\` parameter — do NOT write a free-form response. ` +
+      `Set \`converged: true\` only when you fully agree with the Engineer's latest position; otherwise omit or set false. ` +
+      `When converging, you MUST also populate \`stagedActions\` (at minimum [{"kind":"stage","type":"close_no_action","payload":{"reason":"<short rationale>"}}]) ` +
+      `AND author a non-empty \`summary\` narrating the thread's agreed outcome — the Hub gate will reject the call otherwise. ` +
+      `Set \`intent\` to one of decision_needed, agreement_pending, director_input, implementation_ready when appropriate. ` +
+      `If you need additional document context beyond what's pre-loaded, call get_document first, then call create_thread_reply.`;
 
     let result: string;
     try {
-      result = await generateText(prompt, contextSupplement);
+      const out = await generateWithTools(
+        [],
+        prompt,
+        functionDeclarations,
+        executeToolCall,
+        contextSupplement,
+      );
+      result = out.text;
     } catch (err) {
       console.error(`[Sandwich] LLM generation failed for thread ${threadId}:`, err);
       await hub.createAuditEntry(
         "auto_thread_reply_failed",
         `Thread reply LLM failed for ${threadId}: ${err instanceof Error ? err.message : String(err)}`,
-        threadId
+        threadId,
       );
       return;
     }
 
-    // Guard: never post empty replies
-    if (!result || !result.trim()) {
-      console.error(`[Sandwich] LLM returned empty text for thread ${threadId} — skipping reply`);
+    if (result === MAX_TOOL_ROUNDS_SENTINEL) {
+      console.error(
+        `[Sandwich] Thread reply for ${threadId} hit MAX_TOOL_ROUNDS before completing`,
+      );
       await hub.createAuditEntry(
-        "auto_thread_reply_empty",
-        `Thread reply skipped for ${threadId}: LLM returned empty response`,
-        threadId
+        "auto_thread_reply_failed",
+        `Thread reply for ${threadId} exceeded tool-call rounds without converging`,
+        threadId,
       );
       return;
     }
 
-    // Parse metadata from the end of the response, keep everything else as the reply
-    let responseText = result;
-    let converged = false;
-    let intent: string | undefined;
-
-    const lines = result.split("\n");
-
-    // Scan from the bottom for metadata tags (last 5 lines)
-    const metadataStart = Math.max(0, lines.length - 5);
-    const metadataLines: number[] = [];
-
-    for (let i = metadataStart; i < lines.length; i++) {
-      const stripped = lines[i].trim();
-      if (stripped.startsWith("CONVERGED:")) {
-        converged = stripped.toLowerCase().includes("true");
-        metadataLines.push(i);
-      } else if (stripped.startsWith("INTENT:")) {
-        const val = stripped.split(":")[1]?.trim().toLowerCase();
-        if (
-          val &&
-          [
-            "decision_needed",
-            "agreement_pending",
-            "director_input",
-            "implementation_ready",
-          ].includes(val)
-        ) {
-          intent = val;
-        }
-        metadataLines.push(i);
-      }
-    }
-
-    // Remove metadata lines from the response text
-    if (metadataLines.length > 0) {
-      const firstMeta = Math.min(...metadataLines);
-      responseText = lines.slice(0, firstMeta).join("\n").trim();
-    }
-
-    // Final guard after metadata stripping
-    if (!responseText) {
-      console.error(`[Sandwich] LLM response for thread ${threadId} was only metadata — skipping reply`);
+    if (!replyArgs) {
+      console.error(
+        `[Sandwich] LLM did not call create_thread_reply for ${threadId} — skipping`,
+      );
       await hub.createAuditEntry(
-        "auto_thread_reply_empty",
-        `Thread reply skipped for ${threadId}: response was metadata-only`,
-        threadId
+        "auto_thread_reply_skipped",
+        `Thread reply skipped for ${threadId}: LLM finished without invoking create_thread_reply`,
+        threadId,
       );
       return;
     }
 
-    // 3. EXECUTE
-    await hub.createThreadReply(threadId, responseText, converged, intent);
+    const committedArgs: Record<string, unknown> = replyArgs;
+    if (!replyResult) {
+      console.error(
+        `[Sandwich] create_thread_reply for ${threadId} did not succeed; see tool response in LLM history`,
+      );
+      await hub.createAuditEntry(
+        "auto_thread_reply_failed",
+        `Thread reply for ${threadId} rejected by Hub — args: ${JSON.stringify(committedArgs).substring(0, 500)}`,
+        threadId,
+      );
+      return;
+    }
+
+    const converged = committedArgs.converged === true;
+    const replyMessage = typeof committedArgs.message === "string" ? committedArgs.message : "";
+
     await hub.createAuditEntry(
       "auto_thread_reply",
       `Replied to thread ${threadId} (converged=${converged})`,
-      threadId
+      threadId,
     );
 
     if (converged) {
       await context.appendThreadSummary(
         threadId,
         (thread.title as string) || "",
-        `Converged. Last response: ${responseText.substring(0, 200)}`
+        `Converged. Last response: ${replyMessage.substring(0, 200)}`,
       );
     }
 
-    console.log(`[Sandwich] Thread reply complete for ${threadId} (${responseText.length} chars)`);
+    console.log(
+      `[Sandwich] Thread reply complete for ${threadId} (${replyMessage.length} chars, converged=${converged})`,
+    );
   } catch (err) {
     console.error(`[Sandwich] Thread reply failed for ${threadId}:`, err);
   }
@@ -360,6 +420,27 @@ export async function sandwichThreadConverged(
     // Guard: skip if Hub cascade already handled this thread (closed it)
     if (thread.status === "closed") {
       console.log(`[Sandwich] Thread ${threadId} already closed (Hub cascade handled) — skipping`);
+      return;
+    }
+
+    // Threads 2.0: defer to committed convergenceActions when present.
+    // The Hub's policy-layer cascade (handleThreadConvergedWithAction)
+    // owns the authoritative post-convergence work for each action type;
+    // the Architect must not synthesise a secondary directive when the
+    // thread explicitly agreed on close_no_action. When Phase 2 adds
+    // create_task / create_proposal action types the Hub cascade will
+    // also execute those directly, making this sandwich redundant for
+    // any machine-readable convergence.
+    const committedActions = Array.isArray(thread.convergenceActions)
+      ? (thread.convergenceActions as Array<{ type?: string; status?: string }>).filter(
+          (a) => a.status === "committed",
+        )
+      : [];
+    if (committedActions.length > 0) {
+      const types = committedActions.map((a) => a.type ?? "unknown").join(", ");
+      console.log(
+        `[Sandwich] Thread ${threadId} converged with committed actions [${types}] — Hub cascade owns follow-up; skipping legacy directive spawn`,
+      );
       return;
     }
 

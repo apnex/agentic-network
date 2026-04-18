@@ -210,8 +210,14 @@ function trimSessionHistory(history: Content[], max: number): Content[] {
   return [];
 }
 
-// Cached function declarations from Hub tools
+// Function declarations discovered from Hub tools. Cached with a short
+// TTL so schema changes on Hub redeploy propagate without an Architect
+// restart — lifetime caching previously pinned Director-chat to the
+// tools/list snapshot taken at container boot, which broke the moment
+// the Hub added new fields (e.g. Threads 2.0 stagedActions/summary).
 let cachedFunctionDeclarations: FunctionDeclaration[] = [];
+let functionDeclarationsRefreshedAt = 0;
+const FUNCTION_DECLARATIONS_TTL_MS = 60_000;
 
 export function createDirectorChatRouter(
   hub: HubAdapter,
@@ -278,8 +284,12 @@ export function createDirectorChatRouter(
       }
     }
 
-    // Discover tools (cache after first call)
-    if (cachedFunctionDeclarations.length === 0 && hub.isConnected) {
+    // Discover tools — refresh whenever cache is empty or older than TTL.
+    const now = Date.now();
+    const cacheStale =
+      cachedFunctionDeclarations.length === 0 ||
+      now - functionDeclarationsRefreshedAt > FUNCTION_DECLARATIONS_TTL_MS;
+    if (cacheStale && hub.isConnected) {
       try {
         const tools = await hub.listTools();
         cachedFunctionDeclarations = mcpToolsToFunctionDeclarations(
@@ -289,11 +299,12 @@ export function createDirectorChatRouter(
             inputSchema?: Record<string, unknown>;
           }>
         );
+        functionDeclarationsRefreshedAt = now;
         console.log(
-          `[DirectorChat] Cached ${cachedFunctionDeclarations.length} function declarations`
+          `[DirectorChat] Refreshed ${cachedFunctionDeclarations.length} function declarations`
         );
       } catch {
-        console.warn("[DirectorChat] Failed to discover tools");
+        console.warn("[DirectorChat] Failed to refresh tools");
       }
     }
 

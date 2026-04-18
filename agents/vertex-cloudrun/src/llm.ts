@@ -72,11 +72,20 @@ Guidelines:
 - When reviewing reports or proposals, provide substantive architectural feedback.
 - Log all autonomous actions via create_audit_entry.
 
-Threads 2.0 — convergence discipline (ADR-013, Mission-21 Phase 1, deployed 2026-04-18):
-When you reply on an ideation thread using create_thread_reply, the converged=true flag is gated by the Hub's policy layer. Two conditions MUST BOTH be satisfied at the moment you converge, or the call is rejected with ThreadConvergenceGateError and you will see "Thread convergence rejected: …" in the error response:
-1. The thread must have at least one committed convergenceAction. Use the stagedActions parameter to attach one: [{"kind":"stage","type":"close_no_action","payload":{"reason":"<short rationale>"}}]. Phase 1 vocabulary is limited to close_no_action — if the thread genuinely produces no downstream artefact, this is the correct choice and the reason field carries the audit rationale.
-2. The thread.summary must be non-empty. Use the summary parameter to author a short negotiated narrative of what the thread agreed. Summary accumulates across rounds — once either party sets it, it persists; later replies can refine via the same parameter.
-Either party can stage or revise across rounds — the converging party commits. If you are converging second (partner already signalled converged=true in the prior reply), the thread state must already contain a staged action and a non-empty summary from your partner or your own prior rounds. Check the response shape of create_thread_reply — it echoes convergenceActions[] and summary so you can see what's staged.
+Threads 2.0 — convergence discipline (ADR-013, Mission-21 Phase 1):
+When you reply on an ideation thread using create_thread_reply, the converged=true flag is gated by the Hub's policy layer. At converged=true the tool call is rejected with "Thread convergence rejected: …" unless BOTH conditions below are satisfied. This is a hard, machine-enforced gate — narrating compliance in the message field does NOT satisfy it; only populated tool-call parameters do.
+1. stagedActions must contain at least one committed action. Phase 1 vocabulary is limited to close_no_action. When the thread produces no downstream artefact, stage one: [{"kind":"stage","type":"close_no_action","payload":{"reason":"<short rationale>"}}].
+2. summary must be a non-empty string narrating the thread's agreed outcome. Summary accumulates across rounds — once either party sets it, it persists; later replies can refine via the same parameter.
+Canonical converging call:
+  create_thread_reply({
+    threadId: "thread-NNN",
+    message: "<your substantive reply>",
+    converged: true,
+    intent: "implementation_ready",
+    summary: "<one- or two-sentence record of the consensus>",
+    stagedActions: [{"kind":"stage","type":"close_no_action","payload":{"reason":"<why no downstream artefact>"}}]
+  })
+Either party can stage or revise across rounds — the converging party commits. If you are converging second (partner already signalled converged=true in the prior reply), the thread state must already contain a staged action and a non-empty summary from your partner or your own prior rounds. The create_thread_reply response echoes convergenceActions[] and summary so you can see what's currently staged.
 NEVER rely on prose promises inside the message field to create tasks, proposals, missions, or any other entity after convergence — the cascade only executes the machine-readable convergenceActions. Prose promises are silently dropped (this failure mode was observed 4 times in 27 hours before Threads 2.0 shipped). If the thread needs a downstream task / proposal / idea / mission spawned, Phase 2 (not yet deployed) will add those action types; until then the explicit path is: converge with close_no_action, then CALL the relevant tool (create_task, create_idea, etc.) directly in the same or a subsequent response.
 If you see ThreadConvergenceGateError in a tool response, read the error message — it tells you exactly which condition (missing action, empty summary, or both) to fix. Retry with the correct parameters; do NOT retry with identical parameters.`;
 
@@ -213,6 +222,14 @@ function buildGeminiSchema(prop: Record<string, unknown>): GeminiSchema {
     schema.items = buildGeminiSchema(itemsNode);
   }
   return schema;
+}
+
+export function filterToolsByName<T extends { name: string }>(
+  tools: T[],
+  allowedNames: string[],
+): T[] {
+  const allow = new Set(allowedNames);
+  return tools.filter((t) => allow.has(t.name));
 }
 
 export function mcpToolsToFunctionDeclarations(
