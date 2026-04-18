@@ -562,3 +562,97 @@ describe("ThreadPolicy — Threads 2.0 (Mission-21 Phase 1)", () => {
     expect(stagedStill.length).toBe(0);
   });
 });
+
+// ── Mission-21 Phase 1 (INV-TH16): participant-scoped routing ─────────
+
+describe("ThreadPolicy — participant-scoped dispatch (INV-TH16)", () => {
+  let router: PolicyRouter;
+  let archCtx: IPolicyContext;
+  let eng1Ctx: IPolicyContext;
+  let eng2Ctx: IPolicyContext;
+  let archId: string;
+  let eng1Id: string;
+  let eng2Id: string;
+
+  beforeEach(async () => {
+    router = new PolicyRouter(noop);
+    registerThreadPolicy(router);
+
+    // Shared store pool — one engineerRegistry with three real M18 Agents.
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+    eng1Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
+    eng2Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-2" });
+
+    const reg = archCtx.stores.engineerRegistry;
+    const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
+    const archReg = await reg.registerAgent("s-arch", "architect", {
+      globalInstanceId: "inst-arch", role: "architect", clientMetadata: client,
+    });
+    const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", {
+      globalInstanceId: "inst-eng-1", role: "engineer", clientMetadata: client,
+    });
+    const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", {
+      globalInstanceId: "inst-eng-2", role: "engineer", clientMetadata: client,
+    });
+    archId = archReg.engineerId;
+    eng1Id = eng1Reg.engineerId;
+    eng2Id = eng2Reg.engineerId;
+  });
+
+  it("open without recipientAgentId falls back to role broadcast", async () => {
+    await router.handle("create_thread", { title: "T", message: "M" }, eng1Ctx);
+    const openEvent = (eng1Ctx as any).dispatchedEvents.find((e: any) => e.event === "thread_message");
+    expect(openEvent).toBeDefined();
+    expect(openEvent.selector.roles).toEqual(["architect"]);
+    expect(openEvent.selector.engineerIds).toBeUndefined();
+  });
+
+  it("open with recipientAgentId pins dispatch to that engineerId and omits role broadcast", async () => {
+    await router.handle("create_thread", {
+      title: "eng↔eng",
+      message: "hey eng-2",
+      recipientAgentId: eng2Id,
+    }, eng1Ctx);
+    const openEvent = (eng1Ctx as any).dispatchedEvents.find((e: any) => e.event === "thread_message");
+    expect(openEvent).toBeDefined();
+    expect(openEvent.selector.engineerIds).toEqual([eng2Id]);
+    expect(openEvent.selector.roles).toBeUndefined();
+  });
+
+  it("reply dispatch scopes to non-author participants by engineerId", async () => {
+    // eng-1 opens with recipientAgentId=eng-2 → participants now include eng-1 only.
+    const openResult = await router.handle("create_thread", {
+      title: "eng↔eng",
+      message: "open",
+      recipientAgentId: eng2Id,
+    }, eng1Ctx);
+    const threadId = JSON.parse(openResult.content[0].text).threadId;
+    // eng-2 replies.
+    (eng2Ctx as any).dispatchedEvents.length = 0;
+    await router.handle("create_thread_reply", { threadId, message: "hi back" }, eng2Ctx);
+    const replyEvent = (eng2Ctx as any).dispatchedEvents.find((e: any) => e.event === "thread_message");
+    expect(replyEvent).toBeDefined();
+    // Target is participants minus author = [eng-1].
+    expect(replyEvent.selector.engineerIds).toEqual([eng1Id]);
+    expect(replyEvent.selector.roles).toBeUndefined();
+  });
+
+  it("reply dispatch falls back to role when no participant has a resolved agentId", async () => {
+    // Simulate legacy thread where nobody has an M18 Agent (agentId=null).
+    // Use setSessionRole directly to populate the role map — this is what
+    // the legacy register_role path does without creating an Agent entity.
+    const legacyArch = createTestContext({ role: "architect", sessionId: "legacy-arch" });
+    const legacyEng = createTestContext({ stores: legacyArch.stores, role: "engineer", sessionId: "legacy-eng" });
+    legacyArch.stores.engineerRegistry.setSessionRole("legacy-arch", "architect");
+    legacyArch.stores.engineerRegistry.setSessionRole("legacy-eng", "engineer");
+    const openResult = await router.handle("create_thread", { title: "L", message: "M" }, legacyArch);
+    const threadId = JSON.parse(openResult.content[0].text).threadId;
+    (legacyEng as any).dispatchedEvents.length = 0;
+    await router.handle("create_thread_reply", { threadId, message: "eng reply" }, legacyEng);
+    const replyEvent = (legacyEng as any).dispatchedEvents.find((e: any) => e.event === "thread_message");
+    expect(replyEvent).toBeDefined();
+    // All participants have agentId=null, so fallback to role.
+    expect(replyEvent.selector.roles).toEqual(["architect"]);
+    expect(replyEvent.selector.engineerIds).toBeUndefined();
+  });
+});

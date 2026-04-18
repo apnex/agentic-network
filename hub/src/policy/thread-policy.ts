@@ -24,6 +24,7 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
   const maxRounds = (args.maxRounds as number) || 10;
   const correlationId = args.correlationId as string | undefined;
   const _semanticIntent = args.semanticIntent as string | undefined;
+  const recipientAgentId = (args.recipientAgentId as string | undefined) ?? null;
 
   const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
   const author: ThreadAuthor = callerRole === "engineer" ? "engineer" : "architect";
@@ -33,16 +34,42 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
   // seed the participants[] array with a full {role, agentId} entry.
   const agent = await (ctx.stores.engineerRegistry as any).getAgentForSession?.(ctx.sessionId).catch(() => null);
   const authorAgentId: string | null = agent?.engineerId ?? null;
-  const thread = await ctx.stores.thread.openThread(title, message, author, maxRounds, correlationId, labels, authorAgentId);
+  // INV-TH17: when the opener pinned a recipientAgentId, resolve that
+  // agent's role from the registry so openThread can set currentTurn
+  // correctly — otherwise engineer↔engineer threads would incorrectly
+  // flip to "architect" via the legacy formula.
+  let recipientRole: ThreadAuthor | null = null;
+  if (recipientAgentId) {
+    const recipientAgent = await (ctx.stores.engineerRegistry as any).getAgent?.(recipientAgentId).catch(() => null);
+    if (recipientAgent && (recipientAgent.role === "architect" || recipientAgent.role === "engineer")) {
+      recipientRole = recipientAgent.role;
+    }
+  }
+  const thread = await ctx.stores.thread.openThread(title, message, author, {
+    maxRounds,
+    correlationId,
+    labels,
+    authorAgentId,
+    recipientAgentId,
+    recipientRole,
+  });
 
-  const targetRole = author === "architect" ? "engineer" : "architect";
+  // Mission-21 Phase 1 (INV-TH16): when the opener named a specific
+  // recipientAgentId, pin the open-time dispatch to that agent so
+  // other agents sharing the role/labels don't get spammed. This is
+  // the only way engineer↔engineer threads achieve isolation on the
+  // first notification (before participants[] carries both parties).
+  // Without recipientAgentId we preserve legacy role+label broadcast.
+  const openSelector = recipientAgentId
+    ? { engineerIds: [recipientAgentId], matchLabels: thread.labels }
+    : { roles: [author === "architect" ? "engineer" : "architect"] as any, matchLabels: thread.labels };
   await ctx.dispatch("thread_message", {
     threadId: thread.id,
     title: thread.title,
     author,
     message: message.substring(0, 200),
     currentTurn: thread.currentTurn,
-  }, { roles: [targetRole], matchLabels: thread.labels });
+  }, openSelector);
 
   return {
     content: [{
@@ -102,16 +129,26 @@ async function createThreadReply(args: Record<string, unknown>, ctx: IPolicyCont
     };
   }
 
-  // Notify the other party (unless thread just converged or hit limit)
+  // Notify the other participants (unless thread just converged or hit limit).
+  // Mission-21 Phase 1 (INV-TH16): dispatch is participant-scoped —
+  // every non-author participant with a known agentId gets the event,
+  // nobody else. Agents that joined via legacy (pre-M18) handshake
+  // carry agentId=null; if every participant is pre-M18 we fall back
+  // to role broadcast so the thread still progresses.
   if (thread.status === "active") {
-    const targetRole = author === "architect" ? "engineer" : "architect";
+    const otherParticipantIds = thread.participants
+      .filter((p) => p.agentId && p.agentId !== authorAgentId)
+      .map((p) => p.agentId as string);
+    const replySelector = otherParticipantIds.length > 0
+      ? { engineerIds: otherParticipantIds, matchLabels: thread.labels }
+      : { roles: [author === "architect" ? "engineer" : "architect"] as any, matchLabels: thread.labels };
     await ctx.dispatch("thread_message", {
       threadId: thread.id,
       title: thread.title,
       author,
       message: message.substring(0, 200),
       currentTurn: thread.currentTurn,
-    }, { roles: [targetRole], matchLabels: thread.labels });
+    }, replySelector);
   }
 
   // Mission-21: push an internal cascade event on convergence so the
@@ -129,13 +166,23 @@ async function createThreadReply(args: Record<string, unknown>, ctx: IPolicyCont
       });
     }
 
+    // INV-TH16: convergence is a participant-internal event. Scope the
+    // notification to the thread's participants so engineer↔engineer
+    // threads don't leak their outcome to the architect (or anyone else
+    // who happens to share the counterparty role).
+    const participantIds = thread.participants
+      .map((p) => p.agentId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const convergedSelector = participantIds.length > 0
+      ? { engineerIds: participantIds, matchLabels: thread.labels }
+      : { roles: ["architect" as const], matchLabels: thread.labels };
     await ctx.dispatch("thread_converged", {
       threadId: thread.id,
       title: thread.title,
       intent: thread.outstandingIntent,
       summary: thread.summary,
       committedActionCount: committed.length,
-    }, { roles: ["architect"], matchLabels: thread.labels });
+    }, convergedSelector);
   }
 
   // Mission-21 Phase 1 Architect review addition #2: echo the current
@@ -269,11 +316,19 @@ async function handleThreadConvergedWithAction(
 
   await ctx.stores.thread.closeThread(threadId);
 
+  // INV-TH16: cascade completion is participant-internal. Scope to thread
+  // participants so engineer↔engineer threads don't notify unrelated roles.
+  const cascadeParticipantIds = (sourceThread?.participants ?? [])
+    .map((p) => p.agentId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const completedSelector = cascadeParticipantIds.length > 0
+    ? { engineerIds: cascadeParticipantIds, matchLabels: inheritedLabels }
+    : { roles: ["architect" as const, "engineer" as const], matchLabels: inheritedLabels };
   await ctx.dispatch("thread_convergence_completed", {
     threadId,
     committedActionCount: actions.length,
     report,
-  }, { roles: ["architect", "engineer"], matchLabels: inheritedLabels });
+  }, completedSelector);
 
   console.log(`[ThreadPolicy] Cascade completed for ${threadId}: ${report.filter(r => r.status === "executed").length}/${actions.length} executed`);
 }
@@ -283,13 +338,14 @@ async function handleThreadConvergedWithAction(
 export function registerThreadPolicy(router: PolicyRouter): void {
   router.register(
     "create_thread",
-    "[Any] Open a new ideation thread for bidirectional discussion between Architect and Engineer. The other party will be notified via webhook.",
+    "[Any] Open a new ideation thread for bidirectional discussion. Pass recipientAgentId to pin the thread to a specific counterparty (required for engineer↔engineer threads; optional for architect↔engineer where role + labels usually disambiguate). Without recipientAgentId the open notification broadcasts to every agent matching the other role — fine for single-engineer setups, risks leakage to other engineers otherwise. Replies always route only to thread.participants[].",
     {
       title: z.string().describe("Short title for the discussion topic"),
       message: z.string().describe("Opening message with your initial thoughts"),
       maxRounds: z.number().optional().describe("Maximum rounds before auto-escalation (default: 10)"),
       correlationId: z.string().optional().describe("Optional correlation ID to link this thread to related tasks/proposals"),
       semanticIntent: z.enum(["seek_rigorous_critique", "seek_approval", "collaborative_brainstorm", "inform", "seek_consensus", "rubber_duck", "educate", "mediate", "post_mortem"]).optional().describe("Communication semantics: how should the recipient frame their response"),
+      recipientAgentId: z.string().optional().describe("Pin the open-time thread_message dispatch to this specific agentId. Use it for engineer↔engineer threads; the recipient role (typically the Engineer) can disambiguate the counterparty when multiple agents share the same role."),
     },
     createThread,
   );

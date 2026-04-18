@@ -156,4 +156,50 @@ describe("Mission-19 Selector — selectAgents", () => {
     const miss = await reg.selectAgents({ engineerId: "eng-does-not-exist" });
     expect(miss).toHaveLength(0);
   });
+
+  // ── Mission-21 Phase 1 (INV-TH16): engineerIds pool ─────────────────
+
+  it("engineerIds selects the exact set and nothing else", async () => {
+    const all = await reg.listAgents();
+    const engA = all.find((a) => a.labels.env === "prod" && a.role === "engineer")!;
+    const arch = all.find((a) => a.role === "architect")!;
+
+    const matched = await reg.selectAgents({
+      engineerIds: [engA.engineerId, arch.engineerId],
+    });
+    const ids = matched.map((a) => a.engineerId).sort();
+    expect(ids).toEqual([engA.engineerId, arch.engineerId].sort());
+  });
+
+  it("engineerIds with a single element behaves like a pinpoint", async () => {
+    const all = await reg.listAgents();
+    const engA = all.find((a) => a.labels.env === "prod" && a.role === "engineer")!;
+    const matched = await reg.selectAgents({ engineerIds: [engA.engineerId] });
+    expect(matched).toHaveLength(1);
+    expect(matched[0].engineerId).toBe(engA.engineerId);
+  });
+
+  it("engineerIds empty array falls through (same as not-supplied)", async () => {
+    const matched = await reg.selectAgents({ engineerIds: [] });
+    expect(matched).toHaveLength(3); // all three online agents
+  });
+
+  it("engineerIds unknown ids silently miss (no error)", async () => {
+    const matched = await reg.selectAgents({ engineerIds: ["eng-nope-1", "eng-nope-2"] });
+    expect(matched).toHaveLength(0);
+  });
+
+  it("engineerIds AND-combines with matchLabels", async () => {
+    const all = await reg.listAgents();
+    const engA = all.find((a) => a.labels.env === "prod" && a.role === "engineer")!;
+    const engB = all.find((a) => a.labels.env === "staging" && a.role === "engineer")!;
+
+    // Both engineers in the pool, but matchLabels filters to prod only.
+    const matched = await reg.selectAgents({
+      engineerIds: [engA.engineerId, engB.engineerId],
+      matchLabels: { env: "prod" },
+    });
+    expect(matched).toHaveLength(1);
+    expect(matched[0].engineerId).toBe(engA.engineerId);
+  });
 });

@@ -97,6 +97,13 @@ export type AgentLabels = Record<string, string>;
  */
 export interface Selector {
   engineerId?: string;
+  /**
+   * Pin dispatch to a specific set of Agents by engineerId. Used by
+   * Threads 2.0 participant-scoped routing (INV-TH16) so replies land
+   * only on the actual thread participants, not every Agent sharing
+   * the target role. Applied as an AND filter on top of role/labels.
+   */
+  engineerIds?: string[];
   roles?: AgentRole[];
   matchLabels?: Record<string, string>;
 }
@@ -309,6 +316,15 @@ export interface Thread {
   status: ThreadStatus;
   initiatedBy: ThreadAuthor;
   currentTurn: ThreadAuthor;
+  /**
+   * Mission-21 Phase 1 (INV-TH17): when non-null, the reply turn is
+   * pinned to this specific agentId in addition to the role. Enables
+   * engineer↔engineer threads (same role, distinct agents) and prevents
+   * a second agent sharing the current-turn role from usurping the reply
+   * slot. Null for legacy threads and open-broadcast threads where the
+   * first responder in the role pool wins.
+   */
+  currentTurnAgentId?: string | null;
   roundCount: number;
   maxRounds: number;
   outstandingIntent: ThreadIntent;
@@ -337,6 +353,17 @@ export interface Thread {
    * collaboration within a single thread. See ADR-013.
    */
   participants: ThreadParticipant[];
+  /**
+   * Mission-21 Phase 1 (INV-TH16): optional intended recipient at open.
+   * When set, the open-time `thread_message` dispatch is scoped to this
+   * specific agent (via Selector.engineerIds) rather than broadcasting
+   * to the recipient role. Enables engineer↔engineer threads with true
+   * isolation from other engineers sharing the same role/labels. Reply
+   * dispatch always routes to thread.participants[] — `recipientAgentId`
+   * exists solely to bootstrap the first notification before participants
+   * has more than the opener.
+   */
+  recipientAgentId?: string | null;
   messages: ThreadMessage[];
   /** Mission-19: routing labels inherited from creator at open-time. */
   labels: Record<string, string>;
@@ -406,8 +433,31 @@ export interface ReplyToThreadOptions {
   authorAgentId?: string | null;
 }
 
+/**
+ * Mission-21 Phase 1: options bag for thread creation, introduced to
+ * keep the store interface readable as recipientAgentId / recipientRole
+ * joined the existing maxRounds / correlationId / labels / authorAgentId
+ * mix. The legacy positional signature is no longer supported — all call
+ * sites pass options explicitly.
+ */
+export interface OpenThreadOptions {
+  maxRounds?: number;
+  correlationId?: string;
+  labels?: Record<string, string>;
+  authorAgentId?: string | null;
+  /** INV-TH16: pin the open-time dispatch to this agentId. */
+  recipientAgentId?: string | null;
+  /**
+   * INV-TH17: recipient's role — used to set currentTurn correctly
+   * when the recipient is in the same role as the opener (engineer↔
+   * engineer threads). Resolved by the policy layer from engineerRegistry
+   * on open; when absent, currentTurn uses the legacy role-flip formula.
+   */
+  recipientRole?: ThreadAuthor | null;
+}
+
 export interface IThreadStore {
-  openThread(title: string, message: string, author: ThreadAuthor, maxRounds?: number, correlationId?: string, labels?: Record<string, string>, authorAgentId?: string | null): Promise<Thread>;
+  openThread(title: string, message: string, author: ThreadAuthor, options?: OpenThreadOptions): Promise<Thread>;
   replyToThread(threadId: string, message: string, author: ThreadAuthor, options?: ReplyToThreadOptions): Promise<Thread | null>;
   getThread(threadId: string): Promise<Thread | null>;
   listThreads(status?: ThreadStatus): Promise<Thread[]>;
@@ -791,17 +841,31 @@ export class MemoryThreadStore implements IThreadStore {
   private threads: Map<string, Thread> = new Map();
   private counter = 0;
 
-  async openThread(title: string, message: string, author: ThreadAuthor, maxRounds = 10, correlationId?: string, labels?: Record<string, string>, authorAgentId: string | null = null): Promise<Thread> {
+  async openThread(title: string, message: string, author: ThreadAuthor, options: OpenThreadOptions = {}): Promise<Thread> {
+    const {
+      maxRounds = 10,
+      correlationId,
+      labels,
+      authorAgentId = null,
+      recipientAgentId = null,
+      recipientRole = null,
+    } = options;
     this.counter++;
     const id = `thread-${this.counter}`;
     const now = new Date().toISOString();
-    const otherParty: ThreadAuthor = author === "engineer" ? "architect" : "engineer";
+    // INV-TH17: when recipientRole is known, honour it — this is the only
+    // way engineer↔engineer threads get the turn set correctly on open.
+    // Fallback preserves legacy role-flip behaviour for plain architect↔
+    // engineer threads that did not pass a recipient.
+    const nextTurn: ThreadAuthor = recipientRole
+      ?? (author === "engineer" ? "architect" : "engineer");
     const thread: Thread = {
       id,
       title,
       status: "active",
       initiatedBy: author,
-      currentTurn: otherParty,
+      currentTurn: nextTurn,
+      currentTurnAgentId: recipientAgentId ?? null,
       roundCount: 1,
       maxRounds,
       outstandingIntent: null,
@@ -815,6 +879,7 @@ export class MemoryThreadStore implements IThreadStore {
         joinedAt: now,
         lastActiveAt: now,
       }],
+      recipientAgentId: recipientAgentId ?? null,
       messages: [{ author, authorAgentId, text: message, timestamp: now, converged: false, intent: null, semanticIntent: null }],
       labels: labels || {},
       createdAt: now,
@@ -839,6 +904,14 @@ export class MemoryThreadStore implements IThreadStore {
       authorAgentId = null,
     } = options;
 
+    // INV-TH17: when the thread pinned a current-turn agentId (engineer↔
+    // engineer, or a post-first-reply state where we know both parties),
+    // the author's agentId must match. Role alone is insufficient because
+    // multiple agents may share a role.
+    if (stored.currentTurnAgentId && authorAgentId !== stored.currentTurnAgentId) {
+      return null;
+    }
+
     // Transactional: mutate a clone. Only swap in on success so that
     // throwing `ThreadConvergenceGateError` (or `applyStagedActionOps`
     // throws on bad revise/retract) rolls back cleanly.
@@ -857,7 +930,20 @@ export class MemoryThreadStore implements IThreadStore {
     if (semanticIntent) working.currentSemanticIntent = semanticIntent;
     working.roundCount++;
     working.outstandingIntent = intent;
-    working.currentTurn = author === "engineer" ? "architect" : "engineer";
+    // INV-TH17: hand the turn to the next participant. When a second
+    // participant is on the thread we prefer their (role, agentId) over
+    // the legacy role-flip so engineer↔engineer keeps the turn on the
+    // counterparty engineer rather than bouncing to "architect".
+    const otherParticipant = working.participants.find(
+      (p) => !(p.role === author && p.agentId === authorAgentId) && p.role !== "director",
+    );
+    if (otherParticipant) {
+      working.currentTurn = otherParticipant.role as ThreadAuthor;
+      working.currentTurnAgentId = otherParticipant.agentId ?? null;
+    } else {
+      working.currentTurn = author === "engineer" ? "architect" : "engineer";
+      working.currentTurnAgentId = null;
+    }
     working.updatedAt = now;
 
     const prevConverged = stored.lastMessageConverged ?? false;
@@ -1207,11 +1293,15 @@ export class MemoryEngineerRegistry implements IEngineerRegistry {
   }
 
   async selectAgents(selector: Selector): Promise<Agent[]> {
+    const engineerIdSet = selector.engineerIds && selector.engineerIds.length > 0
+      ? new Set(selector.engineerIds)
+      : null;
     const out: Agent[] = [];
     for (const a of this.agents.values()) {
       if (a.archived) continue;
       if (a.status !== "online") continue;
       if (selector.engineerId && a.engineerId !== selector.engineerId) continue;
+      if (engineerIdSet && !engineerIdSet.has(a.engineerId)) continue;
       if (selector.roles && !selector.roles.includes(a.role)) continue;
       if (!labelsMatch(a.labels ?? {}, selector.matchLabels)) continue;
       out.push({ ...a });

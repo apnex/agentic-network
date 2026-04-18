@@ -39,6 +39,7 @@ import type {
   RegisterAgentResult,
   Selector,
   ReplyToThreadOptions,
+  OpenThreadOptions,
   ParticipantRole,
 } from "./state.js";
 import {
@@ -1035,15 +1036,34 @@ export class GcsEngineerRegistry implements IEngineerRegistry {
   }
 
   async selectAgents(selector: Selector): Promise<Agent[]> {
+    const engineerIdSet = selector.engineerIds && selector.engineerIds.length > 0
+      ? new Set(selector.engineerIds)
+      : null;
     // Fast path for engineerId pinpoint — skip full bucket scan.
     if (selector.engineerId) {
       const a = await this.getAgent(selector.engineerId);
       if (!a) return [];
       if (a.archived) return [];
       if (a.status !== "online") return [];
+      if (engineerIdSet && !engineerIdSet.has(a.engineerId)) return [];
       if (selector.roles && !selector.roles.includes(a.role)) return [];
       if (!labelsMatch(a.labels ?? {}, selector.matchLabels)) return [];
       return [a];
+    }
+    // Fast path for engineerIds pinpoint — fetch each directly rather
+    // than scanning every agent key in the bucket.
+    if (engineerIdSet) {
+      const out: Agent[] = [];
+      for (const id of engineerIdSet) {
+        const a = await this.getAgent(id);
+        if (!a) continue;
+        if (a.archived) continue;
+        if (a.status !== "online") continue;
+        if (selector.roles && !selector.roles.includes(a.role)) continue;
+        if (!labelsMatch(a.labels ?? {}, selector.matchLabels)) continue;
+        out.push(a);
+      }
+      return out;
     }
     const all = await this.listAgents();
     return all.filter((a) => {
@@ -1272,11 +1292,23 @@ export class GcsThreadStore implements IThreadStore {
     console.log(`[GcsThreadStore] Using bucket: gs://${bucket}`);
   }
 
-  async openThread(title: string, message: string, author: ThreadAuthor, maxRounds = 10, correlationId?: string, labels?: Record<string, string>, authorAgentId: string | null = null): Promise<Thread> {
+  async openThread(title: string, message: string, author: ThreadAuthor, options: OpenThreadOptions = {}): Promise<Thread> {
+    const {
+      maxRounds = 10,
+      correlationId,
+      labels,
+      authorAgentId = null,
+      recipientAgentId = null,
+      recipientRole = null,
+    } = options;
     const num = await getAndIncrementCounter(this.bucket, "threadCounter");
     const id = `thread-${num}`;
     const now = new Date().toISOString();
-    const otherParty: ThreadAuthor = author === "engineer" ? "architect" : "engineer";
+    // INV-TH17: honour recipientRole when known so engineer↔engineer
+    // threads flip the turn to the counterparty engineer rather than
+    // bouncing to "architect" via the legacy role-flip.
+    const nextTurn: ThreadAuthor = recipientRole
+      ?? (author === "engineer" ? "architect" : "engineer");
     const firstMessage: ThreadMessage = { author, authorAgentId, text: message, timestamp: now, converged: false, intent: null, semanticIntent: null };
 
     // Stored thread scalar holds no messages[] — messages live one-per-file
@@ -1287,7 +1319,8 @@ export class GcsThreadStore implements IThreadStore {
       title,
       status: "active",
       initiatedBy: author,
-      currentTurn: otherParty,
+      currentTurn: nextTurn,
+      currentTurnAgentId: recipientAgentId ?? null,
       roundCount: 1,
       maxRounds,
       outstandingIntent: null,
@@ -1301,6 +1334,7 @@ export class GcsThreadStore implements IThreadStore {
         joinedAt: now,
         lastActiveAt: now,
       }],
+      recipientAgentId: recipientAgentId ?? null,
       messages: [],
       labels: labels || {},
       lastMessageConverged: false,
@@ -1328,6 +1362,10 @@ export class GcsThreadStore implements IThreadStore {
       const thread = await updateExisting<Thread>(this.bucket, path, (current) => {
         if (current.status !== "active") throw new TransitionRejected("thread not active");
         if (current.currentTurn !== author) throw new TransitionRejected("not this author's turn");
+        // INV-TH17: agent-pinned turn enforcement.
+        if (current.currentTurnAgentId && authorAgentId !== current.currentTurnAgentId) {
+          throw new TransitionRejected("not this agent's turn");
+        }
 
         const now = new Date().toISOString();
 
@@ -1340,7 +1378,17 @@ export class GcsThreadStore implements IThreadStore {
         current.roundCount++;
         current.outstandingIntent = intent;
         if (semanticIntent) current.currentSemanticIntent = semanticIntent;
-        current.currentTurn = author === "engineer" ? "architect" : "engineer";
+        // INV-TH17: hand the turn to the next participant.
+        const otherParticipant = current.participants.find(
+          (p) => !(p.role === author && p.agentId === authorAgentId) && p.role !== "director",
+        );
+        if (otherParticipant) {
+          current.currentTurn = otherParticipant.role as ThreadAuthor;
+          current.currentTurnAgentId = otherParticipant.agentId ?? null;
+        } else {
+          current.currentTurn = author === "engineer" ? "architect" : "engineer";
+          current.currentTurnAgentId = null;
+        }
         current.updatedAt = now;
 
         const prevConverged = current.lastMessageConverged ?? false;
@@ -1488,6 +1536,8 @@ function normalizeThreadShape(t: any): Thread {
     convergenceActions: Array.isArray(t.convergenceActions) ? t.convergenceActions : [],
     summary: typeof t.summary === "string" ? t.summary : "",
     participants: Array.isArray(t.participants) ? t.participants : [],
+    recipientAgentId: typeof t.recipientAgentId === "string" ? t.recipientAgentId : null,
+    currentTurnAgentId: typeof t.currentTurnAgentId === "string" ? t.currentTurnAgentId : null,
     messages: Array.isArray(t.messages) ? t.messages : [],
   } as Thread;
 }
