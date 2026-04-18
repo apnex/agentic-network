@@ -23,6 +23,154 @@ interface Session {
   id: string;
   history: Content[];
   createdAt: string;
+  /**
+   * ISO timestamp of the last model response in this session. Used by
+   * the "Since we last spoke" digest (notification-gap option A) to
+   * fetch audit entries created since the Director was last looking.
+   */
+  lastResponseAt?: string;
+}
+
+interface AuditEntryLite {
+  id?: string;
+  timestamp: string;
+  actor: string;
+  action: string;
+  details: string;
+  relatedEntity: string | null;
+}
+
+/**
+ * Unwrap a Hub MCP tool-call result. `hub.callTool` may return the
+ * MCP-shaped envelope `{content: [{type, text}]}` (text is a JSON
+ * string) or the unwrapped object directly depending on adapter
+ * version. Handle both paths.
+ */
+function unwrapToolResult(result: unknown): any {
+  const r = result as any;
+  if (r?.content?.[0]?.text && typeof r.content[0].text === "string") {
+    try { return JSON.parse(r.content[0].text); } catch { /* fall through */ }
+  }
+  return r;
+}
+
+/**
+ * Filter audit actions we surface to the Director. The Architect
+ * logs every autonomous decision to the audit store via
+ * `create_audit_entry`, and the Hub logs lifecycle events like
+ * `admin_force_close`. The Director wants to know about those; not
+ * about Engineer-side bookkeeping.
+ */
+const DIRECTOR_RELEVANT_ACTORS = new Set(["architect", "hub"]);
+
+async function fetchRecentAuditEntries(
+  hub: HubAdapter,
+  sinceIso: string | undefined,
+  limit: number,
+): Promise<AuditEntryLite[]> {
+  try {
+    const raw = await hub.callTool("list_audit_entries", { limit });
+    const parsed = unwrapToolResult(raw);
+    const entries = (parsed?.entries ?? []) as AuditEntryLite[];
+    const filtered = entries.filter((e) => DIRECTOR_RELEVANT_ACTORS.has(e.actor));
+    if (!sinceIso) return filtered;
+    return filtered.filter((e) => e.timestamp > sinceIso);
+  } catch (err) {
+    console.warn("[DirectorChat] Failed to fetch audit entries for digest:", err);
+    return [];
+  }
+}
+
+function formatAuditLine(e: AuditEntryLite): string {
+  const t = e.timestamp.slice(11, 16); // HH:MM
+  const entity = e.relatedEntity ? ` [${e.relatedEntity}]` : "";
+  const details = e.details.length > 140 ? e.details.slice(0, 137) + "..." : e.details;
+  return `• ${t} \`${e.actor}/${e.action}\`${entity} — ${details}`;
+}
+
+/**
+ * Option A (next-message prefix): build a "Since we last spoke"
+ * digest of recent audit entries for the Director. Returns null when
+ * there's nothing worth surfacing (first message, no activity, etc).
+ */
+async function buildSinceDigest(hub: HubAdapter, sinceIso: string | undefined): Promise<string | null> {
+  if (!sinceIso) return null;
+  const entries = await fetchRecentAuditEntries(hub, sinceIso, 25);
+  if (entries.length === 0) return null;
+  const shown = entries.slice(0, 10);
+  const more = entries.length > shown.length ? `\n_…and ${entries.length - shown.length} more. Type \`/status\` for a full digest._` : "";
+  const lines = shown.map(formatAuditLine).join("\n");
+  return `**Since we last spoke:**\n${lines}${more}\n\n---\n\n`;
+}
+
+/**
+ * Option B (/status slash command): compose an on-demand dashboard
+ * — recent audit entries, active threads awaiting the Architect,
+ * recent tasks. Zero Gemini tokens — runs entirely off Hub state.
+ */
+async function buildStatusDigest(hub: HubAdapter): Promise<string> {
+  const [auditRaw, tasksRaw, threadsRaw, pendingRaw] = await Promise.all([
+    hub.callTool("list_audit_entries", { limit: 15 }).catch(() => null),
+    hub.callTool("list_tasks", { limit: 500 }).catch(() => null),
+    hub.callTool("list_threads", { status: "active", limit: 20 }).catch(() => null),
+    hub.callTool("get_pending_actions", {}).catch(() => null),
+  ]);
+
+  const audits = (unwrapToolResult(auditRaw)?.entries ?? []) as AuditEntryLite[];
+  const tasks = (unwrapToolResult(tasksRaw)?.tasks ?? []) as Array<{id: string; title: string | null; status: string; updatedAt: string}>;
+  const threads = (unwrapToolResult(threadsRaw)?.threads ?? []) as Array<{id: string; title: string; status: string; currentTurn: string; roundCount: number; outstandingIntent: string | null}>;
+  const pending = unwrapToolResult(pendingRaw) ?? {};
+
+  const parts: string[] = [];
+  parts.push(`**Status digest** — ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC\n`);
+
+  // Pending actions (Architect-focused but tells the Director what's queued)
+  const pendingTotal = typeof pending.total === "number" ? pending.total : 0;
+  if (pendingTotal > 0) {
+    parts.push(`**Pending for Architect (${pendingTotal}):**`);
+    const pendingSummary: string[] = [];
+    if (pending.unreviewedReports?.length) pendingSummary.push(`• ${pending.unreviewedReports.length} unreviewed report(s)`);
+    if (pending.pendingProposals?.length) pendingSummary.push(`• ${pending.pendingProposals.length} proposal(s) awaiting review`);
+    if (pending.activeThreadsAwaitingReply?.length) pendingSummary.push(`• ${pending.activeThreadsAwaitingReply.length} thread(s) awaiting Architect reply`);
+    if (pending.openClarifications?.length) pendingSummary.push(`• ${pending.openClarifications.length} open clarification(s)`);
+    if (pending.convergedThreads?.length) pendingSummary.push(`• ${pending.convergedThreads.length} converged thread(s)`);
+    parts.push(pendingSummary.length > 0 ? pendingSummary.join("\n") : "• (no categorised pending items)");
+    parts.push("");
+  } else {
+    parts.push("**Pending for Architect:** none\n");
+  }
+
+  // Active threads
+  if (threads.length > 0) {
+    parts.push(`**Active threads (${threads.length}):**`);
+    for (const t of threads.slice(0, 10)) {
+      const intent = t.outstandingIntent ? ` — intent: ${t.outstandingIntent}` : "";
+      parts.push(`• \`${t.id}\` (turn: ${t.currentTurn}, round ${t.roundCount}) ${t.title}${intent}`);
+    }
+    parts.push("");
+  }
+
+  // Tasks — focus on non-terminal or recently-touched
+  const nonTerminal = tasks.filter((t) => !["completed", "cancelled", "escalated", "failed"].includes(t.status));
+  if (nonTerminal.length > 0) {
+    parts.push(`**Tasks in flight (${nonTerminal.length}):**`);
+    const sorted = [...nonTerminal].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    for (const t of sorted.slice(0, 10)) {
+      parts.push(`• \`${t.id}\` [${t.status}] ${t.title ?? "(no title)"}`);
+    }
+    parts.push("");
+  }
+
+  // Recent audit entries (activity feed)
+  const relevant = audits.filter((e) => DIRECTOR_RELEVANT_ACTORS.has(e.actor));
+  if (relevant.length > 0) {
+    parts.push(`**Recent activity (last ${Math.min(relevant.length, 12)}):**`);
+    for (const e of relevant.slice(0, 12)) {
+      parts.push(formatAuditLine(e));
+    }
+  }
+
+  return parts.join("\n");
 }
 
 // In-memory session store (GCS-backed history provides persistence)
@@ -108,6 +256,28 @@ export function createDirectorChatRouter(
       sessions.set(session.id, session);
     }
 
+    // ── Slash-command short-circuit (Option B — /status) ────────────
+    // Zero Gemini tokens. Runs off Hub state only. Does NOT update
+    // lastResponseAt so the next real message's "since we last spoke"
+    // digest still covers the same window.
+    const trimmedMessage = message.trim();
+    if (trimmedMessage.toLowerCase() === "/status") {
+      try {
+        const digest = await buildStatusDigest(hub);
+        console.log(`[DirectorChat] /status digest: ${digest.length} chars`);
+        res.json({ session_id: session.id, response: digest });
+        return;
+      } catch (err: any) {
+        console.error("[DirectorChat] /status digest failed:", err);
+        res.json({
+          session_id: session.id,
+          response: `Failed to build status digest: ${err?.message || String(err)}`,
+          error: true,
+        });
+        return;
+      }
+    }
+
     // Discover tools (cache after first call)
     if (cachedFunctionDeclarations.length === 0 && hub.isConnected) {
       try {
@@ -180,11 +350,21 @@ export function createDirectorChatRouter(
         console.warn("[DirectorChat] Skipped persisting MAX_TOOL_ROUNDS sentinel to director-history.json");
       }
 
-      console.log(`[DirectorChat] Response: ${text.substring(0, 100)}...`);
+      // Option A (next-message prefix): if there was Director-
+      // relevant activity since the last response in this session,
+      // surface it above the main response. First message of a
+      // session has no `lastResponseAt` so this is a no-op there.
+      const digest = await buildSinceDigest(hub, session.lastResponseAt);
+      const responseText = digest ? digest + text : text;
+
+      // Advance the watermark for the next round.
+      session.lastResponseAt = new Date().toISOString();
+
+      console.log(`[DirectorChat] Response: ${text.substring(0, 100)}...${digest ? " (with since-digest)" : ""}`);
 
       res.json({
         session_id: session.id,
-        response: text,
+        response: responseText,
       });
     } catch (err: any) {
       console.error("[DirectorChat] Error:", err);
