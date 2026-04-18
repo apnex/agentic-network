@@ -74,4 +74,57 @@ describe("loadOrCreateGlobalInstanceId", () => {
     expect(existsSync(nestedFile)).toBe(true);
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
   });
+
+  // ── OIS_INSTANCE_ID env override ───────────────────────────────────
+
+  describe("OIS_INSTANCE_ID env override", () => {
+    let originalEnv: string | undefined;
+    beforeEach(() => {
+      originalEnv = process.env.OIS_INSTANCE_ID;
+    });
+    afterEach(() => {
+      if (originalEnv === undefined) delete process.env.OIS_INSTANCE_ID;
+      else process.env.OIS_INSTANCE_ID = originalEnv;
+    });
+
+    it("returns the env value verbatim when set, bypassing the file", () => {
+      process.env.OIS_INSTANCE_ID = "greg";
+      const id = loadOrCreateGlobalInstanceId({ instanceFile });
+      expect(id).toBe("greg");
+      // file is not created — env path does not persist
+      expect(existsSync(instanceFile)).toBe(false);
+    });
+
+    it("env override is idempotent across calls", () => {
+      process.env.OIS_INSTANCE_ID = "kate";
+      const a = loadOrCreateGlobalInstanceId({ instanceFile });
+      const b = loadOrCreateGlobalInstanceId({ instanceFile });
+      expect(a).toBe("kate");
+      expect(b).toBe("kate");
+    });
+
+    it("env override trims whitespace", () => {
+      process.env.OIS_INSTANCE_ID = "  jill  ";
+      const id = loadOrCreateGlobalInstanceId({ instanceFile });
+      expect(id).toBe("jill");
+    });
+
+    it("empty env value falls through to file-based UUID (not adopted)", () => {
+      process.env.OIS_INSTANCE_ID = "   ";
+      const id = loadOrCreateGlobalInstanceId({ instanceFile });
+      expect(id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(existsSync(instanceFile)).toBe(true);
+    });
+
+    it("env override does not mutate an existing instance file", () => {
+      // Pre-seed the file with a known UUID.
+      const seeded = loadOrCreateGlobalInstanceId({ instanceFile });
+      process.env.OIS_INSTANCE_ID = "greg";
+      const overridden = loadOrCreateGlobalInstanceId({ instanceFile });
+      expect(overridden).toBe("greg");
+      // File content unchanged.
+      const body = JSON.parse(readFileSync(instanceFile, "utf-8"));
+      expect(body.globalInstanceId).toBe(seeded);
+    });
+  });
 });

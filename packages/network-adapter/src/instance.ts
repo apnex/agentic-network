@@ -36,14 +36,35 @@ export interface LoadInstanceOptions {
 
 /**
  * Load an existing globalInstanceId from disk or create a new one.
- * Returns the UUID. Idempotent across calls within a process.
+ * Returns the UUID (or the env-provided string override). Idempotent
+ * across calls within a process.
+ *
+ * Precedence: `OIS_INSTANCE_ID` env var wins outright — used when the
+ * operator wants a stable, human-meaningful identity (e.g. "greg" or
+ * "kate") and is responsible for uniqueness themselves. Absent that,
+ * falls back to the file-persisted UUID (original behaviour). The env
+ * path does NOT touch the file, so the two schemes coexist cleanly:
+ * toggling the env var off restores the file-derived UUID untouched.
+ *
+ * This is a pragmatic escape hatch that unblocks multi-agent
+ * co-location on a single user account (two Claude instances on one
+ * laptop). A richer design — separate agentName metadata plus an
+ * agentId derived from multiple inputs — is queued for the Entity
+ * Registry SSOT mission.
  */
 export function loadOrCreateGlobalInstanceId(
   opts: LoadInstanceOptions = {}
 ): string {
+  const log = opts.log ?? (() => { /* silent */ });
+
+  const envOverride = process.env.OIS_INSTANCE_ID?.trim();
+  if (envOverride) {
+    log(`[instance] Using OIS_INSTANCE_ID from env: ${envOverride}`);
+    return envOverride;
+  }
+
   const file = opts.instanceFile ?? DEFAULT_INSTANCE_FILE;
   const dir = file.substring(0, file.lastIndexOf("/")) || DEFAULT_INSTANCE_DIR;
-  const log = opts.log ?? (() => { /* silent */ });
 
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
