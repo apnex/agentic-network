@@ -615,6 +615,20 @@ export interface OpenThreadOptions {
    * on open; when absent, currentTurn uses the legacy role-flip formula.
    */
   recipientRole?: ThreadAuthor | null;
+  /**
+   * Mission-24 Phase 2 (ADR-014, INV-TH18): routing mode declared at
+   * open. Omitted defaults to "targeted" so legacy callers keep working
+   * unchanged. Consistency with mode-specific fields is enforced by the
+   * policy layer at create_thread, not here — the store trusts that
+   * what the policy hands it is well-formed.
+   */
+  routingMode?: ThreadRoutingMode;
+  /**
+   * Mission-24 Phase 2 (ADR-014): required when routingMode==="context_bound",
+   * null otherwise. PolicyRouter resolves participants dynamically from the
+   * bound entity's assignee(s) at each turn.
+   */
+  context?: ThreadContext | null;
 }
 
 /**
@@ -1057,6 +1071,8 @@ export class MemoryThreadStore implements IThreadStore {
       authorAgentId = null,
       recipientAgentId = null,
       recipientRole = null,
+      routingMode = "targeted",
+      context = null,
     } = options;
     this.counter++;
     const id = `thread-${this.counter}`;
@@ -1071,13 +1087,13 @@ export class MemoryThreadStore implements IThreadStore {
       id,
       title,
       status: "active",
-      // Mission-24 Phase 2 (INV-TH18): every thread opens with a routing
-      // mode. Phase 1 call sites defaulted to targeted semantics (via
-      // recipientAgentId pinning); that default is preserved here until
-      // the openThread options bag is widened to accept routingMode /
-      // context in the M24-T-next policy-layer work.
-      routingMode: "targeted",
-      context: null,
+      // Mission-24 Phase 2 (INV-TH18): routing mode declared at open,
+      // immutable for the thread's lifetime. Broadcast is the one
+      // permitted mid-life transition (coerces to Targeted on first
+      // reply, handled in replyToThread). Policy layer validates the
+      // mode + mode-specific field consistency before handing off here.
+      routingMode,
+      context,
       idleExpiryMs: null,
       initiatedBy: author,
       currentTurn: nextTurn,
@@ -1164,6 +1180,14 @@ export class MemoryThreadStore implements IThreadStore {
     } else {
       working.currentTurn = author === "engineer" ? "architect" : "engineer";
       working.currentTurnAgentId = null;
+    }
+    // Mission-24 Phase 2 (INV-TH18): broadcast → targeted coercion on
+    // first reply. The responder becomes the second (and only) other
+    // participant; the pool-discovery surface closes. This is the single
+    // permitted routingMode transition; targeted + context_bound remain
+    // immutable for the thread's lifetime.
+    if (stored.routingMode === "broadcast") {
+      working.routingMode = "targeted";
     }
     working.updatedAt = now;
 

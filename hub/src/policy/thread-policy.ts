@@ -10,11 +10,53 @@
 import { z } from "zod";
 import type { PolicyRouter } from "./router.js";
 import type { IPolicyContext, PolicyResult } from "./types.js";
-import type { ThreadAuthor, ThreadIntent, StagedAction, StagedActionOp, Thread } from "../state.js";
+import type { ThreadAuthor, ThreadIntent, StagedAction, StagedActionOp, Thread, ThreadRoutingMode, ThreadContext } from "../state.js";
 import { ThreadConvergenceGateError } from "../state.js";
 import type { DomainEvent } from "./types.js";
 import { callerLabels } from "./labels.js";
 import { LIST_PAGINATION_SCHEMA, LIST_LABELS_SCHEMA, applyLabelFilter, paginate } from "./list-filters.js";
+
+// ── Routing Mode Validation (M24-T2, INV-TH18) ──────────────────────
+/**
+ * Enforce routingMode ↔ mode-specific field consistency at thread open.
+ * Returns null on valid input, otherwise a caller-facing error string.
+ *
+ *   - targeted       → recipientAgentId optional (pin), context must be null
+ *   - broadcast      → recipientAgentId must be null, context must be null
+ *   - context_bound  → context required with {entityType, entityId},
+ *                      recipientAgentId must be null
+ */
+function validateRoutingModeArgs(
+  routingMode: ThreadRoutingMode,
+  recipientAgentId: string | null,
+  context: ThreadContext | null,
+): string | null {
+  if (routingMode === "targeted") {
+    if (context !== null) {
+      return `routingMode="targeted" must not set context — context is only for context_bound threads.`;
+    }
+    return null;
+  }
+  if (routingMode === "broadcast") {
+    if (recipientAgentId) {
+      return `routingMode="broadcast" must not set recipientAgentId — broadcast is pool-discovery by role/labels, not a pinned target.`;
+    }
+    if (context !== null) {
+      return `routingMode="broadcast" must not set context — context is only for context_bound threads.`;
+    }
+    return null;
+  }
+  if (routingMode === "context_bound") {
+    if (!context || typeof context.entityType !== "string" || !context.entityType || typeof context.entityId !== "string" || !context.entityId) {
+      return `routingMode="context_bound" requires context={entityType, entityId} with non-empty strings.`;
+    }
+    if (recipientAgentId) {
+      return `routingMode="context_bound" must not set recipientAgentId — participants resolve from the bound entity's assignee.`;
+    }
+    return null;
+  }
+  return `Unknown routingMode "${routingMode}" — expected one of: targeted, broadcast, context_bound.`;
+}
 
 // ── Handlers ────────────────────────────────────────────────────────
 
@@ -25,6 +67,19 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
   const correlationId = args.correlationId as string | undefined;
   const _semanticIntent = args.semanticIntent as string | undefined;
   const recipientAgentId = (args.recipientAgentId as string | undefined) ?? null;
+  const routingMode = ((args.routingMode as ThreadRoutingMode | undefined) ?? "targeted");
+  const context = (args.context as ThreadContext | undefined) ?? null;
+
+  // Mission-24 Phase 2 (INV-TH18): validate routing mode ↔ mode-specific
+  // field consistency before any store mutation. Exactly one targeting
+  // channel per mode; inconsistent combinations reject at open.
+  const modeError = validateRoutingModeArgs(routingMode, recipientAgentId, context);
+  if (modeError) {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: modeError }) }],
+      isError: true,
+    };
+  }
 
   const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
   const author: ThreadAuthor = callerRole === "engineer" ? "engineer" : "architect";
@@ -52,6 +107,8 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
     authorAgentId,
     recipientAgentId,
     recipientRole,
+    routingMode,
+    context,
   });
 
   // Mission-21 Phase 1 (INV-TH16): when the opener named a specific
@@ -414,14 +471,19 @@ async function handleThreadConvergedWithAction(
 export function registerThreadPolicy(router: PolicyRouter): void {
   router.register(
     "create_thread",
-    "[Any] Open a new ideation thread for bidirectional discussion. Pass recipientAgentId to pin the thread to a specific counterparty (required for engineer↔engineer threads; optional for architect↔engineer where role + labels usually disambiguate). Without recipientAgentId the open notification broadcasts to every agent matching the other role — fine for single-engineer setups, risks leakage to other engineers otherwise. Replies always route only to thread.participants[].",
+    "[Any] Open a new ideation thread for bidirectional discussion. routingMode (Targeted / Broadcast / Context-bound) is declared at open and immutable for life — except Broadcast, which coerces to Targeted on first reply. Targeted pins via recipientAgentId; Broadcast discovers a responder by role/labels; Context-bound binds the thread to an entity so participants follow the entity's assignee. Omit routingMode for the default (targeted) + legacy call-path behaviour. Replies always route only to thread.participants[].",
     {
       title: z.string().describe("Short title for the discussion topic"),
       message: z.string().describe("Opening message with your initial thoughts"),
       maxRounds: z.number().optional().describe("Maximum rounds before auto-escalation (default: 10)"),
       correlationId: z.string().optional().describe("Optional correlation ID to link this thread to related tasks/proposals"),
       semanticIntent: z.enum(["seek_rigorous_critique", "seek_approval", "collaborative_brainstorm", "inform", "seek_consensus", "rubber_duck", "educate", "mediate", "post_mortem"]).optional().describe("Communication semantics: how should the recipient frame their response"),
-      recipientAgentId: z.string().optional().describe("Pin the open-time thread_message dispatch to this specific agentId. Use it for engineer↔engineer threads; the recipient role (typically the Engineer) can disambiguate the counterparty when multiple agents share the same role."),
+      recipientAgentId: z.string().optional().describe("Targeted routingMode only: pin the open-time thread_message dispatch to this specific agentId. Required for engineer↔engineer threads when ambiguity exists; optional for architect↔engineer threads where role + labels disambiguate."),
+      routingMode: z.enum(["targeted", "broadcast", "context_bound"]).optional().describe("Mission-24 Phase 2 (INV-TH18): declared at open, immutable for thread life. targeted=pinned dialogue (default); broadcast=pool-discovery by role/labels, coerces to targeted on first reply; context_bound=thread bound to an entity (requires context)."),
+      context: z.object({
+        entityType: z.string().describe("Entity type: task | mission | proposal | idea"),
+        entityId: z.string().describe("ID of the bound entity"),
+      }).optional().describe("Required when routingMode=context_bound. PolicyRouter resolves participants dynamically from the bound entity's assignee(s) at each turn."),
     },
     createThread,
   );

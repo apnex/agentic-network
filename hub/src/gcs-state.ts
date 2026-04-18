@@ -1312,6 +1312,8 @@ export class GcsThreadStore implements IThreadStore {
       authorAgentId = null,
       recipientAgentId = null,
       recipientRole = null,
+      routingMode = "targeted",
+      context = null,
     } = options;
     const num = await getAndIncrementCounter(this.bucket, "threadCounter");
     const id = `thread-${num}`;
@@ -1330,11 +1332,12 @@ export class GcsThreadStore implements IThreadStore {
       id,
       title,
       status: "active",
-      // Mission-24 Phase 2 (INV-TH18): Phase 1 openThread call sites
-      // default to targeted routing; the Phase 2 options-bag widening
-      // (routingMode / context) lands with the policy-layer work.
-      routingMode: "targeted",
-      context: null,
+      // Mission-24 Phase 2 (INV-TH18): routing mode declared at open,
+      // immutable for the thread's lifetime. Broadcast coerces to
+      // Targeted on first reply (see replyToThread); no other mode
+      // transitions permitted. Policy layer validates consistency.
+      routingMode,
+      context,
       idleExpiryMs: null,
       initiatedBy: author,
       currentTurn: nextTurn,
@@ -1411,6 +1414,13 @@ export class GcsThreadStore implements IThreadStore {
         } else {
           current.currentTurn = author === "engineer" ? "architect" : "engineer";
           current.currentTurnAgentId = null;
+        }
+        // Mission-24 Phase 2 (INV-TH18): broadcast → targeted coercion
+        // on first reply. The responder becomes the second (and only)
+        // other participant; the pool-discovery surface closes. Single
+        // permitted routingMode transition.
+        if (current.routingMode === "broadcast") {
+          current.routingMode = "targeted";
         }
         current.updatedAt = now;
 

@@ -998,3 +998,174 @@ describe("ThreadStore — reapIdleThreads (M24-T7)", () => {
     expect(ids).toEqual([a, b, c].sort());
   });
 });
+
+// ── Mission-24 Phase 2 (M24-T2, INV-TH18): routingMode enforcement ───
+
+describe("ThreadPolicy — routingMode enforcement (M24-T2)", () => {
+  let router: PolicyRouter;
+  let archCtx: IPolicyContext;
+  let eng1Ctx: IPolicyContext;
+  let eng2Ctx: IPolicyContext;
+  let eng1Id: string;
+  let eng2Id: string;
+
+  beforeEach(async () => {
+    router = new PolicyRouter(noop);
+    registerThreadPolicy(router);
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+    eng1Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
+    eng2Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-2" });
+
+    const reg = archCtx.stores.engineerRegistry;
+    const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
+    await reg.registerAgent("s-arch", "architect", { globalInstanceId: "inst-arch", role: "architect", clientMetadata: client });
+    const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", { globalInstanceId: "inst-eng-1", role: "engineer", clientMetadata: client });
+    const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", { globalInstanceId: "inst-eng-2", role: "engineer", clientMetadata: client });
+    if (eng1Reg.ok) eng1Id = eng1Reg.engineerId;
+    if (eng2Reg.ok) eng2Id = eng2Reg.engineerId;
+  });
+
+  // ── Open-time validation ──────────────────────────────────────
+
+  it("omitted routingMode defaults to targeted (legacy callers unchanged)", async () => {
+    const r = await router.handle("create_thread", { title: "t", message: "m" }, eng1Ctx);
+    expect(r.isError).toBeUndefined();
+    const threadId = JSON.parse(r.content[0].text).threadId;
+    const t = (await router.handle("get_thread", { threadId }, eng1Ctx)).content[0].text;
+    expect(JSON.parse(t).routingMode).toBe("targeted");
+  });
+
+  it("targeted with recipientAgentId stores routingMode=targeted", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "targeted", recipientAgentId: eng2Id,
+    }, eng1Ctx);
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    const thread = JSON.parse((await router.handle("get_thread", { threadId: parsed.threadId }, eng1Ctx)).content[0].text);
+    expect(thread.routingMode).toBe("targeted");
+    expect(thread.context).toBeNull();
+  });
+
+  it("rejects targeted with context set", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "targeted",
+      context: { entityType: "task", entityId: "task-1" },
+    }, eng1Ctx);
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(r.content[0].text).error).toMatch(/targeted.*must not set context/);
+  });
+
+  it("broadcast stores routingMode=broadcast without recipient pin", async () => {
+    const r = await router.handle("create_thread", {
+      title: "broadcast", message: "anyone in billing?",
+      routingMode: "broadcast",
+    }, archCtx);
+    expect(r.isError).toBeUndefined();
+    const thread = JSON.parse((await router.handle("get_thread", { threadId: JSON.parse(r.content[0].text).threadId }, archCtx)).content[0].text);
+    expect(thread.routingMode).toBe("broadcast");
+    expect(thread.recipientAgentId).toBeNull();
+  });
+
+  it("rejects broadcast with recipientAgentId (contradicts pool-discovery)", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "broadcast", recipientAgentId: eng1Id,
+    }, archCtx);
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(r.content[0].text).error).toMatch(/broadcast.*must not set recipientAgentId/);
+  });
+
+  it("rejects broadcast with context set", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "broadcast",
+      context: { entityType: "task", entityId: "task-1" },
+    }, archCtx);
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(r.content[0].text).error).toMatch(/broadcast.*must not set context/);
+  });
+
+  it("context_bound with valid context stores mode + context", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "context_bound",
+      context: { entityType: "task", entityId: "task-42" },
+    }, eng1Ctx);
+    expect(r.isError).toBeUndefined();
+    const thread = JSON.parse((await router.handle("get_thread", { threadId: JSON.parse(r.content[0].text).threadId }, eng1Ctx)).content[0].text);
+    expect(thread.routingMode).toBe("context_bound");
+    expect(thread.context).toEqual({ entityType: "task", entityId: "task-42" });
+  });
+
+  it("rejects context_bound without context", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "context_bound",
+    }, eng1Ctx);
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(r.content[0].text).error).toMatch(/context_bound.*requires context/);
+  });
+
+  it("rejects context_bound with recipientAgentId", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "context_bound",
+      context: { entityType: "task", entityId: "task-1" },
+      recipientAgentId: eng2Id,
+    }, eng1Ctx);
+    expect(r.isError).toBe(true);
+    expect(JSON.parse(r.content[0].text).error).toMatch(/context_bound.*must not set recipientAgentId/);
+  });
+
+  it("rejects context_bound with empty-string entityType", async () => {
+    const r = await router.handle("create_thread", {
+      title: "t", message: "m", routingMode: "context_bound",
+      context: { entityType: "", entityId: "x" },
+    }, eng1Ctx);
+    expect(r.isError).toBe(true);
+  });
+
+  // ── Immutability + coercion ───────────────────────────────────
+
+  it("broadcast coerces to targeted on first reply", async () => {
+    const openResult = await router.handle("create_thread", {
+      title: "broadcast", message: "anyone?",
+      routingMode: "broadcast",
+    }, archCtx);
+    const threadId = JSON.parse(openResult.content[0].text).threadId;
+    // Verify it stored as broadcast pre-reply
+    const before = JSON.parse((await router.handle("get_thread", { threadId }, archCtx)).content[0].text);
+    expect(before.routingMode).toBe("broadcast");
+
+    // First reply from an engineer coerces broadcast → targeted
+    await router.handle("create_thread_reply", { threadId, message: "I'll take it" }, eng1Ctx);
+
+    const after = JSON.parse((await router.handle("get_thread", { threadId }, archCtx)).content[0].text);
+    expect(after.routingMode).toBe("targeted");
+    // Participants now include both parties; currentTurnAgentId pins the turn.
+    expect(after.participants.length).toBe(2);
+  });
+
+  it("targeted routingMode is immutable across replies", async () => {
+    const openResult = await router.handle("create_thread", {
+      title: "pinned", message: "m", routingMode: "targeted", recipientAgentId: eng2Id,
+    }, eng1Ctx);
+    const threadId = JSON.parse(openResult.content[0].text).threadId;
+
+    await router.handle("create_thread_reply", { threadId, message: "r1" }, eng2Ctx);
+    await router.handle("create_thread_reply", { threadId, message: "r2" }, eng1Ctx);
+    await router.handle("create_thread_reply", { threadId, message: "r3" }, eng2Ctx);
+
+    const t = JSON.parse((await router.handle("get_thread", { threadId }, eng1Ctx)).content[0].text);
+    expect(t.routingMode).toBe("targeted");
+  });
+
+  it("context_bound routingMode is immutable across replies", async () => {
+    const openResult = await router.handle("create_thread", {
+      title: "ctx", message: "m", routingMode: "context_bound",
+      context: { entityType: "task", entityId: "task-1" },
+    }, eng1Ctx);
+    const threadId = JSON.parse(openResult.content[0].text).threadId;
+
+    await router.handle("create_thread_reply", { threadId, message: "r1" }, archCtx);
+
+    const t = JSON.parse((await router.handle("get_thread", { threadId }, eng1Ctx)).content[0].text);
+    expect(t.routingMode).toBe("context_bound");
+    expect(t.context).toEqual({ entityType: "task", entityId: "task-1" });
+  });
+});
