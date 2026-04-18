@@ -1541,6 +1541,34 @@ export class GcsThreadStore implements IThreadStore {
     }
   }
 
+  async leaveThread(threadId: string, leaverAgentId: string): Promise<Thread | null> {
+    const path = `threads/${threadId}.json`;
+    try {
+      const updated = await updateExisting<Thread>(this.bucket, path, (current) => {
+        if (current.status !== "active") throw new TransitionRejected("thread not active");
+        const isParticipant = current.participants.some((p) => p.agentId === leaverAgentId);
+        if (!isParticipant) throw new TransitionRejected("leaver is not a thread participant");
+
+        const now = new Date().toISOString();
+        // Auto-retract leaver's staged actions per M24-T6 spec.
+        for (const action of current.convergenceActions) {
+          if (action.status === "staged" && action.proposer.agentId === leaverAgentId) {
+            action.status = "retracted";
+            action.timestamp = now;
+          }
+        }
+        current.status = "abandoned";
+        current.updatedAt = now;
+        return current;
+      });
+      console.log(`[GcsThreadStore] Thread abandoned: ${threadId} (leaver=${leaverAgentId})`);
+      return { ...updated, messages: await this.loadMessages(threadId, updated) };
+    } catch (err) {
+      if (err instanceof TransitionRejected || err instanceof GcsPathNotFound) return null;
+      throw err;
+    }
+  }
+
 }
 
 /**

@@ -207,8 +207,9 @@ describe("E2E Foundation", () => {
   // ── Orchestrator Infrastructure ─────────────────────────────────
 
   describe("Orchestrator Infrastructure", () => {
-    it("registers all 44 tools on the PolicyRouter", () => {
-      expect(orch.router.size).toBe(44);
+    it("registers all 45 tools on the PolicyRouter", () => {
+      // 44 pre-M24; M24-T6 added leave_thread → 45.
+      expect(orch.router.size).toBe(45);
     });
 
     it("multi-engineer support with distinct sessions", async () => {

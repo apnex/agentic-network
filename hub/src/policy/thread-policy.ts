@@ -256,6 +256,82 @@ async function closeThread(args: Record<string, unknown>, ctx: IPolicyContext): 
   };
 }
 
+/**
+ * Mission-24 Phase 2 (M24-T6, ADR-014): participant-initiated exit
+ * from an active thread. Unlike close_thread (Architect stewardship),
+ * leave_thread is callable by any Thread participant and is the
+ * counterpart to bilateral convergence for the abandonment case —
+ * "one party wants out; no point holding the thread open for a
+ * convergence that will never come."
+ *
+ * Side-effects: store transitions `active → abandoned`, auto-retracts
+ * the leaver's staged actions, stamps updatedAt. Handler then dispatches
+ * `thread_abandoned` participant-scoped (INV-TH16) to the remaining
+ * participants so they can react; writes audit entry with actor=leaver.
+ */
+async function leaveThread(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
+  const threadId = args.threadId as string;
+  const reason = (args.reason as string | undefined) ?? null;
+
+  // Resolve caller's agentId. Without an M18 agentId we can't verify
+  // participant membership — leave_thread requires a resolved identity.
+  const agent = await (ctx.stores.engineerRegistry as any).getAgentForSession?.(ctx.sessionId).catch(() => null);
+  const leaverAgentId: string | null = agent?.engineerId ?? null;
+  if (!leaverAgentId) {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: "leave_thread requires an M18-resolved agentId; caller session has no bound Agent" }) }],
+      isError: true,
+    };
+  }
+
+  const updated = await ctx.stores.thread.leaveThread(threadId, leaverAgentId);
+  if (!updated) {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: `leave_thread rejected for ${threadId}: thread not found, not active, or caller is not a participant` }) }],
+      isError: true,
+    };
+  }
+
+  // INV-TH16: dispatch thread_abandoned only to the remaining
+  // participants (excluding the leaver). Architect is NOT notified
+  // unless they were already on the participants list.
+  const remainingParticipantIds = updated.participants
+    .filter((p) => p.agentId && p.agentId !== leaverAgentId)
+    .map((p) => p.agentId as string);
+  if (remainingParticipantIds.length > 0) {
+    await ctx.dispatch("thread_abandoned", {
+      threadId: updated.id,
+      title: updated.title,
+      leaverAgentId,
+      reason: reason ?? "(no reason provided)",
+      retractedActionCount: updated.convergenceActions.filter((a) => a.status === "retracted" && a.proposer.agentId === leaverAgentId).length,
+    }, { engineerIds: remainingParticipantIds, matchLabels: updated.labels });
+  }
+
+  await ctx.stores.audit.logEntry(
+    "hub",
+    "thread_abandoned",
+    `Thread ${threadId} abandoned by ${leaverAgentId}. Reason: ${reason ?? "(no reason provided)"}. ${updated.convergenceActions.filter((a) => a.status === "retracted" && a.proposer.agentId === leaverAgentId).length} staged action(s) retracted.`,
+    threadId,
+  );
+
+  return {
+    content: [{
+      type: "text" as const,
+      text: JSON.stringify({
+        success: true,
+        threadId: updated.id,
+        status: updated.status,
+        leaverAgentId,
+        remainingParticipants: updated.participants
+          .filter((p) => p.agentId !== leaverAgentId)
+          .map((p) => ({ role: p.role, agentId: p.agentId })),
+        retractedActionCount: updated.convergenceActions.filter((a) => a.status === "retracted" && a.proposer.agentId === leaverAgentId).length,
+      }),
+    }],
+  };
+}
+
 // ── Cascade Handlers ────────────────────────────────────────────────
 
 /**
@@ -393,7 +469,7 @@ export function registerThreadPolicy(router: PolicyRouter): void {
     "list_threads",
     "[Any] List ideation threads with optional status filter, label match-all filter, and pagination.",
     {
-      status: z.enum(["active", "converged", "round_limit", "closed"]).optional().describe("Filter threads by status (optional)"),
+      status: z.enum(["active", "converged", "round_limit", "closed", "abandoned", "cascade_failed"]).optional().describe("Filter threads by status (optional)"),
       ...LIST_LABELS_SCHEMA,
       ...LIST_PAGINATION_SCHEMA,
     },
@@ -402,9 +478,19 @@ export function registerThreadPolicy(router: PolicyRouter): void {
 
   router.register(
     "close_thread",
-    "[Architect] Close an ideation thread after the Director has reviewed the outcome.",
+    "[Architect] Close an ideation thread as administrative stewardship. Distinct from `leave_thread` (participant-initiated abandonment) and from the cascade-driven close after bilateral convergence — use `close_thread` for stranded threads with no living participant, or for threads that need to be terminated outside the normal convergence flow.",
     { threadId: z.string().describe("The thread ID to close") },
     closeThread,
+  );
+
+  router.register(
+    "leave_thread",
+    "[Any] Participant-initiated exit from an active thread. Counterpart to bilateral convergence for the 'I want out' case. Caller MUST be a current participant. On call: auto-retracts the leaver's staged convergence actions, transitions the thread to the `abandoned` terminal state, dispatches `thread_abandoned` to remaining participants (not architect unless participant), writes an audit entry. Use this when the convergence will never come (peer unresponsive, change of plans, scope discovered) — it's the anti-deadlock primitive for P2P threads.",
+    {
+      threadId: z.string().describe("The thread ID to leave"),
+      reason: z.string().optional().describe("Optional short explanation of why you're leaving — surfaces on the thread_abandoned event and the audit entry"),
+    },
+    leaveThread,
   );
 
   // ── Internal Event Handlers ─────────────────────────────────────

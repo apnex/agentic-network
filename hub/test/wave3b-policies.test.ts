@@ -656,3 +656,132 @@ describe("ThreadPolicy — participant-scoped dispatch (INV-TH16)", () => {
     expect(replyEvent.selector.engineerIds).toBeUndefined();
   });
 });
+
+// ── Mission-24 Phase 2 (M24-T6, INV-TH18): leave_thread tool ─────────
+
+describe("ThreadPolicy — leave_thread (M24-T6)", () => {
+  let router: PolicyRouter;
+  let archCtx: IPolicyContext;
+  let eng1Ctx: IPolicyContext;
+  let eng2Ctx: IPolicyContext;
+  let archId: string;
+  let eng1Id: string;
+  let eng2Id: string;
+
+  beforeEach(async () => {
+    router = new PolicyRouter(noop);
+    registerThreadPolicy(router);
+
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+    eng1Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
+    eng2Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-2" });
+
+    const reg = archCtx.stores.engineerRegistry;
+    const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
+    const archReg = await reg.registerAgent("s-arch", "architect", {
+      globalInstanceId: "inst-arch", role: "architect", clientMetadata: client,
+    });
+    const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", {
+      globalInstanceId: "inst-eng-1", role: "engineer", clientMetadata: client,
+    });
+    const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", {
+      globalInstanceId: "inst-eng-2", role: "engineer", clientMetadata: client,
+    });
+    if (archReg.ok) archId = archReg.engineerId;
+    if (eng1Reg.ok) eng1Id = eng1Reg.engineerId;
+    if (eng2Reg.ok) eng2Id = eng2Reg.engineerId;
+  });
+
+  async function openEng1Eng2Thread(): Promise<string> {
+    const r = await router.handle("create_thread", {
+      title: "peer thread", message: "hi kate",
+      recipientAgentId: eng2Id,
+    }, eng1Ctx);
+    return JSON.parse(r.content[0].text).threadId;
+  }
+
+  it("participant can leave an active thread → status becomes abandoned", async () => {
+    const threadId = await openEng1Eng2Thread();
+    const r = await router.handle("leave_thread", { threadId, reason: "scope change" }, eng1Ctx);
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.success).toBe(true);
+    expect(parsed.status).toBe("abandoned");
+    expect(parsed.leaverAgentId).toBe(eng1Id);
+
+    const getResult = await router.handle("get_thread", { threadId }, eng2Ctx);
+    const thread = JSON.parse(getResult.content[0].text);
+    expect(thread.status).toBe("abandoned");
+  });
+
+  it("rejects leave_thread from a non-participant", async () => {
+    const threadId = await openEng1Eng2Thread();
+    // archCtx is not on participants (thread is eng1↔eng2)
+    const r = await router.handle("leave_thread", { threadId }, archCtx);
+    expect(r.isError).toBe(true);
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/not a participant/);
+  });
+
+  it("rejects leave_thread on a non-active thread", async () => {
+    const threadId = await openEng1Eng2Thread();
+    // Manually close first
+    await router.handle("close_thread", { threadId }, archCtx);
+    const r = await router.handle("leave_thread", { threadId }, eng1Ctx);
+    expect(r.isError).toBe(true);
+  });
+
+  it("auto-retracts leaver's staged actions; preserves other participant's staged actions", async () => {
+    const threadId = await openEng1Eng2Thread();
+    // eng2 stages an action on their reply (they hold the turn first)
+    await router.handle("create_thread_reply", {
+      threadId,
+      message: "staging close_no_action",
+      stagedActions: [{ kind: "stage", type: "close_no_action", payload: { reason: "from eng-2" } }],
+    }, eng2Ctx);
+    // eng1 stages another action
+    await router.handle("create_thread_reply", {
+      threadId,
+      message: "eng1 stages too",
+      stagedActions: [{ kind: "stage", type: "close_no_action", payload: { reason: "from eng-1" } }],
+    }, eng1Ctx);
+
+    // eng1 leaves — their action-2 should auto-retract, eng2's action-1 survives
+    await router.handle("leave_thread", { threadId, reason: "rage quit" }, eng1Ctx);
+
+    const getResult = await router.handle("get_thread", { threadId }, eng2Ctx);
+    const thread = JSON.parse(getResult.content[0].text);
+    const action1 = thread.convergenceActions.find((a: any) => a.id === "action-1");
+    const action2 = thread.convergenceActions.find((a: any) => a.id === "action-2");
+    expect(action1.status).toBe("staged"); // eng2's, untouched
+    expect(action2.status).toBe("retracted"); // eng1's, auto-retracted on leave
+  });
+
+  it("dispatches thread_abandoned only to remaining participants (INV-TH16)", async () => {
+    const threadId = await openEng1Eng2Thread();
+    // eng2 joins as participant on reply
+    await router.handle("create_thread_reply", { threadId, message: "hi eng-1" }, eng2Ctx);
+
+    (eng1Ctx as any).dispatchedEvents.length = 0;
+    await router.handle("leave_thread", { threadId, reason: "done here" }, eng1Ctx);
+
+    const abandonedEvents = (eng1Ctx as any).dispatchedEvents.filter((e: any) => e.event === "thread_abandoned");
+    expect(abandonedEvents).toHaveLength(1);
+    expect(abandonedEvents[0].selector.engineerIds).toEqual([eng2Id]);
+    expect(abandonedEvents[0].selector.roles).toBeUndefined();
+    expect(abandonedEvents[0].data.leaverAgentId).toBe(eng1Id);
+    expect(abandonedEvents[0].data.reason).toBe("done here");
+  });
+
+  it("writes an audit entry actor=hub on successful leave", async () => {
+    const threadId = await openEng1Eng2Thread();
+    await router.handle("leave_thread", { threadId, reason: "need to leave" }, eng1Ctx);
+
+    const auditEntries = await eng1Ctx.stores.audit.listEntries(10);
+    const entry = auditEntries.find((e) => e.action === "thread_abandoned" && e.relatedEntity === threadId);
+    expect(entry).toBeDefined();
+    expect(entry!.actor).toBe("hub");
+    expect(entry!.details).toContain(eng1Id);
+    expect(entry!.details).toContain("need to leave");
+  });
+});

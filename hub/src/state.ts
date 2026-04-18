@@ -623,6 +623,16 @@ export interface IThreadStore {
   getThread(threadId: string): Promise<Thread | null>;
   listThreads(status?: ThreadStatus): Promise<Thread[]>;
   closeThread(threadId: string): Promise<boolean>;
+  /**
+   * Mission-24 Phase 2 (ADR-014, M24-T6): participant-initiated exit
+   * from an active thread. Returns the mutated Thread on success, null
+   * when the thread doesn't exist / isn't active / leaver isn't a
+   * participant. Side-effects: auto-retracts staged actions proposed by
+   * the leaver, transitions status to `abandoned`, stamps updatedAt.
+   * Caller (thread-policy) is responsible for the thread_abandoned
+   * dispatch + audit entry — see INV-TH16 participant-scoped routing.
+   */
+  leaveThread(threadId: string, leaverAgentId: string): Promise<Thread | null>;
 }
 
 export interface IProposalStore {
@@ -1184,6 +1194,37 @@ export class MemoryThreadStore implements IThreadStore {
     thread.updatedAt = new Date().toISOString();
     console.log(`[MemoryThreadStore] Thread closed: ${threadId}`);
     return true;
+  }
+
+  async leaveThread(threadId: string, leaverAgentId: string): Promise<Thread | null> {
+    const stored = this.threads.get(threadId);
+    if (!stored) return null;
+    if (stored.status !== "active") return null;
+    const isParticipant = stored.participants.some((p) => p.agentId === leaverAgentId);
+    if (!isParticipant) return null;
+
+    // Transactional clone-and-swap mirrors replyToThread. The auto-
+    // retract mutates staged-action statuses; if anything throws
+    // (shouldn't, but belt-and-braces) we discard the clone.
+    const working = cloneThread(stored);
+    const now = new Date().toISOString();
+
+    // Auto-retract every staged action proposed by the leaver. Other
+    // participants' staged actions remain — if a remaining participant
+    // wants to converge later they'd open a fresh thread per the
+    // abandoned terminal (no re-entry on abandoned).
+    for (const action of working.convergenceActions) {
+      if (action.status === "staged" && action.proposer.agentId === leaverAgentId) {
+        action.status = "retracted";
+        action.timestamp = now;
+      }
+    }
+
+    working.status = "abandoned";
+    working.updatedAt = now;
+    this.threads.set(threadId, working);
+    console.log(`[MemoryThreadStore] Thread abandoned: ${threadId} (leaver=${leaverAgentId})`);
+    return cloneThread(working);
   }
 }
 
