@@ -21,16 +21,7 @@ import { runCascade } from "./cascade.js";
 // registry at module-load time. Adding a new handler type: append
 // to cascade-actions/index.ts.
 import "./cascade-actions/index.js";
-import {
-  CloseNoActionPayloadSchema,
-  CreateTaskActionPayloadSchema,
-  CreateProposalActionPayloadSchema,
-  CreateIdeaActionPayloadSchema,
-  UpdateIdeaActionPayloadSchema,
-  UpdateMissionStatusActionPayloadSchema,
-  ProposeMissionActionPayloadSchema,
-  CreateClarificationActionPayloadSchema,
-} from "./staged-action-payloads.js";
+import { AUTONOMOUS_STAGED_ACTION_TYPES } from "./staged-action-payloads.js";
 
 // ── Routing Mode Validation (M24-T2, INV-TH18) ──────────────────────
 /**
@@ -528,51 +519,21 @@ export function registerThreadPolicy(router: PolicyRouter): void {
       semanticIntent: z.enum(["seek_rigorous_critique", "seek_approval", "collaborative_brainstorm", "inform", "seek_consensus", "rubber_duck", "educate", "mediate", "post_mortem"]).optional().describe("Communication semantics: how should the recipient frame their response (optional)"),
       summary: z.string().optional().describe("Negotiated narrative summary of the thread's agreed outcome. Either party can set or revise across rounds; latest value wins. Required non-empty at convergence."),
       stagedActions: z.array(
+        // Mission-24 Phase 2 (M24-T11, ADR-014): 3-arm discriminated
+        // union on `kind` with the full 8-type autonomous vocabulary
+        // on the `stage` arm. The per-type payload validation is
+        // enforced at the gate via validateStagedActions() rather
+        // than at the tool layer — a nested discriminatedUnion on
+        // (kind, type) is ambiguous (Zod rejects multiple arms
+        // sharing the same `kind: "stage"` discriminator), so the
+        // tool accepts any well-formed {type, payload} stage op and
+        // the gate rejects mismatched shapes with a detailed per-action
+        // error list before staged→committed promotion.
         z.discriminatedUnion("kind", [
-          // Mission-24 Phase 2 (M24-T11, ADR-014): stage-op vocabulary
-          // widens to all 8 autonomous action types. Per-type payload
-          // schemas are the canonical validators; the gate re-runs
-          // them pre-commit so drift between tool-layer and gate is
-          // caught even if the tool schema lags.
           z.object({
             kind: z.literal("stage"),
-            type: z.literal("close_no_action"),
-            payload: CloseNoActionPayloadSchema,
-          }),
-          z.object({
-            kind: z.literal("stage"),
-            type: z.literal("create_task"),
-            payload: CreateTaskActionPayloadSchema,
-          }),
-          z.object({
-            kind: z.literal("stage"),
-            type: z.literal("create_proposal"),
-            payload: CreateProposalActionPayloadSchema,
-          }),
-          z.object({
-            kind: z.literal("stage"),
-            type: z.literal("create_idea"),
-            payload: CreateIdeaActionPayloadSchema,
-          }),
-          z.object({
-            kind: z.literal("stage"),
-            type: z.literal("update_idea"),
-            payload: UpdateIdeaActionPayloadSchema,
-          }),
-          z.object({
-            kind: z.literal("stage"),
-            type: z.literal("update_mission_status"),
-            payload: UpdateMissionStatusActionPayloadSchema,
-          }),
-          z.object({
-            kind: z.literal("stage"),
-            type: z.literal("propose_mission"),
-            payload: ProposeMissionActionPayloadSchema,
-          }),
-          z.object({
-            kind: z.literal("stage"),
-            type: z.literal("create_clarification"),
-            payload: CreateClarificationActionPayloadSchema,
+            type: z.enum(AUTONOMOUS_STAGED_ACTION_TYPES).describe("One of the 8 Phase 2 autonomous action types"),
+            payload: z.record(z.string(), z.unknown()).describe("Per-type payload — shape validated at the cascade gate (validateStagedActions)"),
           }),
           z.object({
             kind: z.literal("revise"),
