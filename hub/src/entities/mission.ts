@@ -15,7 +15,7 @@
  */
 
 import type { ITaskStore } from "../state.js";
-import type { IIdeaStore } from "./idea.js";
+import type { IIdeaStore, CascadeBacklink } from "./idea.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -34,6 +34,12 @@ export interface Mission {
   correlationId: string | null;
   /** Mission-20 Phase 3: owning Turn for virtual-view composition. */
   turnId: string | null;
+  /** Mission-24 Phase 2 (ADR-014, INV-TH20/23): cascade-spawn back-links.
+   * Populated when this Mission was spawned via `propose_mission`
+   * cascade action. Null for Director-created or legacy missions. */
+  sourceThreadId: string | null;
+  sourceActionId: string | null;
+  sourceThreadSummary: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,7 +50,8 @@ export interface IMissionStore {
   createMission(
     title: string,
     description: string,
-    documentRef?: string
+    documentRef?: string,
+    backlink?: CascadeBacklink
   ): Promise<Mission>;
 
   getMission(missionId: string): Promise<Mission | null>;
@@ -55,6 +62,9 @@ export interface IMissionStore {
     missionId: string,
     updates: { status?: MissionStatus; description?: string; documentRef?: string }
   ): Promise<Mission | null>;
+
+  /** Mission-24 Phase 2 (ADR-014, INV-TH20): look up by natural key. */
+  findByCascadeKey(key: Pick<CascadeBacklink, "sourceThreadId" | "sourceActionId">): Promise<Mission | null>;
 }
 
 // ── Memory Implementation ────────────────────────────────────────────
@@ -71,7 +81,8 @@ export class MemoryMissionStore implements IMissionStore {
   async createMission(
     title: string,
     description: string,
-    documentRef?: string
+    documentRef?: string,
+    backlink?: CascadeBacklink
   ): Promise<Mission> {
     this.counter++;
     const id = `mission-${this.counter}`;
@@ -87,13 +98,25 @@ export class MemoryMissionStore implements IMissionStore {
       ideas: [],
       correlationId: id,
       turnId: null,
+      sourceThreadId: backlink?.sourceThreadId ?? null,
+      sourceActionId: backlink?.sourceActionId ?? null,
+      sourceThreadSummary: backlink?.sourceThreadSummary ?? null,
       createdAt: now,
       updatedAt: now,
     };
 
     this.missions.set(id, mission);
-    console.log(`[MemoryMissionStore] Mission created: ${id} — ${title}`);
+    console.log(`[MemoryMissionStore] Mission created: ${id} — ${title}${backlink ? ` (cascade from ${backlink.sourceThreadId}/${backlink.sourceActionId})` : ""}`);
     return this.hydrate(mission);
+  }
+
+  async findByCascadeKey(key: Pick<CascadeBacklink, "sourceThreadId" | "sourceActionId">): Promise<Mission | null> {
+    for (const m of this.missions.values()) {
+      if (m.sourceThreadId === key.sourceThreadId && m.sourceActionId === key.sourceActionId) {
+        return this.hydrate(m);
+      }
+    }
+    return null;
   }
 
   async getMission(missionId: string): Promise<Mission | null> {

@@ -16,7 +16,7 @@ import {
 } from "../../gcs-state.js";
 import type { Mission, MissionStatus, IMissionStore } from "../mission.js";
 import type { ITaskStore } from "../../state.js";
-import type { IIdeaStore } from "../idea.js";
+import type { IIdeaStore, CascadeBacklink } from "../idea.js";
 
 export class GcsMissionStore implements IMissionStore {
   private bucket: string;
@@ -33,7 +33,8 @@ export class GcsMissionStore implements IMissionStore {
   async createMission(
     title: string,
     description: string,
-    documentRef?: string
+    documentRef?: string,
+    backlink?: CascadeBacklink
   ): Promise<Mission> {
     const num = await getAndIncrementCounter(this.bucket, "missionCounter");
     const id = `mission-${num}`;
@@ -49,13 +50,28 @@ export class GcsMissionStore implements IMissionStore {
       ideas: [],
       correlationId: id,
       turnId: null,
+      sourceThreadId: backlink?.sourceThreadId ?? null,
+      sourceActionId: backlink?.sourceActionId ?? null,
+      sourceThreadSummary: backlink?.sourceThreadSummary ?? null,
       createdAt: now,
       updatedAt: now,
     };
 
     await createOnly<Mission>(this.bucket, `missions/${id}.json`, mission);
-    console.log(`[GcsMissionStore] Mission created: ${id} — ${title}`);
+    console.log(`[GcsMissionStore] Mission created: ${id} — ${title}${backlink ? ` (cascade from ${backlink.sourceThreadId}/${backlink.sourceActionId})` : ""}`);
     return this.hydrate(mission);
+  }
+
+  async findByCascadeKey(key: Pick<CascadeBacklink, "sourceThreadId" | "sourceActionId">): Promise<Mission | null> {
+    const files = await listFiles(this.bucket, "missions/");
+    for (const file of files) {
+      if (!file.endsWith(".json")) continue;
+      const m = await readJson<Mission>(this.bucket, file);
+      if (m && m.sourceThreadId === key.sourceThreadId && m.sourceActionId === key.sourceActionId) {
+        return this.hydrate(m);
+      }
+    }
+    return null;
   }
 
   async getMission(missionId: string): Promise<Mission | null> {

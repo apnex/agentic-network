@@ -1677,3 +1677,215 @@ describe("ThreadPolicy — cascade handlers (M24-T5)", () => {
     expect(missing).toBeNull();
   });
 });
+
+// ── Mission-24 Phase 2 (M24-T9): update/propose/clarification handlers ──
+
+describe("ThreadPolicy — cascade handlers part 2 (M24-T9)", () => {
+  let router: PolicyRouter;
+  let archCtx: IPolicyContext;
+  let engCtx: IPolicyContext;
+
+  beforeEach(async () => {
+    await import("../src/policy/cascade-actions/index.js");
+    router = new PolicyRouter(noop);
+    registerThreadPolicy(router);
+
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+    engCtx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
+    archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
+    archCtx.stores.engineerRegistry.setSessionRole("s-eng-1", "engineer");
+  });
+
+  function injectStagedAction(threadId: string, type: string, payload: Record<string, unknown>, ctx: IPolicyContext): void {
+    const store = ctx.stores.thread as any;
+    const t = store.threads.get(threadId);
+    const id = `action-${t.convergenceActions.length + 1}`;
+    t.convergenceActions.push({
+      id, type, status: "staged",
+      proposer: { role: "engineer", agentId: null },
+      timestamp: new Date().toISOString(),
+      payload,
+    });
+  }
+
+  async function convergeWithInjectedAction(type: string, payload: Record<string, unknown>, summary: string): Promise<string> {
+    const r = await router.handle("create_thread", { title: "t", message: "m" }, archCtx);
+    const threadId = JSON.parse(r.content[0].text).threadId;
+    await router.handle("create_thread_reply", { threadId, message: "stage" }, engCtx);
+    injectStagedAction(threadId, type, payload, archCtx);
+    await router.handle("create_thread_reply", { threadId, message: "arch", summary }, archCtx);
+    await router.handle("create_thread_reply", { threadId, message: "eng-c", converged: true }, engCtx);
+    await router.handle("create_thread_reply", { threadId, message: "arch-c", converged: true }, archCtx);
+    return threadId;
+  }
+
+  // ── update_idea ──────────────────────────────────────────────
+
+  it("update_idea handler applies changes to an existing Idea", async () => {
+    // Seed: create an idea first.
+    const seeded = await archCtx.stores.idea.submitIdea("Seed idea", "user");
+    const threadId = await convergeWithInjectedAction(
+      "update_idea",
+      { ideaId: seeded.id, changes: { status: "triaged", tags: ["reviewed"] } },
+      "Promote the idea to triaged.",
+    );
+
+    const after = await archCtx.stores.idea.getIdea(seeded.id);
+    expect(after!.status).toBe("triaged");
+    expect(after!.tags).toEqual(["reviewed"]);
+
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("executed");
+    expect(finalized.data.report[0].entityId).toBe(seeded.id);
+
+    const audits = await archCtx.stores.audit.listEntries(50);
+    expect(audits.some((a) => a.action === "thread_update_idea" && a.relatedEntity === seeded.id)).toBe(true);
+    // Thread terminal is closed (no failures).
+    const final = JSON.parse((await router.handle("get_thread", { threadId }, archCtx)).content[0].text);
+    expect(final.status).toBe("closed");
+  });
+
+  it("update_idea handler fails cleanly when ideaId does not exist", async () => {
+    await convergeWithInjectedAction(
+      "update_idea",
+      { ideaId: "idea-missing", changes: { status: "dismissed" } },
+      "Try to update a non-existent idea.",
+    );
+
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("failed");
+    expect(finalized.data.report[0].error).toMatch(/not found/);
+    expect(finalized.data.warning).toBe(true);
+    expect(finalized.data.threadTerminal).toBe("cascade_failed");
+  });
+
+  it("update_idea handler drops unknown change keys and fails if nothing remains", async () => {
+    const seeded = await archCtx.stores.idea.submitIdea("Seed", "user");
+    await convergeWithInjectedAction(
+      "update_idea",
+      { ideaId: seeded.id, changes: { unknownField: "x" } },
+      "Empty update.",
+    );
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("failed");
+    expect(finalized.data.report[0].error).toMatch(/no updatable fields/);
+  });
+
+  // ── update_mission_status ────────────────────────────────────
+
+  it("update_mission_status transitions proposed → active", async () => {
+    const mission = await archCtx.stores.mission.createMission("M1", "Description");
+    expect(mission.status).toBe("proposed");
+
+    await convergeWithInjectedAction(
+      "update_mission_status",
+      { missionId: mission.id, status: "active" },
+      "Activate mission.",
+    );
+
+    const after = await archCtx.stores.mission.getMission(mission.id);
+    expect(after!.status).toBe("active");
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("executed");
+  });
+
+  it("update_mission_status rejects an invalid transition", async () => {
+    const mission = await archCtx.stores.mission.createMission("M2", "Description");
+    // Already at "proposed"; cannot go directly to "completed" per FSM.
+    await convergeWithInjectedAction(
+      "update_mission_status",
+      { missionId: mission.id, status: "completed" },
+      "Invalid direct transition.",
+    );
+
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("failed");
+    expect(finalized.data.report[0].error).toMatch(/invalid transition/);
+    expect(finalized.data.threadTerminal).toBe("cascade_failed");
+  });
+
+  it("update_mission_status rejects unknown status values", async () => {
+    const mission = await archCtx.stores.mission.createMission("M3", "Description");
+    await convergeWithInjectedAction(
+      "update_mission_status",
+      { missionId: mission.id, status: "frozen" as any },
+      "Bogus status.",
+    );
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("failed");
+    expect(finalized.data.report[0].error).toMatch(/invalid mission status/);
+  });
+
+  it("update_mission_status is idempotent when already at target", async () => {
+    const mission = await archCtx.stores.mission.createMission("M4", "Description");
+    // Fast-forward to active.
+    await archCtx.stores.mission.updateMission(mission.id, { status: "active" });
+    // Cascade redundantly sets active.
+    await convergeWithInjectedAction(
+      "update_mission_status",
+      { missionId: mission.id, status: "active" },
+      "Redundant activate.",
+    );
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("skipped_idempotent");
+    expect(finalized.data.warning).toBe(false);
+    expect(finalized.data.threadTerminal).toBe("closed");
+  });
+
+  // ── propose_mission ──────────────────────────────────────────
+
+  it("propose_mission spawns a Mission in proposed status with back-links", async () => {
+    const threadId = await convergeWithInjectedAction(
+      "propose_mission",
+      { title: "Proposed Mission", description: "Body", goals: ["G1", "G2"] },
+      "Draft a new mission.",
+    );
+
+    const missions = await archCtx.stores.mission.listMissions();
+    const spawned = missions.find((m) => m.sourceThreadId === threadId);
+    expect(spawned).toBeDefined();
+    expect(spawned!.status).toBe("proposed");
+    expect(spawned!.title).toBe("Proposed Mission");
+    expect(spawned!.description).toContain("G1");
+    expect(spawned!.description).toContain("G2");
+    expect(spawned!.sourceActionId).toBeTruthy();
+    expect(spawned!.sourceThreadSummary).toMatch(/Draft a new mission/i);
+  });
+
+  it("propose_mission is idempotent on re-run", async () => {
+    const { runCascade } = await import("../src/policy/cascade.js");
+    const threadId = await convergeWithInjectedAction(
+      "propose_mission",
+      { title: "Once", description: "D", goals: [] },
+      "Propose once.",
+    );
+    const thread = await archCtx.stores.thread.getThread(threadId);
+    const action = thread!.convergenceActions.find((a: any) => a.type === "propose_mission")!;
+
+    const result = await runCascade(archCtx, thread!, [action as any], "Propose once.");
+    expect(result.report[0].status).toBe("skipped_idempotent");
+    const missions = await archCtx.stores.mission.listMissions();
+    expect(missions.filter((m) => m.sourceThreadId === threadId)).toHaveLength(1);
+  });
+
+  // ── create_clarification ─────────────────────────────────────
+
+  it("create_clarification writes an audit entry (no spawned entity)", async () => {
+    const threadId = await convergeWithInjectedAction(
+      "create_clarification",
+      { question: "Which schema do we target?", context: "Migration alignment needed." },
+      "Raise a clarification for Director review.",
+    );
+
+    const audits = await archCtx.stores.audit.listEntries(50);
+    const entry = audits.find((a) => a.action === "thread_create_clarification" && a.relatedEntity === threadId);
+    expect(entry).toBeDefined();
+    expect(entry!.details).toContain("Which schema do we target?");
+    expect(entry!.details).toContain("Migration alignment needed.");
+
+    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
+    expect(finalized.data.report[0].status).toBe("executed");
+    expect(finalized.data.report[0].entityId).toBeNull();
+    expect(finalized.data.threadTerminal).toBe("closed");
+  });
+});
