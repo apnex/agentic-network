@@ -218,6 +218,33 @@ On resume, immediate next step:
 3. Unit tests first, then integration test against loopback hub, then Pass-2 re-measurement
 4. Commit per checkpoint; ship per checkpoint; measure per checkpoint
 
+## Verification log
+
+### ckpt-A measured 2026-04-19, architect revision `00042-hmx`, 6-thread Pass-2 matrix re-run (threads 169-174)
+
+| Metric | Baseline | ckpt-A | Δ | Target |
+|---|---:|---:|---:|---:|
+| Total Gemini tokens | 3,705,002 | 1,300,830 | **−65%** | ≤ 1.5M ✅ |
+| MAX_TOOL_ROUNDS attempts | 12 | 1 | **−92%** | ≤ 3 ✅ |
+| Out-of-scope rejections (hot path) | 9 | **0** | eliminated | ≤ 1/sandwich ✅ |
+| finishReason STOP | 91% | 100% | UNEXPECTED_TOOL_CALL → 0 | — |
+
+Per-thread (ckpt-A vs baseline counterpart):
+
+| # | Prompt shape | Baseline | ckpt-A | Δ |
+|---|---|---:|---:|---:|
+| 169/163 | simple ack | 377,185 | 26,016 | −93% |
+| 170/164 | ideation | 487,717 | 114,627 | −76% |
+| 171/165 | tool-heavy read | 351,188 | 26,932 | −92% |
+| 172/166 | design analysis | 1,363,070 | 479,363 | −65% |
+| 173/167 | parallel candidate | 862,520 | 628,073 | −27% |
+| 174/168 | error path | 263,322 | 25,819 | −90% |
+| — | **Total** | **3,705,002** | **1,300,830** | **−65%** |
+
+Interpretation: FR-SCOPE-REJECT class is eliminated on the ckpt-A revision. Remaining token spend on design-analysis + parallel-candidate is now dominated by accumulated tool-call history (root cause #2) — exactly what ckpt-B targets.
+
+---
+
 ## Canonical references
 
 - Baseline measurement: `docs/audits/phase-2a-baseline-measurement.md`
