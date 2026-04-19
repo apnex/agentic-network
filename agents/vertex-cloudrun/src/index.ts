@@ -27,6 +27,11 @@ const EVENT_LOOP_ENABLED =
 const GLOBAL_INSTANCE_ID = process.env.OIS_GLOBAL_INSTANCE_ID;
 const SERVICE_NAME = process.env.K_SERVICE || "architect-cloudrun";
 const PROXY_VERSION = process.env.K_REVISION || "0.0.0";
+// ADR-017: Hub posts here to cold-start the architect on queue-deadline
+// miss. Set via ARCHITECT_WAKE_ENDPOINT env var from terraform (the
+// architect's own Cloud Run service URL). Absent → watchdog escalates
+// directly to Director notification without Stage-1 re-dispatch.
+const WAKE_ENDPOINT = process.env.ARCHITECT_WAKE_ENDPOINT || undefined;
 
 function parseLabels(raw: string | undefined): Record<string, string> | undefined {
   if (!raw) return undefined;
@@ -52,6 +57,7 @@ const hub = new HubAdapter(HUB_URL, HUB_TOKEN, "architect", {
   globalInstanceId: GLOBAL_INSTANCE_ID,
   serviceName: SERVICE_NAME,
   proxyVersion: PROXY_VERSION,
+  wakeEndpoint: WAKE_ENDPOINT,
 });
 const context = new ContextStore({ bucket: GCS_BUCKET, prefix: CONTEXT_PREFIX });
 

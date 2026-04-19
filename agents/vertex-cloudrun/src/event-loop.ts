@@ -74,6 +74,30 @@ async function pollAndProcess(
   console.log("[EventLoop] Polling for pending actions...");
 
   try {
+    // ADR-017: drain the authoritative queue first. thread_message items
+    // feed directly to sandwichThreadReply with sourceQueueItemId so the
+    // Hub can completion-ACK atomically on reply. Track handled thread
+    // IDs so the legacy get_pending_actions path below doesn't
+    // double-fire on the same thread.
+    const drainedThreadIds = new Set<string>();
+    try {
+      const drained = await hub.drainPendingActions();
+      if (drained.items.length > 0) {
+        console.log(`[EventLoop] Drained ${drained.items.length} queue item(s)`);
+      }
+      for (const item of drained.items) {
+        if (item.dispatchType === "thread_message") {
+          drainedThreadIds.add(item.entityRef);
+          console.log(`[EventLoop] Drain → sandwichThreadReply ${item.entityRef} (queueItem=${item.id})`);
+          await sandwichThreadReply(hub, context, item.entityRef, item.id);
+        }
+        // Other dispatch types (task_issued, proposal_submitted, etc.)
+        // will be wired in ADR-017 Phase 1 follow-ups (idea-99).
+      }
+    } catch (err) {
+      console.warn("[EventLoop] drainPendingActions failed:", err);
+    }
+
     const pending = await hub.getPendingActions();
     const total = (pending.totalPending || 0) as number;
 
@@ -119,14 +143,15 @@ async function pollAndProcess(
       }
     }
 
-    // Process threads awaiting reply
+    // Process threads awaiting reply (legacy backup path — drain above
+    // is authoritative for ADR-017 queue items). Dedup against drained.
     const threadsAwaitingReply = (pending.threadsAwaitingReply || []) as Array<
       Record<string, unknown>
     >;
     for (const thread of threadsAwaitingReply) {
       const threadId = thread.threadId as string;
-      if (threadId) {
-        console.log(`[EventLoop] Replying to thread ${threadId}`);
+      if (threadId && !drainedThreadIds.has(threadId)) {
+        console.log(`[EventLoop] Replying to thread ${threadId} (legacy path)`);
         await sandwichThreadReply(hub, context, threadId);
       }
     }

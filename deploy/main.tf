@@ -166,6 +166,10 @@ resource "google_cloud_run_v2_service" "hub" {
         name  = "HUB_API_TOKEN"
         value = var.hub_api_token
       }
+      env {
+        name  = "WATCHDOG_ENABLED"
+        value = var.watchdog_enabled
+      }
 
       resources {
         limits = {
@@ -245,6 +249,10 @@ resource "google_cloud_run_v2_service" "architect" {
       env {
         name  = "OIS_GLOBAL_INSTANCE_ID"
         value = var.architect_global_instance_id
+      }
+      env {
+        name  = "ARCHITECT_WAKE_ENDPOINT"
+        value = google_cloud_run_v2_service.architect.uri
       }
       env {
         name  = "OIS_HUB_LABELS"

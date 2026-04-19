@@ -44,6 +44,7 @@
 import type { ILogger, LegacyStringLogger } from "./logger.js";
 import type { ITransport } from "./transport.js";
 import type { HandshakeFatalError, HandshakeResponse } from "./handshake.js";
+import type { DrainedPendingAction } from "./state-sync.js";
 
 /**
  * Session FSM state exposed to shims.
@@ -119,8 +120,20 @@ export interface AgentHandshakeConfig {
   onFatalHalt?: (err: HandshakeFatalError) => void;
   /** Successful handshake callback — useful for shim state tracking. */
   onHandshakeComplete?: (response: HandshakeResponse) => void;
+  /** ADR-017: optional durable-wake HTTP endpoint for this agent. */
+  wakeEndpoint?: string;
+  /** ADR-017: optional per-agent receipt-SLA override (ms). */
+  receiptSla?: number;
   /** Optional hook invoked by state-sync when a pending task is discovered. */
   onPendingTask?: (task: Record<string, unknown>) => void;
+  /**
+   * ADR-017: optional hook invoked per drained PendingActionItem on every
+   * state-sync (wake cycle). Adapters thread the `id` field as
+   * `sourceQueueItemId` on their settling tool call to complete-ACK.
+   * Omitting this hook means queue items drain without consumer — the
+   * Hub's watchdog escalates to Director after 3× receiptSla.
+   */
+  onPendingActionItem?: (item: DrainedPendingAction) => void;
 }
 
 export interface AgentClientConfig {

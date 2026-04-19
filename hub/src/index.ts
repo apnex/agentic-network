@@ -137,6 +137,12 @@ console.log(`[Hub] PolicyRouter initialized with ${policyRouter.size} tool(s): $
 // the pending-actions queue; enforces deadlines + escalation ladder. The
 // injectable wake-client uses fetch (best-effort); failures are logged but
 // never block watchdog progress — the queue is the truth.
+//
+// WATCHDOG_ENABLED feature flag (default true). Set to "false" during
+// migration windows (e.g., rolling out adapter drain-on-wake) to pause the
+// escalation ladder. Queue still enqueues + completion-acks still work;
+// only re-dispatch + demotion + Director-notification are suspended.
+const WATCHDOG_ENABLED = (process.env.WATCHDOG_ENABLED ?? "true").toLowerCase() !== "false";
 const watchdog = new Watchdog({
   stores: allStores,
   log: (msg) => console.log(msg),
@@ -152,8 +158,12 @@ const watchdog = new Watchdog({
     }
   },
 });
-watchdog.start();
-console.log("[Hub] ADR-017 comms-reliability watchdog started");
+if (WATCHDOG_ENABLED) {
+  watchdog.start();
+  console.log("[Hub] ADR-017 comms-reliability watchdog started");
+} else {
+  console.log("[Hub] ADR-017 watchdog PAUSED (WATCHDOG_ENABLED=false) — queue still operational, escalation ladder suspended");
+}
 
 // ── MCP Server Factory ───────────────────────────────────────────────
 // Each session gets its own McpServer instance connected to its transport.

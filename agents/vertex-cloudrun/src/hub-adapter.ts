@@ -40,6 +40,13 @@ export interface HubAdapterOptions {
   serviceName?: string;
   /** Proxy version surfaced in clientMetadata. Defaults to "0.0.0". */
   proxyVersion?: string;
+  /**
+   * ADR-017: durable-wake HTTP endpoint. Hub POSTs here on queue-deadline
+   * miss to cold-start the architect from Cloud Run scale-to-zero. In
+   * production this is the architect's own Cloud Run service URL (set
+   * via ARCHITECT_WAKE_ENDPOINT env var from terraform).
+   */
+  wakeEndpoint?: string;
 }
 
 export class HubAdapter {
@@ -66,6 +73,7 @@ export class HubAdapter {
           transport: "http",
           sdkVersion: "@ois/network-adapter@2.0.0",
           getClientInfo: () => ({ name: serviceName, version: proxyVersion }),
+          wakeEndpoint: opts.wakeEndpoint,
         }
       : undefined;
 
@@ -147,6 +155,28 @@ export class HubAdapter {
       string,
       unknown
     >;
+  }
+
+  /**
+   * ADR-017: drain the architect's pending-actions queue. Returns items
+   * that were enqueued by the Hub (owed responses); each carries an `id`
+   * that must be passed as `sourceQueueItemId` on the settling tool call
+   * (e.g., create_thread_reply) to complete-ACK. Absent drain + settle-ack
+   * the watchdog escalates after 3× receiptSla.
+   */
+  async drainPendingActions(): Promise<{
+    items: Array<{
+      id: string;
+      dispatchType: string;
+      entityRef: string;
+      payload: Record<string, unknown>;
+    }>;
+  }> {
+    const result = await this.callTool("drain_pending_actions");
+    if (result && typeof result === "object" && Array.isArray((result as any).items)) {
+      return result as any;
+    }
+    return { items: [] };
   }
 
   async createReview(taskId: string, assessment: string): Promise<unknown> {

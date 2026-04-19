@@ -361,6 +361,7 @@ export class McpAgentClient implements IAgentClient {
         completeSync: () => this.completeSyncInternal(),
         log: this.log,
         onPendingTask: this.cfg.handshake?.onPendingTask,
+        onPendingActionItem: this.cfg.handshake?.onPendingActionItem,
       });
     } catch (err) {
       this.log.log(
@@ -429,6 +430,8 @@ export class McpAgentClient implements IAgentClient {
         sdkVersion: handshake.sdkVersion,
         llmModel: handshake.llmModel,
         labels: this.cfg.labels,
+        wakeEndpoint: handshake.wakeEndpoint,
+        receiptSla: handshake.receiptSla,
       },
       previousEpoch: this._lastEpoch,
       log: this.log,

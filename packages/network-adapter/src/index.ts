@@ -69,7 +69,7 @@ export type {
 } from "./handshake.js";
 
 export { performStateSync } from "./state-sync.js";
-export type { StateSyncContext } from "./state-sync.js";
+export type { StateSyncContext, DrainedPendingAction } from "./state-sync.js";
 
 // ── Engineer-side helpers ───────────────────────────────────────────
 

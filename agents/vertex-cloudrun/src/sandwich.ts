@@ -215,21 +215,23 @@ export async function sandwichReviewProposal(
 export async function sandwichThreadReply(
   hub: HubAdapter,
   context: ContextStore,
-  threadId: string
+  threadId: string,
+  sourceQueueItemId?: string
 ): Promise<void> {
   // M25-SH-T1: wrap the attempt in the retry orchestrator so a transient
   // LLM failure (tool-call miss, upstream throw, MAX_TOOL_ROUNDS) fires
   // an immediate one-shot retry instead of waiting for the 300s poll.
   await withSandwichRetry(
     `thread reply ${threadId}`,
-    () => attemptThreadReply(hub, context, threadId),
+    () => attemptThreadReply(hub, context, threadId, sourceQueueItemId),
   );
 }
 
 async function attemptThreadReply(
   hub: HubAdapter,
   context: ContextStore,
-  threadId: string
+  threadId: string,
+  sourceQueueItemId?: string
 ): Promise<SandwichOutcome> {
   try {
     // 1. FETCH
@@ -382,6 +384,13 @@ async function attemptThreadReply(
       }
       try {
         if (name === "create_thread_reply") {
+          // ADR-017: inject sourceQueueItemId into the reply args so the
+          // Hub completion-ACKs the drained queue item atomically with
+          // the reply. LLM doesn't need to know about queue identity —
+          // this is a system-level concern pinned at the boundary.
+          if (sourceQueueItemId && !("sourceQueueItemId" in args)) {
+            args = { ...args, sourceQueueItemId };
+          }
           replyArgs = args;
         }
         const result = await hub.callTool(name, args);

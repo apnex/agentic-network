@@ -71,6 +71,12 @@ variable "hub_image" {
   default     = ""
 }
 
+variable "watchdog_enabled" {
+  description = "ADR-017 comms-reliability watchdog. Set to \"false\" during adapter-rollout migration windows to pause the escalation ladder (queue + completion-acks stay operational). Default \"true\" for normal operation."
+  type        = string
+  default     = "true"
+}
+
 # ── Architect Config ───────────────────────────────────────────────────
 
 variable "architect_min_instances" {

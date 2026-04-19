@@ -128,6 +128,19 @@ export interface HandshakeConfig {
    * keep legacy broadcast semantics (labels = {}).
    */
   labels?: Record<string, string>;
+  /**
+   * ADR-017: optional durable-wake HTTP endpoint. When set, the Hub
+   * POSTs here on queue-deadline miss to cold-start scaled-to-zero
+   * agents. For Cloud Run architects, this is the service URL. Absent
+   * for interactive CLI agents — watchdog skips Stage 1 re-dispatch and
+   * escalates directly to Director notification.
+   */
+  wakeEndpoint?: string;
+  /**
+   * ADR-017: optional per-agent receipt-SLA override in milliseconds.
+   * When omitted, Hub uses DEFAULT_AGENT_RECEIPT_SLA_MS (30000).
+   */
+  receiptSla?: number;
 }
 
 export interface HandshakeContext {
@@ -176,6 +189,8 @@ export function buildHandshakePayload(config: HandshakeConfig): HandshakePayload
     },
   };
   if (config.labels) payload.labels = config.labels;
+  if (config.wakeEndpoint) (payload as unknown as Record<string, unknown>).wakeEndpoint = config.wakeEndpoint;
+  if (typeof config.receiptSla === "number") (payload as unknown as Record<string, unknown>).receiptSla = config.receiptSla;
   return payload;
 }
 
