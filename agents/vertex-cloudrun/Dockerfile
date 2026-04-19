@@ -2,8 +2,10 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Copy the shared network adapter package
+# Copy the shared OIS packages (Phase 2a: cognitive-layer added for
+# LLM-usage → CognitiveTelemetry bridge in sandwich.ts / director-chat.ts).
 COPY ois-network-adapter-2.0.0.tgz ./
+COPY ois-cognitive-layer-0.1.0.tgz ./
 
 # Install dependencies
 COPY package.json package-lock.json* ./

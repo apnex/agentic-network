@@ -1,6 +1,6 @@
 # Mission: M-Cognitive-Hypervisor
 
-**Status:** Phase 1 complete + Phase 1.1 complete + deployed + measured; Phase 2a in-progress (ckpt-C partial)
+**Status:** Phase 1 + Phase 2a COMPLETE + deployed + verified live (architect revision `00038-86s`); Phase 2b/3/4 deferred.
 **Proposed:** 2026-04-19
 **Owner:** Engineer (autonomous lead)
 **Collaborator:** Architect (per-phase ADR review + buy-in)
@@ -20,9 +20,20 @@
 | **Phase 2a design kickoff** (thread-160) | ✅ converged — Tier-A scope ratified | thread-160 |
 | **Phase 2a ckpt-A** — ResponseSummarizer + `_ois_pagination` + Virtual Tokens Saved | ✅ complete | `b375000` |
 | **Phase 2a ckpt-B** — PartialFailureSemantics (positional `{status, data\|error}` on parallel batches) | ✅ complete | `8ea92aa` |
-| **Phase 2a ckpt-C** — LLM-usage → CognitiveTelemetry bridge | ⏸️ **half complete** | `8118212` (partial) |
+| **Phase 2a ckpt-C** — LLM-usage → CognitiveTelemetry bridge | ✅ complete, deployed (revision `00038-86s`), verified live (11 `llm_usage` events captured for thread-162) | `8118212` (primitives) + `5627e08` (wiring) |
 
-### Phase 2a ckpt-C — resumption pointer
+### Phase 2a — closed
+
+All three Tier-A items shipped and verified in production:
+- `ResponseSummarizer` with architect-ratified `_ois_pagination` hint
+- `PartialFailureSemantics` positional preservation on parallel batches
+- `LLM-usage → CognitiveTelemetry` bridge via `architectTelemetry` singleton in vertex-cloudrun
+
+Phase 2b (StaleWhileRevalidateStrategy, GranularMatrixStrategy, ParallelBatchSuggester) scoped for a separate cycle.
+Phase 3 (ThreadSyncCheck / idea-114) deferred.
+Phase 4 (quota / idea-109) deferred — no observed 429s to justify pull-forward.
+
+### Previous Phase 2a ckpt-C resumption pointer (historical)
 
 **What's landed in `8118212`:** cognitive-layer primitives:
 - `TelemetryEvent.kind` union extended with `"llm_usage"`
