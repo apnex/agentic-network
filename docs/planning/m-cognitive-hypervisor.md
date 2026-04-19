@@ -1,10 +1,72 @@
 # Mission: M-Cognitive-Hypervisor
 
-**Status:** Proposed
+**Status:** Phase 1 complete + Phase 1.1 complete + deployed + measured; Phase 2a in-progress (ckpt-C partial)
 **Proposed:** 2026-04-19
 **Owner:** Engineer (autonomous lead)
 **Collaborator:** Architect (per-phase ADR review + buy-in)
 **Governance:** Director approves mission kickoff + each phase cutover; Architect reviews ADRs between.
+
+---
+
+## Execution status (updated 2026-04-19, session-end)
+
+| Phase | Status | Commits |
+|---|---|---|
+| **Phase 1** — 6 middlewares + adapter integration + shim E2E | ✅ complete | `c01997b` → `e0721d8` |
+| **Phase 1.1** — bytes + tokens on TelemetryEvent | ✅ complete | `826fcff` |
+| **Phase 1 baseline measurement** — 67.8% Hub-call reduction | ✅ complete | `1453ab7` |
+| **Phase 1.1a** — envelope-aware ErrorNormalizer | ✅ complete | `70136fd` |
+| **Phase 1 ckpt-3** — vertex-cloudrun shim adds (round-budget + parallel + usage emit) | ✅ complete, deployed (revision `00036-qfs`), measured live (17,150 Gemini tokens observed on thread-159) | `9196361` |
+| **Phase 2a design kickoff** (thread-160) | ✅ converged — Tier-A scope ratified | thread-160 |
+| **Phase 2a ckpt-A** — ResponseSummarizer + `_ois_pagination` + Virtual Tokens Saved | ✅ complete | `b375000` |
+| **Phase 2a ckpt-B** — PartialFailureSemantics (positional `{status, data\|error}` on parallel batches) | ✅ complete | `8ea92aa` |
+| **Phase 2a ckpt-C** — LLM-usage → CognitiveTelemetry bridge | ⏸️ **half complete** | `8118212` (partial) |
+
+### Phase 2a ckpt-C — resumption pointer
+
+**What's landed in `8118212`:** cognitive-layer primitives:
+- `TelemetryEvent.kind` union extended with `"llm_usage"`
+- `TelemetryEvent` gains `llmRound / llmPromptTokens / llmCompletionTokens / llmTotalTokens / llmFinishReason / llmParallelToolCalls` optional fields
+- `CognitiveTelemetry.emitLlmUsage(usage, ctx?)` public method
+- `AggregatingTelemetrySink` extended with `llmUsageEvents` + `totalLlmPromptTokens/CompletionTokens/TotalTokens` + `totalVirtualTokensSaved / summarizedCallCount` counters
+
+**What's NOT yet landed — next-session immediate step:**
+
+Edit `agents/vertex-cloudrun/src/sandwich.ts` and `agents/vertex-cloudrun/src/director-chat.ts`. Both currently have an `onUsage` callback that only `console.log`s cumulative tokens. Replace with a call through `CognitiveTelemetry.emitLlmUsage` so the same sink consumes Gemini usage events alongside tool-surface events:
+
+```ts
+// At module scope in sandwich.ts (or pass in via DI)
+import { CognitiveTelemetry } from "@ois/network-adapter";
+const architectTelemetry = new CognitiveTelemetry({
+  sink: (event) => console.log(`[Telemetry] ${JSON.stringify(event)}`),
+});
+
+// Inside the generateWithTools cognitive options:
+onUsage: (u) => {
+  architectTelemetry.emitLlmUsage(u, { sessionId: threadId, agentId: archEngineerId });
+  // ... existing cumPromptTokens/cumCompletionTokens accounting ...
+},
+```
+
+After wiring:
+1. Unit tests for `emitLlmUsage` + aggregator `llm_usage` counter path
+2. Rebuild `ois-cognitive-layer-0.1.0.tgz` + `ois-network-adapter-2.0.0.tgz` + redistribute to `adapters/`
+3. Test sweep (cognitive-layer + network-adapter + vertex-cloudrun)
+4. Deploy to Cloud Run via `deploy/build.sh architect`
+5. Smoke-test via a thread to architect + grep Cloud Run logs for `"llm_usage"` events
+6. Close Phase 2a by updating this doc (status → complete) and updating ADR-018
+
+### What's in this session's memory that won't carry over
+
+Hub tasks #141/#142/#143 were in-session tracking only (task IDs local to this CLI session, NOT persisted in Hub entities). Ignore them on resume; the source of truth is this doc + commits.
+
+### Canonical references
+
+- **Spec:** `docs/decisions/018-cognitive-layer-middleware.md` (ADR-018, Accepted; Phase 2a not yet reflected — can be updated when 2a is complete)
+- **Phase 1 baseline measurement:** `docs/audits/phase-1-baseline-measurement.md`
+- **Phase 2a design thread:** thread-160 (converged; in Hub state)
+- **Phase 1 design thread:** thread-158 (converged; in Hub state)
+- **Smoke test thread:** thread-159 (converged; in Hub state)
 
 ---
 
