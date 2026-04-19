@@ -58,6 +58,7 @@ import {
   createDedupFilter,
 } from "./event-router.js";
 import { performHandshake } from "./handshake.js";
+import { HubReturnedError, isErrorEnvelope } from "./hub-error.js";
 import type {
   CognitivePipeline,
   ToolCallContext,
@@ -264,9 +265,18 @@ export class McpAgentClient implements IAgentClient {
       tags: {},
     };
     try {
-      return await this.cognitive.runToolCall(ctx, async (c) =>
-        this.rawCall(c.tool, c.args),
-      );
+      return await this.cognitive.runToolCall(ctx, async (c) => {
+        const result = await this.rawCall(c.tool, c.args);
+        // Hub-layer application errors come back as `{isError, content}`
+        // envelopes — NOT thrown. For ErrorNormalizer (and any other
+        // onToolError middleware) to observe them, convert to a throw
+        // HERE. Legacy (non-cognitive) call path preserves the
+        // envelope-as-return-value contract unchanged.
+        if (isErrorEnvelope(result)) {
+          throw new HubReturnedError(result);
+        }
+        return result;
+      });
     } catch (err) {
       const errCtx: ToolErrorContext = {
         tool: method,

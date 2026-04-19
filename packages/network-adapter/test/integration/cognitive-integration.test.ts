@@ -19,6 +19,9 @@ import {
   CognitiveTelemetry,
   CircuitBreaker,
   HubUnavailableError,
+  ErrorNormalizer,
+  NormalizedError,
+  HubReturnedError,
   McpAgentClient,
   type TelemetryEvent,
 } from "../../src/index.js";
@@ -277,6 +280,52 @@ describe("McpAgentClient cognitive integration", () => {
     const result = await agent.call("provoke_error", {});
     expect(result).toEqual({ recovered: true, original: "recover-me: fake error" });
 
+    await agent.stop();
+  });
+
+  // ── Envelope-aware ErrorNormalizer (Phase 1.1) ────────────────────
+
+  it("cognitive path converts Hub isError envelope → throw so ErrorNormalizer sees it", async () => {
+    // Unknown tool on a real Hub → PolicyLoopbackHub returns
+    // { isError:true, content:[{text:'{"error":"Unknown tool: foo"}'}] }.
+    // Without envelope-detection, the cognitive path would see that as
+    // a returned value and never invoke ErrorNormalizer. With the
+    // Phase 1.1 fix, agent.call throws HubReturnedError, runToolError
+    // runs, and ErrorNormalizer's unknown-tool rule fires.
+
+    const pipeline = new CognitivePipeline().use(
+      new ErrorNormalizer({
+        knownTools: ["list_tele", "list_ideas", "get_thread", "create_thread"],
+      }),
+    );
+    const { agent } = await createAgent(hub, pipeline);
+
+    try {
+      // "list_idaes" — one-letter typo, edit distance 1 from list_ideas
+      await agent.call("list_idaes", {});
+      throw new Error("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(NormalizedError);
+      const ne = err as NormalizedError;
+      expect(ne.rule).toBe("unknown-tool");
+      expect(ne.message).toContain("list_idaes");
+      expect(ne.message).toContain("Did you mean 'list_ideas'");
+      // Raw error is a HubReturnedError wrapping the envelope.
+      expect(ne.rawError).toBeInstanceOf(HubReturnedError);
+    }
+
+    await agent.stop();
+  });
+
+  it("cognitive path: legacy non-cognitive agent.call() preserves envelope-as-return contract", async () => {
+    // Sanity: without a cognitive pipeline, Hub isError envelopes come
+    // back as return values — existing consumers unbroken.
+    const { agent } = await createAgent(hub); // no cognitive
+    const result = await agent.call("list_idaes", {});
+    expect(result).toBeDefined();
+    // The loopback hub wraps error content; legacy contract returns
+    // the envelope verbatim.
+    expect((result as { isError?: boolean }).isError).toBe(true);
     await agent.stop();
   });
 });

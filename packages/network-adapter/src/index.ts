@@ -3,6 +3,8 @@
 export { McpAgentClient } from "./mcp-agent-client.js";
 export type { McpAgentClientOptions } from "./mcp-agent-client.js";
 
+export { HubReturnedError, isErrorEnvelope } from "./hub-error.js";
+
 export type {
   IAgentClient,
   AgentClientConfig,
