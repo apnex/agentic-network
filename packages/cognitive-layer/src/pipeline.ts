@@ -30,6 +30,10 @@ import {
   ErrorNormalizer,
   type ErrorNormalizerConfig,
 } from "./middlewares/error-normalizer.js";
+import {
+  ResponseSummarizer,
+  type ResponseSummarizerConfig,
+} from "./middlewares/response-summarizer.js";
 
 export interface StandardPipelineConfig {
   /** CognitiveTelemetry options. */
@@ -44,6 +48,8 @@ export interface StandardPipelineConfig {
   toolDescriptionEnricher?: ToolDescriptionEnricherConfig;
   /** ErrorNormalizer options. */
   errorNormalizer?: ErrorNormalizerConfig;
+  /** ResponseSummarizer options (Phase 2a). */
+  responseSummarizer?: ResponseSummarizerConfig;
 }
 
 export class CognitivePipeline {
@@ -124,6 +130,10 @@ export class CognitivePipeline {
     pipeline.use(new CircuitBreaker(config.circuitBreaker ?? {}));
     pipeline.use(new WriteCallDedup(config.writeCallDedup ?? {}));
     pipeline.use(new ToolResultCache(config.toolResultCache ?? {}));
+    // ResponseSummarizer (Phase 2a) sits AFTER cache so cached results
+    // are already summarized — cache-hits deliver the trimmed payload
+    // without re-running the summarization step.
+    pipeline.use(new ResponseSummarizer(config.responseSummarizer ?? {}));
     pipeline.use(new ToolDescriptionEnricher(config.toolDescriptionEnricher ?? {}));
     pipeline.use(new ErrorNormalizer(config.errorNormalizer ?? {}));
     return pipeline;

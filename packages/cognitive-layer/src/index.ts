@@ -63,3 +63,10 @@ export type {
   ErrorRule,
   CascadeDriftRule,
 } from "./middlewares/error-normalizer.js";
+
+export {
+  ResponseSummarizer,
+  summarizeResult,
+  buildPaginationHint,
+} from "./middlewares/response-summarizer.js";
+export type { ResponseSummarizerConfig } from "./middlewares/response-summarizer.js";

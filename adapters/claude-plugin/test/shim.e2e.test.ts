@@ -39,6 +39,7 @@ import {
   ToolDescriptionEnricher,
   ErrorNormalizer,
   NormalizedError,
+  ResponseSummarizer,
   type TelemetryEvent,
 } from "@ois/network-adapter";
 import { LoopbackTransport } from "../../../packages/network-adapter/test/helpers/loopback-transport.js";
@@ -496,6 +497,44 @@ describe("claude-plugin shim — cognitive layer integration", () => {
     expect(getThread?.description ?? "").toContain("[ID]");
     expect(getThread?.description ?? "").toContain("[PAR]");
     expect(createThread?.description ?? "").toContain("[W]");
+
+    await eng.mcpClient.close();
+    await eng.agent.stop();
+  });
+
+  it("ResponseSummarizer truncates oversized read results + injects _ois_pagination hint + tags Virtual Tokens Saved", async () => {
+    const events: TelemetryEvent[] = [];
+    const pipeline = new CognitivePipeline()
+      .use(new CognitiveTelemetry({ sink: (e) => events.push(e) }))
+      .use(new ResponseSummarizer({ maxItems: 3 }));
+    const eng = await createEngineerWithShim(hub, { cognitive: pipeline });
+
+    // Seed more than 3 ideas so list_ideas returns enough to trigger truncation
+    for (let i = 0; i < 8; i++) {
+      await eng.agent.call("create_idea", { text: `summarizer-test-${i}` });
+    }
+
+    // Now call list_ideas; summarizer should truncate
+    const raw = await eng.agent.call("list_ideas", { limit: 100 });
+    const result = typeof raw === "string" ? JSON.parse(raw) : raw;
+
+    // Summarizer should have added _ois_pagination and truncated ideas
+    expect(result._ois_pagination).toBeDefined();
+    expect(result._ois_pagination.hint).toContain("offset=3");
+    expect(result._ois_pagination.count).toBe(3);
+    expect(result._ois_pagination.total).toBeGreaterThan(3);
+    expect(Array.isArray(result.ideas)).toBe(true);
+    expect(result.ideas).toHaveLength(3);
+
+    // Wait for telemetry flush
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Virtual Tokens Saved KPI surfaced in telemetry
+    const summarizedEvent = events.find(
+      (e) => e.kind === "tool_call" && e.tool === "list_ideas" && e.tags?.summarized === "true",
+    );
+    expect(summarizedEvent).toBeDefined();
+    expect(Number(summarizedEvent!.tags!.virtualTokensSaved)).toBeGreaterThan(0);
 
     await eng.mcpClient.close();
     await eng.agent.stop();

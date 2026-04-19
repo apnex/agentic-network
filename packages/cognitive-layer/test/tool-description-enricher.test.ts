@@ -239,11 +239,15 @@ describe("ToolDescriptionEnricher — preserves tool shape", () => {
 // ── .standard() integration ─────────────────────────────────────────
 
 describe("ToolDescriptionEnricher — .standard() integration", () => {
-  it(".standard() composes ToolDescriptionEnricher at position 4", async () => {
+  it(".standard() places ToolDescriptionEnricher between ToolResultCache and ErrorNormalizer", async () => {
     const { CognitivePipeline } = await import("../src/pipeline.js");
     const p = CognitivePipeline.standard();
     const names = p.getMiddlewares().map((m) => m.name);
-    expect(names.indexOf("ToolDescriptionEnricher")).toBe(4);
+    const cacheIdx = names.indexOf("ToolResultCache");
+    const enricherIdx = names.indexOf("ToolDescriptionEnricher");
+    const normalizerIdx = names.indexOf("ErrorNormalizer");
+    expect(enricherIdx).toBeGreaterThan(cacheIdx);
+    expect(enricherIdx).toBeLessThan(normalizerIdx);
   });
 
   it(".standard() pipeline list-tools flow actually enriches", async () => {

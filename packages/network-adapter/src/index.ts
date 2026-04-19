@@ -106,6 +106,9 @@ export {
   ToolDescriptionEnricher,
   ErrorNormalizer,
   NormalizedError,
+  ResponseSummarizer,
+  summarizeResult,
+  buildPaginationHint,
 } from "@ois/cognitive-layer";
 export type {
   CognitiveMiddleware,
@@ -130,4 +133,5 @@ export type {
   ErrorNormalizerConfig,
   ErrorRule,
   CascadeDriftRule,
+  ResponseSummarizerConfig,
 } from "@ois/cognitive-layer";

@@ -388,11 +388,13 @@ describe("ErrorNormalizer — custom rules", () => {
 });
 
 describe("ErrorNormalizer — .standard() integration", () => {
-  it(".standard() composes ErrorNormalizer at position 5 (innermost)", async () => {
+  it(".standard() composes ErrorNormalizer at the innermost position", async () => {
     const { CognitivePipeline } = await import("../src/pipeline.js");
     const p = CognitivePipeline.standard();
     const names = p.getMiddlewares().map((m) => m.name);
-    expect(names.indexOf("ErrorNormalizer")).toBe(5);
-    expect(names.length).toBe(6); // full Phase 1 middleware set
+    // ErrorNormalizer is innermost — index = last
+    expect(names[names.length - 1]).toBe("ErrorNormalizer");
+    // Core middleware set intact (>= 6 after Phase 2 additions)
+    expect(names.length).toBeGreaterThanOrEqual(6);
   });
 });
