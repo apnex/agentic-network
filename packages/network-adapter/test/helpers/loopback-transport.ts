@@ -245,6 +245,26 @@ export class LoopbackTransport implements ITransport {
     return this.hub.listMethods();
   }
 
+  /**
+   * Mirrors `McpTransport.listToolsRaw()` — returns full tool descriptors
+   * (name + inputSchema stub) so shim dispatchers that re-advertise the
+   * Hub's tool surface to a downstream MCP client can exercise their
+   * `ListToolsRequest` wiring through the loopback.
+   *
+   * Loopback fidelity: the Hub's real tool schemas live in the policy
+   * registrations (Zod), not in a tool-discovery response. For this
+   * harness we emit `{ type: "object" }` as a valid-but-permissive
+   * inputSchema — sufficient to prove the dispatcher → transport →
+   * hub → re-advertise plumbing works end-to-end. Tests that need
+   * schema-level fidelity should drive real MCP against the Hub.
+   */
+  async listToolsRaw(): Promise<Array<Record<string, unknown>>> {
+    return this.hub.listMethods().map((name) => ({
+      name,
+      inputSchema: { type: "object" as const },
+    }));
+  }
+
   onWireEvent(handler: WireEventHandler): void {
     this._handlers.push(handler);
   }

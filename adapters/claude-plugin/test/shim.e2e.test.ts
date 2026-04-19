@@ -258,17 +258,41 @@ describe("claude-plugin shim — full-loopback E2E", () => {
     expect(result).toBeDefined();
   });
 
-  // Intentionally NOT covered here:
-  //   • tools/list — dispatcher's ListToolsRequest handler delegates to
-  //     `agent.getTransport().listToolsRaw()`, which is an McpTransport-
-  //     specific API that LoopbackTransport doesn't implement. Exercised
-  //     in production + dispatcher unit tests; no loopback coverage
-  //     until we add a listToolsRaw stub to LoopbackTransport.
-  //   • unknown-tool error propagation — depends on McpTransport's
-  //     specific error-surfacing path (error JSON in response.content),
-  //     which the loopback router doesn't model identically. Unit-test
-  //     coverage of the dispatcher catch block exists; loopback fidelity
-  //     would be cosmetic.
+  // ── tools/list proxies the real Hub tool surface ───────────────────
+
+  it("tools/list via MCP returns the Hub's registered tools through the dispatcher", async () => {
+    const result = await eng.mcpClient.listTools();
+    const names = result.tools.map((t) => t.name);
+    // Every Hub tool the PolicyRouter registered should be visible to
+    // the downstream MCP client via the dispatcher's re-advertisement.
+    expect(names).toContain("create_thread");
+    expect(names).toContain("create_thread_reply");
+    expect(names).toContain("get_thread");
+    expect(names).toContain("register_role");
+    // Tool count matches what the Hub exposes (guards against silent
+    // drops in the dispatcher → transport → hub chain).
+    expect(names.length).toBeGreaterThan(10);
+  });
+
+  // ── Unknown-tool error propagation ─────────────────────────────────
+
+  it("unknown tool surfaces as an error-text content block (no crash, no silent success)", async () => {
+    const result = await eng.mcpClient.callTool({
+      name: "nonexistent_tool_xyz",
+      arguments: {},
+    });
+    const content = (result as { content: Array<{ type: string; text: string }> }).content;
+    expect(content).toBeDefined();
+    expect(content.length).toBeGreaterThan(0);
+    // The dispatcher must surface the Hub's "Unknown tool" error payload
+    // into the MCP response body so the downstream LLM sees it and can
+    // self-correct. The exact wrapping shape differs between loopback
+    // (preserves {isError, content} envelope) and production (strips to
+    // parsed body), but the error message itself must reach the client.
+    const combined = content.map((c) => c.text ?? "").join(" ");
+    expect(combined).toMatch(/Unknown tool/i);
+    expect(combined).toContain("nonexistent_tool_xyz");
+  });
 
   // ── InitializeRequest → clientInfo flows into dispatcher ───────────
 
