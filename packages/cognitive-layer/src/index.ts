@@ -32,3 +32,10 @@ export type {
   TelemetryEvent,
   TelemetryEventKind,
 } from "./middlewares/telemetry.js";
+
+export { CircuitBreaker, HubUnavailableError } from "./middlewares/circuit-breaker.js";
+export type {
+  CircuitBreakerConfig,
+  CircuitState,
+  CircuitStateChange,
+} from "./middlewares/circuit-breaker.js";

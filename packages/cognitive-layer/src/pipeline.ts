@@ -19,13 +19,16 @@ import type {
   ToolErrorTerminal,
 } from "./contract.js";
 import { CognitiveTelemetry, type CognitiveTelemetryConfig } from "./middlewares/telemetry.js";
+import { CircuitBreaker, type CircuitBreakerConfig } from "./middlewares/circuit-breaker.js";
 
 export interface StandardPipelineConfig {
-  /** CognitiveTelemetry options — middleware landing in task-287. */
+  /** CognitiveTelemetry options. */
   telemetry?: CognitiveTelemetryConfig;
+  /** CircuitBreaker options. */
+  circuitBreaker?: CircuitBreakerConfig;
   /**
    * Future middlewares will register config fields here as they land:
-   * circuitBreaker, dedup, cache, enricher, normalizer.
+   * dedup, cache, enricher, normalizer.
    */
 }
 
@@ -104,6 +107,7 @@ export class CognitivePipeline {
   static standard(config: StandardPipelineConfig = {}): CognitivePipeline {
     const pipeline = new CognitivePipeline();
     pipeline.use(new CognitiveTelemetry(config.telemetry ?? {}));
+    pipeline.use(new CircuitBreaker(config.circuitBreaker ?? {}));
     return pipeline;
   }
 }

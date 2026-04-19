@@ -226,11 +226,13 @@ describe("CognitivePipeline.standard() factory", () => {
     expect(names).toContain("CognitiveTelemetry");
   });
 
-  it("accepts and forwards telemetry config", () => {
+  it("accepts and forwards middleware configs", () => {
     const sink = vi.fn();
     const p = CognitivePipeline.standard({ telemetry: { sink } });
-    expect(p.getMiddlewares()).toHaveLength(1);
-    // (further behavioral tests in telemetry.test.ts)
+    // Grows with each Phase 1 checkpoint — asserting names not count so
+    // the test stays stable across middleware additions.
+    const names = p.getMiddlewares().map((m) => m.name);
+    expect(names[0]).toBe("CognitiveTelemetry"); // outermost per ADR-018
   });
 
   it("independent instances are isolated", () => {
