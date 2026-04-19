@@ -1,6 +1,7 @@
 # ADR-018: Cognitive-Layer Middleware Contract (M-Cognitive-Hypervisor Phase 1)
 
-**Status:** Proposed — thread-158 2026-04-19
+**Status:** Accepted — Phase 1 shipped 2026-04-19 (thread-158 design; commits c01997b→[final]).
+All 6 middlewares + integration + shim E2E coverage landed.
 **Owner:** Engineer
 **Reviewer:** Architect (ratified across thread-158 rounds 1-5)
 **Supersedes / relates:** idea-107 (umbrella), idea-109 (Phase 4 quota integration), idea-111 (Hub-layer reply idempotency — sibling), idea-113 (cascade schema docs), idea-114 (state reconciliation — Phase 3), ADR-017 (persist-first comms queue — orthogonal)

@@ -26,6 +26,10 @@ import {
   ToolDescriptionEnricher,
   type ToolDescriptionEnricherConfig,
 } from "./middlewares/tool-description-enricher.js";
+import {
+  ErrorNormalizer,
+  type ErrorNormalizerConfig,
+} from "./middlewares/error-normalizer.js";
 
 export interface StandardPipelineConfig {
   /** CognitiveTelemetry options. */
@@ -38,10 +42,8 @@ export interface StandardPipelineConfig {
   toolResultCache?: ToolResultCacheConfig;
   /** ToolDescriptionEnricher options. */
   toolDescriptionEnricher?: ToolDescriptionEnricherConfig;
-  /**
-   * Future middlewares will register config fields here as they land:
-   * normalizer.
-   */
+  /** ErrorNormalizer options. */
+  errorNormalizer?: ErrorNormalizerConfig;
 }
 
 export class CognitivePipeline {
@@ -123,6 +125,7 @@ export class CognitivePipeline {
     pipeline.use(new WriteCallDedup(config.writeCallDedup ?? {}));
     pipeline.use(new ToolResultCache(config.toolResultCache ?? {}));
     pipeline.use(new ToolDescriptionEnricher(config.toolDescriptionEnricher ?? {}));
+    pipeline.use(new ErrorNormalizer(config.errorNormalizer ?? {}));
     return pipeline;
   }
 }

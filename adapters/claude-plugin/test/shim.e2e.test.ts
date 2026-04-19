@@ -37,6 +37,8 @@ import {
   WriteCallDedup,
   ToolResultCache,
   ToolDescriptionEnricher,
+  ErrorNormalizer,
+  NormalizedError,
   type TelemetryEvent,
 } from "@ois/network-adapter";
 import { LoopbackTransport } from "../../../packages/network-adapter/test/helpers/loopback-transport.js";
@@ -489,6 +491,55 @@ describe("claude-plugin shim — cognitive layer integration", () => {
     expect(getThread?.description ?? "").toContain("[ID]");
     expect(getThread?.description ?? "").toContain("[PAR]");
     expect(createThread?.description ?? "").toContain("[W]");
+
+    await eng.mcpClient.close();
+    await eng.agent.stop();
+  });
+
+  it("ErrorNormalizer rewrites unknown-tool transport errors into 'Did you mean?' hints", async () => {
+    // Induce a transport-layer throw for an unknown tool name; real
+    // transport behavior would vary, but ErrorNormalizer's contract is
+    // "catch thrown errors and rewrite known patterns".
+    const realTransport = new LoopbackTransport(hub);
+    const origRequest = realTransport.request.bind(realTransport);
+    realTransport.request = async (method, params) => {
+      if (method === "get_thred") {
+        throw new Error(`Unknown tool: ${method}`);
+      }
+      return origRequest(method, params);
+    };
+
+    const pipeline = new CognitivePipeline().use(
+      new ErrorNormalizer({
+        knownTools: ["get_thread", "create_thread", "list_ideas", "get_mission"],
+      }),
+    );
+
+    const eng = await createEngineerWithShim(hub, {
+      cognitive: pipeline,
+      transportOverride: realTransport,
+    });
+
+    // Direct agent.call path — throws NormalizedError
+    try {
+      await eng.agent.call("get_thred", {});
+      throw new Error("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(NormalizedError);
+      expect((err as Error).message).toContain("get_thred");
+      expect((err as Error).message).toContain("Did you mean 'get_thread'");
+    }
+
+    // Full shim path: MCP client sees the rewritten hint in the
+    // error-content block the dispatcher emits.
+    const result = await eng.mcpClient.callTool({
+      name: "get_thred",
+      arguments: {},
+    });
+    const content = (result as { content: Array<{ text: string }> }).content;
+    const combined = content.map((c) => c.text ?? "").join(" ");
+    expect(combined).toContain("get_thred");
+    expect(combined).toContain("get_thread");
 
     await eng.mcpClient.close();
     await eng.agent.stop();

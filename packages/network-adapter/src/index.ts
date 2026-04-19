@@ -102,6 +102,8 @@ export {
   ToolResultCache,
   FlushAllOnWriteStrategy,
   ToolDescriptionEnricher,
+  ErrorNormalizer,
+  NormalizedError,
 } from "@ois/cognitive-layer";
 export type {
   CognitiveMiddleware,
@@ -123,4 +125,7 @@ export type {
   CacheKey,
   ToolDescriptionEnricherConfig,
   ToolHints,
+  ErrorNormalizerConfig,
+  ErrorRule,
+  CascadeDriftRule,
 } from "@ois/cognitive-layer";

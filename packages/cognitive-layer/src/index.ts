@@ -56,3 +56,10 @@ export type {
   ToolDescriptionEnricherConfig,
   ToolHints,
 } from "./middlewares/tool-description-enricher.js";
+
+export { ErrorNormalizer, NormalizedError } from "./middlewares/error-normalizer.js";
+export type {
+  ErrorNormalizerConfig,
+  ErrorRule,
+  CascadeDriftRule,
+} from "./middlewares/error-normalizer.js";
