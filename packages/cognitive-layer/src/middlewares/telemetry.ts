@@ -38,6 +38,31 @@ export interface TelemetryEvent {
   tags?: Record<string, string>;
   errorMessage?: string;
   droppedCount?: number;
+  /**
+   * Byte-length of the serialized tool-call arguments (request).
+   * `JSON.stringify(args).length` — measures the outbound payload
+   * size that flows from the LLM through the cognitive layer to the
+   * Hub. Cheap proxy for "what this tool call costs to emit".
+   */
+  inputBytes?: number;
+  /**
+   * Byte-length of the serialized tool-call result (response).
+   * Measured at settlement. Populated on `tool_call` events; omitted
+   * on `tool_error` (result unavailable) and on `tool_call` events
+   * where short-circuiting middlewares (cache hits, dedup replays)
+   * returned a non-serializable value.
+   */
+  outputBytes?: number;
+  /**
+   * Approximate token count for `inputBytes`, using the industry-
+   * standard `bytes / 4` heuristic. Suitable for order-of-magnitude
+   * accounting; not a replacement for a real tokenizer. Consumers
+   * that need exact per-model counts should wrap this sink with a
+   * tokenizer pass.
+   */
+  inputTokensApprox?: number;
+  /** Approximate token count for `outputBytes`. Same heuristic. */
+  outputTokensApprox?: number;
   timestamp: number;
 }
 
@@ -56,6 +81,33 @@ export interface CognitiveTelemetryConfig {
 
 const DEFAULT_MAX_QUEUE_DEPTH = 1000;
 const DEFAULT_OVERFLOW_LOG_INTERVAL_MS = 60_000;
+
+/**
+ * Byte-length of a serialized value. Uses `JSON.stringify` length as
+ * a cheap proxy — single UTF-16 char ~= 1 byte for ASCII-dominant
+ * payloads (which is the typical case for MCP tool args/results).
+ * Non-serializable values (circular refs, BigInt) return 0 rather
+ * than throw — telemetry must never disturb the hot path.
+ */
+export function byteLength(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  try {
+    if (typeof value === "string") return value.length;
+    return JSON.stringify(value).length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Approximate token count from byte count, using the industry-standard
+ * `bytes / 4` heuristic. Good for order-of-magnitude accounting.
+ * Consumers needing per-model precision should wrap the telemetry
+ * sink with a real tokenizer.
+ */
+export function approximateTokens(bytes: number): number {
+  return Math.ceil(bytes / 4);
+}
 
 export class CognitiveTelemetry implements CognitiveMiddleware {
   readonly name = "CognitiveTelemetry";
@@ -87,8 +139,10 @@ export class CognitiveTelemetry implements CognitiveMiddleware {
     next: (ctx: ToolCallContext) => Promise<unknown>,
   ): Promise<unknown> {
     const started = this.now();
+    const inputBytes = byteLength(ctx.args);
     try {
       const result = await next(ctx);
+      const outputBytes = byteLength(result);
       this.emit({
         kind: "tool_call",
         sessionId: ctx.sessionId,
@@ -96,6 +150,10 @@ export class CognitiveTelemetry implements CognitiveMiddleware {
         tool: ctx.tool,
         durationMs: this.now() - started,
         tags: { ...ctx.tags },
+        inputBytes,
+        inputTokensApprox: approximateTokens(inputBytes),
+        outputBytes,
+        outputTokensApprox: approximateTokens(outputBytes),
         timestamp: this.now(),
       });
       return result;
@@ -108,6 +166,9 @@ export class CognitiveTelemetry implements CognitiveMiddleware {
         durationMs: this.now() - started,
         tags: { ...ctx.tags },
         errorMessage: err instanceof Error ? err.message : String(err),
+        inputBytes,
+        inputTokensApprox: approximateTokens(inputBytes),
+        // outputBytes intentionally omitted — next() threw; no result.
         timestamp: this.now(),
       });
       throw err;
@@ -120,12 +181,15 @@ export class CognitiveTelemetry implements CognitiveMiddleware {
   ): Promise<Tool[]> {
     const started = this.now();
     const result = await next(ctx);
+    const outputBytes = byteLength(result);
     this.emit({
       kind: "list_tools",
       sessionId: ctx.sessionId,
       agentId: ctx.agentId,
       durationMs: this.now() - started,
       tags: { ...ctx.tags, toolCount: String(result.length) },
+      outputBytes,
+      outputTokensApprox: approximateTokens(outputBytes),
       timestamp: this.now(),
     });
     return result;

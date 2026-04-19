@@ -206,3 +206,101 @@ describe("CognitiveTelemetry — getPendingCount / getDroppedCount", () => {
     expect(t.getPendingCount()).toBe(0);
   });
 });
+
+// ── Phase 1.1 — bytes + approximate tokens ─────────────────────────
+
+describe("CognitiveTelemetry — bytes + approximate tokens", () => {
+  it("emits inputBytes + inputTokensApprox on tool_call success", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    const args = { threadId: "thread-12345", message: "hello world" };
+    // serialized as JSON: {"threadId":"thread-12345","message":"hello world"}
+    // length = 50 (approx)
+    await t.onToolCall(ctx({ args }), async () => "ok");
+    await flushMicrotasks();
+
+    const ev = events[0];
+    expect(ev.inputBytes).toBeGreaterThan(40);
+    expect(ev.inputBytes).toBeLessThan(80);
+    expect(ev.inputTokensApprox).toBe(Math.ceil(ev.inputBytes! / 4));
+  });
+
+  it("emits outputBytes + outputTokensApprox on tool_call success", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    const result = { messages: ["a".repeat(100), "b".repeat(100)] };
+    await t.onToolCall(ctx(), async () => result);
+    await flushMicrotasks();
+
+    const ev = events[0];
+    expect(ev.outputBytes).toBeGreaterThan(200);
+    expect(ev.outputTokensApprox).toBe(Math.ceil(ev.outputBytes! / 4));
+  });
+
+  it("emits inputBytes on tool_error but omits outputBytes", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    await expect(
+      t.onToolCall(ctx({ args: { x: 1 } }), async () => { throw new Error("fail"); }),
+    ).rejects.toThrow();
+    await flushMicrotasks();
+
+    const ev = events[0];
+    expect(ev.kind).toBe("tool_error");
+    expect(ev.inputBytes).toBeGreaterThan(0);
+    expect(ev.inputTokensApprox).toBeGreaterThan(0);
+    expect(ev.outputBytes).toBeUndefined();
+    expect(ev.outputTokensApprox).toBeUndefined();
+  });
+
+  it("emits outputBytes on list_tools (tool surface size)", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    await t.onListTools(listCtx(), async () => [
+      { name: "get_thread", description: "x".repeat(50) },
+      { name: "create_thread", description: "y".repeat(50) },
+    ]);
+    await flushMicrotasks();
+
+    const ev = events[0];
+    expect(ev.kind).toBe("list_tools");
+    expect(ev.outputBytes).toBeGreaterThan(100);
+    expect(ev.outputTokensApprox).toBeGreaterThan(0);
+  });
+
+  it("handles non-serializable values without throwing", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    // Create a circular reference
+    const circular: Record<string, unknown> = { a: 1 };
+    circular.self = circular;
+
+    await t.onToolCall(ctx({ args: circular as Record<string, unknown> }), async () => "ok");
+    await flushMicrotasks();
+
+    const ev = events[0];
+    expect(ev.kind).toBe("tool_call");
+    expect(ev.inputBytes).toBe(0); // defensive fallback
+    expect(ev.inputTokensApprox).toBe(0);
+  });
+
+  it("zero-byte args + zero-byte result produce zero token counts", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    await t.onToolCall(ctx({ args: {} }), async () => null);
+    await flushMicrotasks();
+
+    const ev = events[0];
+    // {} serializes to "{}" = 2 bytes; null → 0
+    expect(ev.inputBytes).toBe(2);
+    expect(ev.inputTokensApprox).toBe(1); // ceil(2/4) = 1
+    expect(ev.outputBytes).toBe(0);
+    expect(ev.outputTokensApprox).toBe(0);
+  });
+});

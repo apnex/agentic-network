@@ -376,6 +376,11 @@ describe("claude-plugin shim — cognitive layer integration", () => {
     expect(replyCall).toBeDefined();
     expect(replyCall!.sessionId).toBe(eng.transport.getSessionId());
     expect(typeof replyCall!.durationMs).toBe("number");
+    // Phase 1.1: bytes + approximate tokens populated end-to-end.
+    expect(replyCall!.inputBytes).toBeGreaterThan(0);
+    expect(replyCall!.inputTokensApprox).toBeGreaterThan(0);
+    expect(replyCall!.outputBytes).toBeGreaterThan(0);
+    expect(replyCall!.outputTokensApprox).toBeGreaterThan(0);
 
     await eng.mcpClient.close();
     await eng.agent.stop();
