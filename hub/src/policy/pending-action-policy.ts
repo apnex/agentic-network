@@ -74,6 +74,77 @@ async function acknowledgeDirectorNotification(
   };
 }
 
+async function pruneStuckQueueItems(
+  args: Record<string, unknown>,
+  ctx: IPolicyContext,
+): Promise<PolicyResult> {
+  // idea-117 Phase 2c preamble — admin tool to break failure-amplification
+  // loops. Restricted to Architect + Director roles (inline check because
+  // the router's RoleTag supports [Architect]/[Engineer]/[Any], not
+  // Director). Wider RBAC re-architecture is out of scope for this PR.
+  const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
+  if (callerRole !== "architect" && callerRole !== "director") {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ error: `Authorization denied: prune_stuck_queue_items requires role 'architect' or 'director', but caller is '${callerRole}'` }) }],
+      isError: true,
+    };
+  }
+
+  const olderThanMinutes = typeof args.olderThanMinutes === "number" ? args.olderThanMinutes : 15;
+  const dispatchType = typeof args.dispatchType === "string" ? args.dispatchType as any : undefined;
+  const targetAgentId = typeof args.targetAgentId === "string" ? args.targetAgentId : undefined;
+  const dryRun = args.dryRun === true;
+  const reason = typeof args.reason === "string" && args.reason.trim().length > 0
+    ? args.reason
+    : "pruned by prune_stuck_queue_items";
+
+  const olderThanMs = olderThanMinutes * 60_000;
+  const stuck = await ctx.stores.pendingAction.listStuck({ olderThanMs, dispatchType, targetAgentId });
+
+  if (dryRun) {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({
+        dryRun: true,
+        matched: stuck.length,
+        items: stuck.map(i => ({ id: i.id, dispatchType: i.dispatchType, entityRef: i.entityRef, targetAgentId: i.targetAgentId, enqueuedAt: i.enqueuedAt, attemptCount: i.attemptCount })),
+      }) }],
+    };
+  }
+
+  const abandoned: Array<{ id: string; entityRef: string; dispatchType: string }> = [];
+  for (const item of stuck) {
+    const result = await ctx.stores.pendingAction.abandon(item.id, reason);
+    if (!result || result.state !== "errored") continue;
+    abandoned.push({ id: item.id, entityRef: item.entityRef, dispatchType: item.dispatchType });
+    await ctx.stores.audit.logEntry(
+      "hub",
+      "queue_item_abandoned",
+      `Queue item ${item.id} abandoned via prune_stuck_queue_items (reason: ${reason}, entityRef: ${item.entityRef}, dispatchType: ${item.dispatchType}, attemptCount: ${item.attemptCount}, age: ${Math.round((Date.now() - new Date(item.enqueuedAt).getTime()) / 60_000)}min)`,
+      item.entityRef,
+    );
+  }
+
+  if (abandoned.length > 0) {
+    await ctx.stores.directorNotification.create({
+      severity: "warning",
+      source: "queue_item_escalated",
+      sourceRef: `prune-${Date.now()}`,
+      title: `Pruned ${abandoned.length} stuck queue item(s)`,
+      details: `Administrative abandonment via prune_stuck_queue_items. Reason: ${reason}. Items: ${abandoned.map(a => `${a.id} (${a.dispatchType}:${a.entityRef})`).join(", ")}`,
+    });
+  }
+
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify({
+      dryRun: false,
+      matched: stuck.length,
+      abandoned: abandoned.length,
+      items: abandoned,
+      reason,
+    }) }],
+  };
+}
+
 export function registerPendingActionPolicy(router: PolicyRouter): void {
   router.register(
     "drain_pending_actions",
@@ -98,5 +169,18 @@ export function registerPendingActionPolicy(router: PolicyRouter): void {
     "[Any] ADR-017: mark a Director notification as acknowledged (idempotent). Records acknowledgement but does not delete — notifications remain append-only.",
     { id: z.string().describe("Notification ID") },
     acknowledgeDirectorNotification,
+  );
+
+  router.register(
+    "prune_stuck_queue_items",
+    "[Any] idea-117 Phase 2c admin: abandon pending-action items stuck in receipt_acked state. Matches items whose state is receipt_acked AND whose enqueuedAt is older than olderThanMinutes (default 15). Optionally filter by dispatchType or targetAgentId. Set dryRun=true to preview matches without mutation. Abandoned items transition to errored state; emits audit entries + a Director notification summarising the prune. Role-gated at runtime to Architect or Director only.",
+    {
+      olderThanMinutes: z.number().optional().describe("Only prune items enqueued more than N minutes ago (default 15)"),
+      dispatchType: z.enum(["thread_message", "thread_convergence_finalized", "task_issued", "proposal_submitted", "report_created", "review_requested"]).optional().describe("Filter by dispatch type"),
+      targetAgentId: z.string().optional().describe("Filter by target agent"),
+      dryRun: z.boolean().optional().describe("Preview matches without mutation (default false)"),
+      reason: z.string().optional().describe("Human-readable reason recorded on each abandoned item's escalationReason + audit entry"),
+    },
+    pruneStuckQueueItems,
   );
 }

@@ -80,6 +80,33 @@ export interface IPendingActionStore {
   rescheduleReceiptDeadline(id: string, newDeadline: string): Promise<PendingActionItem | null>;
   /** Watchdog scan: items whose deadline has passed and state is non-terminal. */
   listExpired(nowMs: number): Promise<PendingActionItem[]>;
+  /**
+   * idea-117 Phase 2c preamble — abandon a stuck queue item.
+   *
+   * Flips the item to `errored` state with `escalationReason` set to
+   * the supplied abandonment reason. Idempotent on items already in a
+   * terminal state (escalated / errored / completion_acked) — returns
+   * the current snapshot without mutation.
+   *
+   * Used by the `prune_stuck_queue_items` admin tool to break
+   * failure-amplification loops where items in `receipt_acked` state
+   * are being redriven by a stale architect legacy-path.
+   */
+  abandon(id: string, reason: string): Promise<PendingActionItem | null>;
+  /**
+   * idea-117 Phase 2c preamble — list stuck items matching the pruner
+   * criteria.
+   *
+   * Returns items whose state is `receipt_acked` (actively in flight
+   * but never completion_acked) AND whose `enqueuedAt` is older than
+   * `olderThanMs`. Optionally filtered by `dispatchType` and/or
+   * `targetAgentId`. Does not mutate.
+   */
+  listStuck(opts: {
+    olderThanMs: number;
+    dispatchType?: PendingActionDispatchType;
+    targetAgentId?: string;
+  }): Promise<PendingActionItem[]>;
 }
 
 function naturalKey(opts: { targetAgentId: string; dispatchType: string; entityRef: string }): string {
@@ -202,6 +229,36 @@ export class MemoryPendingActionStore implements IPendingActionStore {
         ? new Date(item.receiptDeadline).getTime()
         : new Date(item.completionDeadline).getTime();
       if (nowMs >= deadline) out.push(cloneItem(item));
+    }
+    return out;
+  }
+
+  async abandon(id: string, reason: string): Promise<PendingActionItem | null> {
+    const item = this.items.get(id);
+    if (!item) return null;
+    // Idempotent on terminal states — caller observes current snapshot.
+    if (item.state === "completion_acked" || item.state === "errored" || item.state === "escalated") {
+      return cloneItem(item);
+    }
+    item.state = "errored";
+    item.escalationReason = reason;
+    return cloneItem(item);
+  }
+
+  async listStuck(opts: {
+    olderThanMs: number;
+    dispatchType?: PendingActionDispatchType;
+    targetAgentId?: string;
+  }): Promise<PendingActionItem[]> {
+    const nowMs = Date.now();
+    const out: PendingActionItem[] = [];
+    for (const item of this.items.values()) {
+      if (item.state !== "receipt_acked") continue;
+      if (opts.dispatchType && item.dispatchType !== opts.dispatchType) continue;
+      if (opts.targetAgentId && item.targetAgentId !== opts.targetAgentId) continue;
+      const enqueuedMs = new Date(item.enqueuedAt).getTime();
+      if (nowMs - enqueuedMs < opts.olderThanMs) continue;
+      out.push(cloneItem(item));
     }
     return out;
   }
