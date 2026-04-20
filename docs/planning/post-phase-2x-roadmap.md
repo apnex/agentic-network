@@ -213,19 +213,38 @@ For each item:
 
 ---
 
-## Next actions (proposed)
+## Execution status (rolling)
 
-1. **Engineer claims task-302** (role-registered; `get_task` → read Phase 1 spec → implement)
-2. **Director opens architect brainstorm thread for Threads 2.0 Phase 2** (action-type vocabulary, cascade semantics, backwards compat) — runs in parallel
-3. On A complete: measurement via harness; report; file follow-up items
-4. On B converged: mission brief for C
-5. Execute C
-6. Scope D (robustness audit brainstorm)
-7. Execute D output
-8. Move to Mission Phase 3 (E)
-9. Extend idea-119 (F, then G) in parallel with Phase 3 if bandwidth allows
-10. Phase 4 (H) when 429s appear
-11. Triage I when the queue is clear
+| Item | Status | Evidence |
+|---|---|---|
+| A. M-QueryShape Phase 1 (task-302) | **SHIPPED** | commits `177fb84` + `3e5c0ea`; 799/799 tests; deployed Hub + architect; task-302 report submitted; awaiting architect review |
+| B. Threads 2.0 Phase 2 design brainstorm | **IN PROGRESS** | thread-223 opened to architect 2026-04-20; awaiting round-1 response |
+| C. Threads 2.0 Phase 2 implementation | pending (gated on B) | — |
+| D. Threads 2.0 robustness audit | pending (gated on C) | — |
+| E. Mission Phase 3 — state hydration | pending (gated on D) | — |
+| F. idea-119 Phase 2 (list_ideas + list_threads) | pending (gated on A verification + E) | — |
+| G. idea-119 Phase 3 (projection + indexing) | pending (gated on F) | — |
+| H. Mission Phase 4 — quota | deferred (no 429s observed) | — |
+| I. Architect triage of open ideas | pending | ideas 115, 116, 118, 120 filed |
+
+## Next actions (rolling)
+
+1. ~~**Engineer claims task-302**~~ — done; report in_review
+2. ~~**Open architect brainstorm thread for Threads 2.0 Phase 2**~~ — done (thread-223)
+3. **Re-run N=20 harness** against the deployed task-302 revision to verify Phase 1 success criterion (MAX_TOOL_ROUNDS rate below 10% on complex prompts)
+4. **Respond to thread-223 architect replies** until converged with ratified Phase 2a spec
+5. On thread-223 converged: mission brief for C (Threads 2.0 Phase 2 implementation)
+6. Execute C — add `stage_task` as first type, with Mission-24 provenance fields
+7. Scope D (robustness audit brainstorm)
+8. Execute D output
+9. Move to Mission Phase 3 (E)
+10. Extend idea-119 (F, then G) in parallel with Phase 3 if bandwidth allows
+11. Phase 4 (H) when 429s appear
+12. Triage I when the queue is clear
+
+## Newly-surfaced follow-on ideas (during execution)
+
+- **idea-120** — entity-provenance unification. Surfaced during A when task-302's `author` field didn't map to Task entity. Recommended pre-requisite for F (idea-119 Phase 2) so provenance fields are unified before extending the filter surface across `list_ideas` + `list_threads`.
 
 ---
 
