@@ -28,7 +28,7 @@ If you're picking up cold, read in this order:
 2. **Current in-flight:** D-CP1 (task-304) — Phase 2d CP1 observability + invariant audit. Architect-issued, engineer-assigned. Not yet claimed — awaiting director approval per session rhythm.
 3. **Awaiting architect triage:** idea-115 (dynamic tool scope), idea-116 (tele-10 Precision Context Engineering), idea-118 (cross-item circuit breaker), **idea-120 (entity-provenance unification — blocks F)**.
 4. **Deferred:** H (Phase 4 quota — no 429s observed), bug-13 (id-sort lexicographic tail refinement).
-5. **Before any tool calls:** register role (`mcp__plugin_agent-adapter_proxy__register_role role="engineer"`). MCP tool-discovery is per-session — if Hub shipped new tools since last connect, restart the session.
+5. **Role & session plumbing.** Role is set by the adapter at startup (plugin config / `hub-config.json`) — not by the LLM. `McpAgentClient.runHandshake` auto-calls `register_role` on connect; do not re-register. MCP tool-discovery is per-session — if Hub shipped new tools since last connect, restart the session. If role uncertain, confirm via `get_engineer_status`.
 6. **Recent commits:** `git log --grep='M-Cognitive-Hypervisor\|task-30' --oneline -20` for code trail.
 
 ---
