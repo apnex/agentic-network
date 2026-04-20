@@ -36,7 +36,7 @@ If you're picking up cold, read in this order:
 
 ## In-flight
 
-_(nothing claimed — task-304 + task-305 both in-review at Hub; architect triage pending on ideas 115/116/118/121/122 and bugs 14/15/16/17)_
+_(nothing claimed — task-304 + task-305 both in-review at Hub; architect triage pending on ideas 115/116/118/121/122/124 and bugs 14/15/16/17; bugs 18/19 have fixes shipped but remain open in Hub pending close)_
 
 ---
 
@@ -160,7 +160,7 @@ None of idea-115, 116, 118 is load-bearing for current production stability. Tri
 
 - Phase closing audits: `docs/audits/phase-2x-closing.md`, `phase-2c-closing.md`, `phase-2b-closing.md`, `phase-2a-baseline-measurement.md`, `phase-1-baseline-measurement.md`
 - Phase 2d CP1 audit: `docs/audits/phase-2d-cp1-observability-report.md`
-- ADRs added this session: `docs/decisions/019-semantic-plumbing-split.md`
+- Design principles (ADRs): `docs/decisions/019-semantic-plumbing-split.md` (LLM expresses cognition; Hub handles plumbing)
 - Mission spec: `docs/planning/m-cognitive-hypervisor.md`
 - Telemetry harness: `scripts/architect-telemetry/`
 - Backfill script: `scripts/backfill-created-by.ts` (task-305 C4; not yet executed in prod)
