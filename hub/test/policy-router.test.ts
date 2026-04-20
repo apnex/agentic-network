@@ -755,6 +755,93 @@ describe("TaskPolicy", () => {
       // Oldest first: task-2 (backdated) should lead
       expect(parsed.tasks[0].id).toBe("task-2");
     });
+
+    // ── Phase C (task-306): createdBy.* nested paths ─────────────────
+    // Seeds 3 tasks with distinct provenance by mutating internal Map.
+    // task-1 → architect:eng-alpha, task-2 → engineer:eng-beta,
+    // task-3 → architect:eng-gamma.
+    async function seedWithCreatedBy(): Promise<void> {
+      await seed();
+      const internal = (ctx.stores.task as any).tasks as Map<string, any>;
+      const t1 = internal.get("task-1");
+      if (t1) t1.createdBy = { role: "architect", agentId: "eng-alpha" };
+      const t2 = internal.get("task-2");
+      if (t2) t2.createdBy = { role: "engineer", agentId: "eng-beta" };
+      const t3 = internal.get("task-3");
+      if (t3) t3.createdBy = { role: "architect", agentId: "eng-gamma" };
+    }
+
+    it("Phase C filter: createdBy.role selects architect-created tasks only", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_tasks",
+        { filter: { "createdBy.role": "architect" } },
+        createTestContext({ stores: ctx.stores }),
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.tasks.length).toBe(2);
+      expect(parsed.tasks.every((t: any) => t.createdBy.role === "architect")).toBe(true);
+    });
+
+    it("Phase C filter: createdBy.agentId selects a specific agent", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_tasks",
+        { filter: { "createdBy.agentId": "eng-beta" } },
+        createTestContext({ stores: ctx.stores }),
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.tasks.length).toBe(1);
+      expect(parsed.tasks[0].id).toBe("task-2");
+    });
+
+    it("Phase C filter: createdBy.id matches computed `${role}:${agentId}`", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_tasks",
+        { filter: { "createdBy.id": "architect:eng-gamma" } },
+        createTestContext({ stores: ctx.stores }),
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.tasks.length).toBe(1);
+      expect(parsed.tasks[0].id).toBe("task-3");
+    });
+
+    it("Phase C sort: createdBy.role asc groups architects before engineers", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_tasks",
+        { sort: [{ field: "createdBy.role", order: "asc" }] },
+        createTestContext({ stores: ctx.stores }),
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      // architect tasks first (id:asc tie-breaker → task-1, task-3), then engineer (task-2)
+      expect(parsed.tasks.map((t: any) => t.id)).toEqual(["task-1", "task-3", "task-2"]);
+    });
+
+    it("Phase C sort: createdBy.id asc orders by the `role:agentId` composite", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_tasks",
+        { sort: [{ field: "createdBy.id", order: "asc" }] },
+        createTestContext({ stores: ctx.stores }),
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      // Lexical order: architect:eng-alpha < architect:eng-gamma < engineer:eng-beta
+      expect(parsed.tasks.map((t: any) => t.id)).toEqual(["task-1", "task-3", "task-2"]);
+    });
+
+    it("Phase C: createdBy.role filter yields _ois_query_unmatched when no match", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_tasks",
+        { filter: { "createdBy.role": "director" } },
+        createTestContext({ stores: ctx.stores }),
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.tasks.length).toBe(0);
+      expect(parsed._ois_query_unmatched).toBe(true);
+    });
   });
 
   it("createTask auto-closes source thread", async () => {

@@ -280,11 +280,12 @@ async function getReport(args: Record<string, unknown>, ctx: IPolicyContext): Pr
 
 // ── M-QueryShape Phase 1 (idea-119, task-302) ─────────────────────────
 // Task-entity field descriptors + value accessors for the shared
-// filter/sort primitives in list-filters.ts. Scoped to Phase 1:
+// filter/sort primitives in list-filters.ts. Phase 1 scope:
 // status + correlationId + assignedEngineerId + createdAt + updatedAt.
-// `author` was in the task-302 spec but Task has no author field (all
-// tasks are architect-issued via role-gated create_task) — dropped per
-// idea-120 (entity-provenance unification, filed separately).
+// Phase C (task-306): createdBy.role + createdBy.agentId + createdBy.id
+// nested-path support. `createdBy.id` is computed in the accessor as
+// `${role}:${agentId}` — virtual field, not persisted on write
+// (architect-ratified clarification on task-306 directive).
 //
 // Sortable fields intentionally broader than filterable — sorting on
 // a field is always safe (no query-cost bound implications), filtering
@@ -296,6 +297,9 @@ const TASK_FILTERABLE_FIELDS: QueryableFieldSpec = {
   assignedEngineerId: { type: "string" },
   createdAt: { type: "date" },
   updatedAt: { type: "date" },
+  "createdBy.role": { type: "string" },
+  "createdBy.agentId": { type: "string" },
+  "createdBy.id": { type: "string" },
 };
 
 const TASK_SORTABLE_FIELDS = [
@@ -305,6 +309,9 @@ const TASK_SORTABLE_FIELDS = [
   "updatedAt",
   "correlationId",
   "assignedEngineerId",
+  "createdBy.role",
+  "createdBy.agentId",
+  "createdBy.id",
 ] as const;
 
 const TASK_ACCESSORS: FieldAccessors<Task> = {
@@ -314,6 +321,9 @@ const TASK_ACCESSORS: FieldAccessors<Task> = {
   assignedEngineerId: (t) => t.assignedEngineerId,
   createdAt: (t) => t.createdAt,
   updatedAt: (t) => t.updatedAt,
+  "createdBy.role": (t) => t.createdBy?.role ?? null,
+  "createdBy.agentId": (t) => t.createdBy?.agentId ?? null,
+  "createdBy.id": (t) => (t.createdBy ? `${t.createdBy.role}:${t.createdBy.agentId}` : null),
 };
 
 const TASK_FILTER_SCHEMA = buildQueryFilterSchema(TASK_FILTERABLE_FIELDS);
@@ -487,10 +497,11 @@ export function registerTaskPolicy(router: PolicyRouter): void {
     "`filter` accepts a Mongo-ish object with implicit AND across fields: " +
     "`{status: 'pending'}` for eq, `{status: {$in: ['pending','working']}}` for set membership, " +
     "`{createdAt: {$lt: '2026-04-01T00:00:00Z'}}` for range. " +
-    "Filterable fields: status, correlationId, assignedEngineerId, createdAt, updatedAt. " +
+    "Filterable fields: status, correlationId, assignedEngineerId, createdAt, updatedAt, " +
+    "'createdBy.role', 'createdBy.agentId', 'createdBy.id' (computed `${role}:${agentId}`). " +
     "Range operators ($gt/$lt/$gte/$lte) apply only to dates + numbers. " +
     "Forbidden operators ($regex, $where, $expr, $or, $and, $not) are rejected with an error naming the permitted set. " +
-    "`sort` accepts an ordered tuple `[{field, order}]` on: id, status, createdAt, updatedAt, correlationId, assignedEngineerId. " +
+    "`sort` accepts an ordered tuple `[{field, order}]` on: id, status, createdAt, updatedAt, correlationId, assignedEngineerId, 'createdBy.role', 'createdBy.agentId', 'createdBy.id'. " +
     "Implicit id:asc tie-breaker is appended for deterministic pagination. " +
     "Returns `_ois_query_unmatched: true` when the filter yields zero matches but the collection is non-empty (distinct from tool error). " +
     "Legacy scalar `status:` arg preserved for backwards compat; deprecated in favour of `filter.status`; removal in a future phase.",
