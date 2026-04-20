@@ -1,6 +1,14 @@
 # Mission: M-Cognitive-Hypervisor
 
-**Status:** Phase 1 + Phase 2a COMPLETE + deployed + verified live (architect revision `00038-86s`); Phase 2b/3/4 deferred.
+> **Current live state is tracked in `docs/traces/m-cognitive-hypervisor-work-trace.md`** — read that first for the up-to-date in-flight / queued / done picture across sessions. This spec documents the originally-proposed mission scope and remains the canonical per-phase brief for Phases 1, 2a, 2b, 2c, 3, 4. Phase 2d (Threads 2.0 Robustness Audit — CP1-CP4) was added in a later session and is documented in §"Phase 2d Extensions" below + the checkpoint audit reports in `docs/audits/`.
+
+**Status snapshot (updated 2026-04-21 AEST — spec-level; see work-trace for live):**
+- Phases 1 + 2a + 2b + 2c + 2x: ✅ CLOSED
+- Phase 2d: ✅ CP1 + CP2 shipped (audits in `docs/audits/phase-2d-cp1-observability-report.md`, `phase-2d-cp2-report.md`); CP3 + CP4 unblocked
+- Mission-24 Phase A (entity provenance, task-305) + Phase C (list_* filter/sort on createdBy, task-306): ✅ shipped
+- Phase 3 (state hydration / idea-114 / ADR-020): deferred, absorbs bug-11 mitigation #7
+- Phase 4 (quota / idea-109): deferred — no observed 429s to justify pull-forward
+
 **Proposed:** 2026-04-19
 **Owner:** Engineer (autonomous lead)
 **Collaborator:** Architect (per-phase ADR review + buy-in)
@@ -305,3 +313,39 @@ From M-Ideas-Audit 90-minute window:
 | Unauthorized task creation | 4 | Orthogonal — idea-110 (Hub-side enforcement) |
 
 Total observable cognitive-layer incidents: **~26 in 90 minutes**. Post-mission target: **0**.
+
+---
+
+## Phase 2d Extensions (added 2026-04-20, task-304/307)
+
+Phase 2d was added as the **Threads 2.0 Robustness Audit** after Phase 2x closed. Scope ratified on thread-224. Four checkpoints — CP1 and CP2 have shipped; CP3 and CP4 are unblocked and queued.
+
+| Checkpoint | Scope | Task | Status | Commits |
+|---|---|---|---|---|
+| **CP1** — Observability + Invariant Audit | Metrics primitive; shadow-invariant logger at INV-TH18/19/25; cascade-failure-type buckets; idempotency contract certification (5/5 spawn handlers) | task-304 | ✅ shipped + architect-reviewed | `eab52be` → `a6d5bb0` |
+| **CP2** — Protocol Standardization + Convergence Hardening | `get_metrics` MCP tool; `ThreadConvergenceGateError` structured format (subtype + remediation + metadata); INV-TH17 policy-layer shadow (absorbs bug-15); action-validator registry at convergence gate with `stale_reference` + `invalid_transition` subtypes (absorbs bug-14 via handler-side no-op detection); `_ois_query_unmatched` sentinel sweep on list_proposals/audit_entries/bugs | task-307 | ✅ shipped, awaiting review | `761bd39` → `ea8384b` |
+| **CP3** — Reaper + Lifecycle GC | Thread reaper (INV-TH21); pending_action.abandon on thread GC; summary-only truncation on close; queue/thread bidirectional integrity. Absorbs bug-16 (Agent reaper + labels/role not refreshed on reconnect). | pending | ○ queued (no hard dependency) | — |
+| **CP4** — `retry_cascade` tool | MCP tool to re-run a failed cascade against certified-idempotent handlers. CP1 produced the certification; CP2 closed the update-handler hardening (bug-14). Scope simplified — pure tool implementation. | pending | ○ queued (prereqs met) | — |
+
+**Related audit reports:** `docs/audits/phase-2d-cp1-observability-report.md`, `docs/audits/phase-2d-cp2-report.md`.
+
+**Related threads:** thread-224 (Phase 2d scope brainstorm), thread-232 (CP2 design convergence).
+
+**New surface introduced by Phase 2d (caller-visible):**
+- `get_metrics` MCP tool (CP2 C1) — `{bucket?, limit?}` → counter snapshot + per-bucket recent-details ring buffer.
+- `ThreadConvergenceGateError` response JSON gains `subtype`, `remediation`, optional `metadata` fields (CP2 C2). Subtype enumeration: `stage_missing`, `summary_missing`, `payload_validation`, `revise_invalid`, `retract_invalid`, `authority`, `stale_reference`, `invalid_transition`.
+- Six new metrics counter buckets (CP1 + CP2). Full taxonomy in `docs/audits/phase-2d-cp2-report.md` §2.3.
+- Action-validator registry (`hub/src/policy/action-validators/`) at the convergence gate. Adding a per-entity validator is a small-scope operation going forward — see `update-mission-status-validator.ts` for the reference template.
+
+**Bugs resolved by Phase 2d:**
+- bug-14 (update-handler no-op detection) — CP2 C4 handler-side diff check
+- bug-15 (INV-TH17 shadow instrumentation gap) — CP2 C3 policy-layer post-diagnostic
+
+---
+
+## Pointers to related work (outside this mission's Phases)
+
+- **Mission-24 Phase A (entity provenance)** — `docs/traces/m-cognitive-hypervisor-work-trace.md` §done-this-session (task-305 shipped, backfill executed). Companion work to this mission via idea-120.
+- **Mission-24 Phase C (list_* filter/sort on createdBy)** — task-306 shipped; extends `list_tasks` + `list_ideas` + `list_threads` + `list_missions` with nested `createdBy.{role, agentId, id}` filter + sort.
+- **bug-11 Universal Adapter cognitive mitigations** — idea-132 filed; captures 7 adapter-layer mitigations (round-budget awareness, parallel tool calls, tool-result caching, chunked reply composition, budget-exhaustion grace, tool-error elision, pre-hydration). **Not squashed by any Phase 2d CP** — belongs in a companion adapter-layer mission (e.g., `M-Hypervisor-Adapter-Mitigations`). Mitigation #7 (pre-hydration) overlaps with Phase 3 / idea-114 / ADR-020.
+- **Strategic long-term direction** — idea-126 proposes K8s-style entity envelope (`{id, kind, apiVersion, metadata{}, spec{}, status{}}`). Not scoped under this mission; explicitly post-task-305's flat cutover.
