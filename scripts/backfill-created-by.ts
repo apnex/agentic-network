@@ -171,9 +171,14 @@ async function buildAuditIndex(bucket: string): Promise<Map<string, AuditEntrySh
 }
 
 function resolveFromAudit(entityId: string, auditIndex: Map<string, AuditEntryShape>, prefixes: readonly string[] | undefined): EntityProvenance | null {
+  // Require non-empty prefixes: without them, the first audit entry for an entity
+  // is almost always a reply/operational event, not the creation — treating that
+  // actor as creator produces false mismatches (e.g. Thread auto_thread_reply
+  // actor shadowing the true initiator).
+  if (!prefixes || prefixes.length === 0) return null;
   const entry = auditIndex.get(entityId);
   if (!entry) return null;
-  if (prefixes && prefixes.length > 0 && !prefixes.some((p) => entry.action.startsWith(p))) return null;
+  if (!prefixes.some((p) => entry.action.startsWith(p))) return null;
   // Audit actor is architect|engineer|hub — carries role, not agentId.
   return { role: entry.actor, agentId: `anonymous-${entry.actor}` };
 }
