@@ -25,8 +25,8 @@
 If you're picking up cold, read in this order:
 
 1. **This file, then** `docs/audits/phase-2x-closing.md` (most recent closed phase) and `docs/audits/phase-2c-closing.md` (preceding).
-2. **Current in-flight:** D-CP1 (task-304) — Phase 2d CP1 observability + invariant audit. Architect pre-assigned to engineer `eng-0d2c690e7dd5` on creation; Hub status = `working`. No engineer output yet — awaiting director go-ahead to begin implementation.
-3. **Awaiting architect triage:** idea-115 (dynamic tool scope), idea-116 (tele-10 Precision Context Engineering), idea-118 (cross-item circuit breaker), **idea-120 (entity-provenance unification — blocks F)**.
+2. **Current in-flight (awaiting director go-ahead):** D-CP1 (task-304, Phase 2d CP1 observability + invariant audit, pre-assigned to `eng-0d2c690e7dd5`, Hub `working`); task-305 (Mission-24 Phase A — createdBy schema + `create_*` handler population, `pending` + unclaimed). Neither has engineer output yet — awaiting director prioritization.
+3. **Awaiting architect triage:** idea-115 (dynamic tool scope), idea-116 (tele-10 Precision Context Engineering), idea-118 (cross-item circuit breaker), **idea-121 (API v2.0 tool-surface modernization)**.
 4. **Deferred:** H (Phase 4 quota — no 429s observed), bug-13 (id-sort lexicographic tail refinement).
 5. **Role & session plumbing.** Role is set by the adapter at startup (plugin config / `hub-config.json`) — not by the LLM. `McpAgentClient.runHandshake` auto-calls `register_role` on connect; do not re-register. MCP tool-discovery is per-session — if Hub shipped new tools since last connect, restart the session. If role uncertain, confirm via `get_engineer_status`.
 6. **Recent commits:** `git log --grep='M-Cognitive-Hypervisor\|task-30' --oneline -20` for code trail.
@@ -36,7 +36,7 @@ If you're picking up cold, read in this order:
 ## In-flight
 
 - ▶ **D-CP1 (task-304)** — Phase 2d Checkpoint 1: Observability + Invariant Audit. Shadow INV-TH* near-breach logging, cascade-failure-type metrics, idempotency-contract audit of `*ActionSpec` handlers + contract tests, baseline measurement of gap surface. Pre-assigned on creation to `eng-0d2c690e7dd5`; Hub status = `working`; no output yet. Awaiting director go-ahead to begin implementation.
-- ▶ **idea-120** — Entity-provenance unification brainstorm open as **thread-225** (unicast, architect's turn). **Blocks F (idea-119 Phase 2).** Proposal text updated with `createdBy: {role, agentId, at}` design + 6 triage questions + migration plan.
+- ▶ **task-305** — Mission-24 Phase A (entity-provenance unification — `createdBy` schema + `create_*` handler population). Architect-issued from thread-225 convergence. Status = `pending`, unclaimed. Prerequisite for F (idea-119 Phase 2). Awaiting director go-ahead to claim.
 
 ---
 
@@ -46,11 +46,12 @@ If you're picking up cold, read in this order:
 - ○ **D-CP3** — Phase 2d Checkpoint 3: Reaper + lifecycle GC + queue/thread bidirectional integrity. Summary-only truncation on close; `pending_action.abandon` on thread GC; thread-side event on `prune_stuck_queue_items`. Gated on D-CP2.
 - ○ **D-CP4** — Phase 2d Checkpoint 4: `retry_cascade` tool. Gated on D-CP1's handler-idempotency-contract certification.
 - ○ **E** — Mission Phase 3 (state hydration + reconciliation, idea-114, ADR-020). Adapter preloads authoritative Hub state into prompt preamble; `verify_thread_state` pre-flight on mutating calls; re-hydrate on drift. Original canonical mission Phase 3. Gated on Phase 2d completion.
-- ○ **F** — idea-119 Phase 2. Extend filter+sort to `list_ideas` + `list_threads` + other list_* tools. Gated on **idea-120** triage (entity-provenance unification is a prerequisite to avoid per-entity naming drift).
+- ○ **F** — idea-119 Phase 2. Extend filter+sort to `list_ideas` + `list_threads` + other list_* tools. idea-120 triage ratified (thread-225). Now gated on **task-305** (Phase A createdBy schema) landing.
 - ○ **G** — idea-119 Phase 3. Projection (`fields:`) + lazy indexing. Gated on F.
 - ○ **idea-115** — Dynamic tool scope management. Architect-triage-pending.
 - ○ **idea-116** — Tele-10 "Precision Context Engineering" proposal. Architect-triage-pending.
 - ○ **idea-118** — Cross-item circuit breaker (idea-117 criterion #4 deferred). Architect-triage-pending.
+- ○ **idea-121** — API v2.0 tool-surface modernization: verb-namespace discipline (`get_*` pure read vs `claim_*` dequeue), `get_resource({id})` consolidation, `get_resource_shape({entity})` introspection, pagination envelope + error-payload standardization. Absorbs `claim_task` rename + missing get-by-id. Partial superset of 115/116/119/120. Architect-triage-pending.
 - ⏸ **H** — Mission Phase 4 (quota integration, idea-109). Deferred per mission doc — no observed 429s to justify pull-forward.
 - ⏸ **bug-13** — `list_tasks` sort on `id` is lexicographic, not numeric. Minor severity; workaround = sort by `createdAt`. Absorbs into idea-119 Phase 2 scope (new `entity-id` typed field comparator).
 
@@ -63,7 +64,9 @@ If you're picking up cold, read in this order:
 - ✅ **B (thread-223)** — Threads 2.0 Phase 2 design brainstorm. 5 rounds, bilateral convergence. Ratified Phase 2a scope.
 - ✅ **C (task-303)** — Threads 2.0 Phase 2a: per-action commit authority (`REQUIRED_CONVERGER_ROLE` + max-privilege rule) + Director notification on `cascade_failed`. Commit `9a5e7d0`. Architect-reviewed ✓.
 - ✅ **D-brainstorm (thread-224)** — Phase 2d Robustness Audit scope. 5 rounds, bilateral convergence. Ratified 4-checkpoint path (CP1 observability → CP4 protocol → CP2 reaper → CP3 retry_cascade), idempotency-first over Hub atomicity, staging role-unrestricted, authority at convergence.
-- ✅ **Ideas filed:** idea-119 (query-shape engineering), idea-120 (entity-provenance unification, updated with `createdBy` proposal).
+- ✅ **idea-120 triage (thread-225)** — entity-provenance unification ratified bilaterally. Canonical `createdBy: {role, agentId}`; `surfacedBy` stays distinct (Bug discovery channel ≠ agent identity); mandatory audit-trail backfill; prereq for F. Architect issued Phase A impl task.
+- ✅ **task-305 issued** — Mission-24 Phase A (createdBy schema + `create_*` handler population). Status = `pending`, unclaimed.
+- ✅ **Ideas filed:** idea-119 (query-shape engineering), idea-120 (entity-provenance unification), idea-121 (API v2.0 tool-surface modernization).
 - ✅ **Bugs filed:** bug-13 (id-sort lexicographic).
 
 ---
@@ -77,18 +80,20 @@ C → D-brainstorm (thread-224) → D-CP1 (task-304) ▶
 D-CP1 → D-CP2 → D-CP3 → D-CP4 → E (Mission Phase 3)
 E → H (Phase 4 quota) ⏸
 
-idea-120 ○ (blocks F) → F (idea-119 Phase 2) → G (idea-119 Phase 3)
+idea-120 triage ✅ (thread-225) → task-305 ▶ (Phase A createdBy) → F (idea-119 Phase 2) → G (idea-119 Phase 3)
 bug-13 ⏸ -.-> F  (absorbable refinement)
 
 idea-115 ○ independent
 idea-116 ○ independent
 idea-118 ○ independent
+idea-121 ○ (API v2.0 meta — partial superset of 115/116/119/120)
 ```
 
 ---
 
 ## Session log (append-only)
 
+- **2026-04-20 evening-late** — thread-225 (idea-120 triage) converged bilaterally in 4 rounds. Architect ratified `createdBy: {role, agentId}` (refined — dropped `at` per DRY; top-level `createdAt` is already authoritative), kept `surfacedBy` distinct on Bug (discovery channel ≠ agent identity), mandatory audit-trail backfill, prereq for F. Architect issued **task-305** (Mission-24 Phase A — createdBy schema + `create_*` handler population); `pending`, unclaimed. Filed **idea-121** (API v2.0 tool-surface modernization): verb discipline (`get_*` pure read vs `claim_*` dequeue), `get_resource({id})` consolidation, `get_resource_shape({entity})` introspection, pagination envelope + error-payload standardization. Director-surfaced during task-305 retrieval where no native get-by-id path forced `list_tasks`+jq-on-1.28MB workaround; idea-121 absorbs the minor `claim_task` rename + `get_task_by_id` fix into a strategic v2.0 arc.
 - **2026-04-20 late** — shipped task-302 (A) + task-303 (C); opened + converged thread-223 (B) + thread-224 (D-brainstorm); filed idea-120 (provenance unification) + bug-13 (id-sort); this work-trace doc stood up (supersedes post-phase-2x-roadmap.md). Architect reviewed task-302 + task-303 as fully completed. task-304 (D-CP1) issued by architect, pre-assigned to `eng-0d2c690e7dd5`, awaiting director go-ahead to begin implementation.
 - **2026-04-20 evening** — opened **thread-225** for idea-120 architect triage (entity-provenance unification / `createdBy` ratification). Unicast to architect, currentTurn=architect. Trace hygiene correction: task-304 is pre-assigned + status=`working` (not "not yet claimed" as prior entry said). Diagnostic: Hub revision `hub-00037-h9t` deployed 2026-04-20T06:40:53 is current (past commits 177fb84 + 9a5e7d0); MCP plugin-proxy in this session still serves pre-Phase-1 `list_tasks` schema (no filter/sort) — schema cached in proxy, resolved by session restart. Flagged, not blocking.
 - **2026-04-20 mid** — Phase 2x shipped all 7 items (P0-1 through P2-7); closing audit committed.
