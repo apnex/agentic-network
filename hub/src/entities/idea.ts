@@ -16,14 +16,15 @@ export interface Idea {
   id: string;
   text: string;
   /**
-   * Legacy authorship field (role string OR agentId, per call site).
-   * Superseded by `createdBy` (task-305) but retained during the C1→C4
-   * atomic migration for dual-write safety. Removed in C4 once readers
-   * all use `createdBy`.
+   * Mission-24 idea-120: uniform direct-create provenance (task-305).
+   * Required. Populated by handlers via `resolveCreatedBy(ctx)` on
+   * direct creates and from `action.proposer` on cascade creates.
+   * Legacy entities predating task-305 are backfilled either (a) from
+   * the legacy `author` field present in pre-migration GCS JSON via
+   * the migrate-on-read shim in `GcsIdeaStore`, or (b) from the
+   * one-shot backfill script walking the audit log for the entity id.
    */
-  author: string;
-  /** Mission-24 idea-120: uniform direct-create provenance (task-305). */
-  createdBy?: EntityProvenance;
+  createdBy: EntityProvenance;
   status: IdeaStatus;
   missionId: string | null;
   sourceThreadId: string | null;
@@ -52,7 +53,7 @@ export interface CascadeBacklink {
 export interface IIdeaStore {
   submitIdea(
     text: string,
-    author: string,
+    createdBy: EntityProvenance,
     sourceThreadId?: string,
     tags?: string[],
     backlink?: CascadeBacklink
@@ -83,7 +84,7 @@ export class MemoryIdeaStore implements IIdeaStore {
 
   async submitIdea(
     text: string,
-    author: string,
+    createdBy: EntityProvenance,
     sourceThreadId?: string,
     tags?: string[],
     backlink?: CascadeBacklink
@@ -95,7 +96,7 @@ export class MemoryIdeaStore implements IIdeaStore {
     const idea: Idea = {
       id,
       text,
-      author,
+      createdBy,
       status: "open",
       missionId: null,
       // Prefer backlink.sourceThreadId when both are present (cascade

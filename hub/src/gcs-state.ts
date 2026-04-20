@@ -44,6 +44,7 @@ import type {
   ReapedThread,
   ParticipantRole,
   CascadeBacklink,
+  EntityProvenance,
 } from "./state.js";
 import {
   computeFingerprint,
@@ -1444,7 +1445,10 @@ export class GcsThreadStore implements IThreadStore {
       routingMode,
       context,
       idleExpiryMs: null,
-      initiatedBy: author,
+      createdBy: {
+        role: author,
+        agentId: authorAgentId ?? `anonymous-${author}`,
+      },
       currentTurn: nextTurn,
       currentTurnAgentId: recipientAgentId ?? null,
       roundCount: 1,
@@ -1814,11 +1818,31 @@ function normalizeThreadShape(t: any): Thread {
   const convergenceActions = Array.isArray(t.convergenceActions)
     ? t.convergenceActions.map((a: any) => normalizeStagedActionShape(a))
     : [];
+  // task-305 migrate-on-read: legacy GCS JSON carries `initiatedBy:
+  // ThreadAuthor` without `createdBy`. Synthesize a `createdBy` from
+  // the legacy field so readers always see a populated provenance.
+  // Reconstruct agentId from participants[] when available (first
+  // participant role-matches the initiatedBy); else placeholder.
+  let createdBy: EntityProvenance;
+  if (t.createdBy && typeof t.createdBy.role === "string" && typeof t.createdBy.agentId === "string") {
+    createdBy = t.createdBy;
+  } else if (typeof t.initiatedBy === "string" && t.initiatedBy.length > 0) {
+    const opener = Array.isArray(t.participants)
+      ? t.participants.find((p: any) => p?.role === t.initiatedBy)
+      : null;
+    createdBy = {
+      role: t.initiatedBy,
+      agentId: opener?.agentId ?? `anonymous-${t.initiatedBy}`,
+    };
+  } else {
+    createdBy = { role: "unknown", agentId: "legacy-pre-provenance" };
+  }
   return {
     ...t,
     routingMode: normalizeRoutingMode(t.routingMode),
     context: isThreadContext(t.context) ? t.context : null,
     idleExpiryMs: typeof t.idleExpiryMs === "number" ? t.idleExpiryMs : null,
+    createdBy,
     convergenceActions,
     summary: typeof t.summary === "string" ? t.summary : "",
     participants: Array.isArray(t.participants) ? t.participants : [],

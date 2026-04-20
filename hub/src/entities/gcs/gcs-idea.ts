@@ -11,6 +11,32 @@ import {
   GcsPathNotFound,
 } from "../../gcs-state.js";
 import type { Idea, IdeaStatus, IIdeaStore, CascadeBacklink } from "../idea.js";
+import type { EntityProvenance } from "../../state.js";
+
+/**
+ * Migrate-on-read shim (task-305 C2). Legacy GCS JSON carries
+ * `author: string` without `createdBy`. When such a legacy entity is
+ * read, synthesize a `createdBy` from the legacy `author` field: the
+ * string is treated as an agentId if it looks like an eng-* id, else
+ * as a role. Placeholder agentId when only role is available.
+ *
+ * Transient — removable once the backfill script has swept the bucket
+ * (C3). The shim guarantees the reader ALWAYS sees a populated
+ * `createdBy`, so reader code can treat the field as required.
+ */
+function migrateIdeaOnRead(idea: Idea | null): Idea | null {
+  if (!idea) return null;
+  if (idea.createdBy) return idea;
+  const legacy = (idea as unknown as { author?: string }).author;
+  if (typeof legacy === "string" && legacy.length > 0) {
+    const looksLikeAgentId = legacy.startsWith("eng-");
+    const synth: EntityProvenance = looksLikeAgentId
+      ? { role: "unknown", agentId: legacy }
+      : { role: legacy, agentId: `anonymous-${legacy}` };
+    return { ...idea, createdBy: synth };
+  }
+  return { ...idea, createdBy: { role: "unknown", agentId: "legacy-pre-provenance" } };
+}
 
 export class GcsIdeaStore implements IIdeaStore {
   private bucket: string;
@@ -22,7 +48,7 @@ export class GcsIdeaStore implements IIdeaStore {
 
   async submitIdea(
     text: string,
-    author: string,
+    createdBy: EntityProvenance,
     sourceThreadId?: string,
     tags?: string[],
     backlink?: CascadeBacklink
@@ -34,7 +60,7 @@ export class GcsIdeaStore implements IIdeaStore {
     const idea: Idea = {
       id,
       text,
-      author,
+      createdBy,
       status: "open",
       missionId: null,
       sourceThreadId: backlink?.sourceThreadId ?? sourceThreadId ?? null,
@@ -54,7 +80,8 @@ export class GcsIdeaStore implements IIdeaStore {
     const files = await listFiles(this.bucket, "ideas/");
     for (const file of files) {
       if (!file.endsWith(".json")) continue;
-      const idea = await readJson<Idea>(this.bucket, file);
+      const raw = await readJson<Idea>(this.bucket, file);
+      const idea = migrateIdeaOnRead(raw);
       if (idea && idea.sourceThreadId === key.sourceThreadId && idea.sourceActionId === key.sourceActionId) {
         return idea;
       }
@@ -63,7 +90,7 @@ export class GcsIdeaStore implements IIdeaStore {
   }
 
   async getIdea(ideaId: string): Promise<Idea | null> {
-    return await readJson<Idea>(this.bucket, `ideas/${ideaId}.json`);
+    return migrateIdeaOnRead(await readJson<Idea>(this.bucket, `ideas/${ideaId}.json`));
   }
 
   async listIdeas(statusFilter?: IdeaStatus): Promise<Idea[]> {
@@ -71,7 +98,7 @@ export class GcsIdeaStore implements IIdeaStore {
     const ideas: Idea[] = [];
     for (const file of files) {
       if (!file.endsWith(".json")) continue;
-      const idea = await readJson<Idea>(this.bucket, file);
+      const idea = migrateIdeaOnRead(await readJson<Idea>(this.bucket, file));
       if (idea) {
         if (statusFilter && idea.status !== statusFilter) continue;
         ideas.push(idea);

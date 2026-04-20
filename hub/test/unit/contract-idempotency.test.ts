@@ -36,7 +36,7 @@ function makeThread(id = "thread-contract-test"): Thread {
     routingMode: "broadcast",
     context: null,
     idleExpiryMs: null,
-    initiatedBy: "engineer",
+    createdBy: { role: "engineer", agentId: "eng-test-fixture" },
     currentTurn: "architect",
     currentTurnAgentId: null,
     roundCount: 1,

@@ -443,7 +443,7 @@ async function listThreads(args: Record<string, unknown>, ctx: IPolicyContext): 
     roundCount: t.roundCount,
     maxRounds: t.maxRounds,
     outstandingIntent: t.outstandingIntent,
-    initiatedBy: t.initiatedBy,
+    createdBy: t.createdBy,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   }));

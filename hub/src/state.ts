@@ -584,14 +584,14 @@ export interface Thread {
    */
   idleExpiryMs: number | null;
   /**
-   * Role of the thread opener. Legacy-shape field; superseded by
-   * `createdBy` (task-305) but retained during the C1→C4 atomic
-   * migration for dual-write safety. Removed in C4 once readers all
-   * use `createdBy`.
+   * Mission-24 idea-120 / task-305: uniform direct-create provenance.
+   * Required. Populated in openThread from the caller's identity —
+   * `role` from the `author` param, `agentId` from options.authorAgentId
+   * (or an `anonymous-<role>` placeholder when unavailable). Legacy
+   * GCS JSON (pre-task-305) carrying `initiatedBy: ThreadAuthor` is
+   * upgraded by the migrate-on-read shim in `GcsThreadStore`.
    */
-  initiatedBy: ThreadAuthor;
-  /** Mission-24 idea-120: uniform direct-create provenance (task-305). */
-  createdBy?: EntityProvenance;
+  createdBy: EntityProvenance;
   currentTurn: ThreadAuthor;
   /**
    * Mission-21 Phase 1 (INV-TH17): when non-null, the reply turn is
@@ -1294,7 +1294,10 @@ export class MemoryThreadStore implements IThreadStore {
       routingMode,
       context,
       idleExpiryMs: null,
-      initiatedBy: author,
+      createdBy: {
+        role: author,
+        agentId: authorAgentId ?? `anonymous-${author}`,
+      },
       currentTurn: nextTurn,
       currentTurnAgentId: recipientAgentId ?? null,
       roundCount: 1,

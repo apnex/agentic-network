@@ -13,6 +13,7 @@ import type { FsmTransitionTable } from "./types.js";
 import type { IdeaStatus } from "../entities/index.js";
 import { LIST_PAGINATION_SCHEMA, LIST_TAGS_SCHEMA, applyTagFilter, paginate } from "./list-filters.js";
 import { dispatchIdeaSubmitted } from "./dispatch-helpers.js";
+import { resolveCreatedBy } from "./caller-identity.js";
 
 // ── FSM Declaration ─────────────────────────────────────────────────
 
@@ -32,12 +33,13 @@ async function createIdea(args: Record<string, unknown>, ctx: IPolicyContext): P
   const sourceThreadId = args.sourceThreadId as string | undefined;
   const tags = args.tags as string[] | undefined;
 
-  const role = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
-  const idea = await ctx.stores.idea.submitIdea(text, role, sourceThreadId, tags);
+  const createdBy = await resolveCreatedBy(ctx);
+  const idea = await ctx.stores.idea.submitIdea(text, createdBy, sourceThreadId, tags);
 
   // Uses the shared helper so the cascade path (cascade-actions/
-  // create-idea.ts) fires an identically-shaped event.
-  await dispatchIdeaSubmitted(ctx, idea, role);
+  // create-idea.ts) fires an identically-shaped event. SSE payload
+  // shape preserved (external contract); internal sourcing updated.
+  await dispatchIdeaSubmitted(ctx, idea, createdBy.role);
 
   return {
     content: [{ type: "text" as const, text: JSON.stringify({ ideaId: idea.id, status: idea.status }) }],
