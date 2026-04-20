@@ -10,8 +10,19 @@ import type { PolicyRouter } from "./router.js";
 import type { IPolicyContext, PolicyResult } from "./types.js";
 import { isValidTransition } from "./types.js";
 import type { FsmTransitionTable } from "./types.js";
-import type { IdeaStatus } from "../entities/index.js";
-import { LIST_PAGINATION_SCHEMA, LIST_TAGS_SCHEMA, applyTagFilter, paginate } from "./list-filters.js";
+import type { Idea, IdeaStatus } from "../entities/index.js";
+import {
+  LIST_PAGINATION_SCHEMA,
+  LIST_TAGS_SCHEMA,
+  applyTagFilter,
+  paginate,
+  buildQueryFilterSchema,
+  buildQuerySortSchema,
+  applyQueryFilter,
+  applyQuerySort,
+  type QueryableFieldSpec,
+  type FieldAccessors,
+} from "./list-filters.js";
 import { dispatchIdeaSubmitted } from "./dispatch-helpers.js";
 import { resolveCreatedBy } from "./caller-identity.js";
 
@@ -46,13 +57,93 @@ async function createIdea(args: Record<string, unknown>, ctx: IPolicyContext): P
   };
 }
 
+// ── M-QueryShape Phase C (idea-119, task-306) ──────────────────────
+// Idea-entity field descriptors + accessors for the shared filter/sort
+// primitives. Nested `createdBy.*` paths mirror list_tasks (Phase 1 + C).
+// `createdBy.id` is a computed virtual field: `${role}:${agentId}`.
+
+const IDEA_FILTERABLE_FIELDS: QueryableFieldSpec = {
+  status: { type: "enum", values: ["open", "triaged", "dismissed", "incorporated"] },
+  missionId: { type: "string" },
+  sourceThreadId: { type: "string" },
+  sourceActionId: { type: "string" },
+  createdAt: { type: "date" },
+  updatedAt: { type: "date" },
+  "createdBy.role": { type: "string" },
+  "createdBy.agentId": { type: "string" },
+  "createdBy.id": { type: "string" },
+};
+
+const IDEA_SORTABLE_FIELDS = [
+  "id",
+  "status",
+  "createdAt",
+  "updatedAt",
+  "missionId",
+  "sourceThreadId",
+  "sourceActionId",
+  "createdBy.role",
+  "createdBy.agentId",
+  "createdBy.id",
+] as const;
+
+const IDEA_ACCESSORS: FieldAccessors<Idea> = {
+  id: (i) => i.id,
+  status: (i) => i.status,
+  createdAt: (i) => i.createdAt,
+  updatedAt: (i) => i.updatedAt,
+  missionId: (i) => i.missionId,
+  sourceThreadId: (i) => i.sourceThreadId,
+  sourceActionId: (i) => i.sourceActionId,
+  "createdBy.role": (i) => i.createdBy?.role ?? null,
+  "createdBy.agentId": (i) => i.createdBy?.agentId ?? null,
+  "createdBy.id": (i) => (i.createdBy ? `${i.createdBy.role}:${i.createdBy.agentId}` : null),
+};
+
+const IDEA_FILTER_SCHEMA = buildQueryFilterSchema(IDEA_FILTERABLE_FIELDS);
+const IDEA_SORT_SCHEMA = buildQuerySortSchema(IDEA_SORTABLE_FIELDS);
+
 async function listIdeas(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
-  const status = args.status as IdeaStatus | undefined;
-  let ideas = await ctx.stores.idea.listIdeas(status);
+  let ideas = await ctx.stores.idea.listIdeas();
+  const totalPreFilter = ideas.length;
+
+  // Legacy tag match-any filter (pre-QueryShape; preserved).
   ideas = applyTagFilter(ideas, args.tags as string[] | undefined);
+
+  // Backwards-compat: legacy scalar `status` arg subsumed by the new
+  // `filter.status` field. filter.status wins when both are present.
+  const legacyStatus = typeof args.status === "string" ? (args.status as IdeaStatus) : undefined;
+  const filterArgRaw = args.filter as Record<string, unknown> | undefined;
+  const effectiveFilter: Record<string, unknown> = { ...(filterArgRaw ?? {}) };
+  if (legacyStatus && effectiveFilter.status === undefined) {
+    effectiveFilter.status = legacyStatus;
+  }
+  const hasFilter = Object.keys(effectiveFilter).length > 0;
+
+  if (hasFilter) {
+    ideas = applyQueryFilter(ideas, effectiveFilter, IDEA_ACCESSORS);
+  }
+
+  const sortArg = args.sort as ReadonlyArray<{ field: string; order: "asc" | "desc" }> | undefined;
+  ideas = applyQuerySort(ideas, sortArg, IDEA_ACCESSORS);
+
+  const postFilterCount = ideas.length;
   const page = paginate(ideas, args);
+
+  const queryUnmatched = hasFilter && postFilterCount === 0 && totalPreFilter > 0;
+
   return {
-    content: [{ type: "text" as const, text: JSON.stringify({ ideas: page.items, count: page.count, total: page.total, offset: page.offset, limit: page.limit }, null, 2) }],
+    content: [{
+      type: "text" as const,
+      text: JSON.stringify({
+        ideas: page.items,
+        count: page.count,
+        total: page.total,
+        offset: page.offset,
+        limit: page.limit,
+        ...(queryUnmatched ? { _ois_query_unmatched: true } : {}),
+      }, null, 2),
+    }],
   };
 }
 
@@ -135,9 +226,25 @@ export function registerIdeaPolicy(router: PolicyRouter): void {
 
   router.register(
     "list_ideas",
-    "[Any] List ideas with optional status filter, tag match-any filter, and pagination.",
+    "[Any] List ideas with filter + sort + pagination. " +
+    "`filter` accepts a Mongo-ish object with implicit AND across fields: " +
+    "`{status: 'open'}` for eq, `{status: {$in: ['open','triaged']}}` for set membership, " +
+    "`{createdAt: {$lt: '2026-04-01T00:00:00Z'}}` for range. " +
+    "Filterable fields: status, missionId, sourceThreadId, sourceActionId, createdAt, updatedAt, " +
+    "'createdBy.role', 'createdBy.agentId', 'createdBy.id' (computed `${role}:${agentId}`). " +
+    "Range operators ($gt/$lt/$gte/$lte) apply only to dates + numbers. " +
+    "Forbidden operators ($regex, $where, $expr, $or, $and, $not) are rejected with an error naming the permitted set. " +
+    "`sort` accepts an ordered tuple `[{field, order}]` on: id, status, createdAt, updatedAt, missionId, sourceThreadId, sourceActionId, 'createdBy.role', 'createdBy.agentId', 'createdBy.id'. " +
+    "Implicit id:asc tie-breaker is appended for deterministic pagination. " +
+    "Returns `_ois_query_unmatched: true` when the filter yields zero matches but the collection is non-empty (distinct from tool error). " +
+    "Legacy scalar `status:` arg and `tags:` match-any filter preserved for backwards compat; `filter.status` wins when both status shapes present.",
     {
-      status: z.enum(["open", "triaged", "dismissed", "incorporated"]).optional().describe("Filter by status"),
+      filter: IDEA_FILTER_SCHEMA.optional()
+        .describe("Mongo-ish filter object; see tool description for permitted fields + operators"),
+      sort: IDEA_SORT_SCHEMA
+        .describe("Ordered-tuple sort; see tool description for permitted fields"),
+      status: z.enum(["open", "triaged", "dismissed", "incorporated"]).optional()
+        .describe("DEPRECATED: use `filter: { status: ... }`. Preserved for backwards compat; `filter.status` wins when both present."),
       ...LIST_TAGS_SCHEMA,
       ...LIST_PAGINATION_SCHEMA,
     },

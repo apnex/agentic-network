@@ -67,6 +67,99 @@ describe("IdeaPolicy", () => {
     expect(parsed.count).toBe(0);
   });
 
+  // ── Phase C (task-306): createdBy.* nested paths ─────────────────
+  describe("list_ideas — M-QueryShape Phase C (task-306)", () => {
+    async function seedWithCreatedBy(): Promise<void> {
+      await router.handle("create_idea", { text: "Idea 1" }, ctx);
+      await router.handle("create_idea", { text: "Idea 2" }, ctx);
+      await router.handle("create_idea", { text: "Idea 3" }, ctx);
+      const internal = (ctx.stores.idea as any).ideas as Map<string, any>;
+      const i1 = internal.get("idea-1");
+      if (i1) i1.createdBy = { role: "architect", agentId: "eng-alpha" };
+      const i2 = internal.get("idea-2");
+      if (i2) i2.createdBy = { role: "engineer", agentId: "eng-beta" };
+      const i3 = internal.get("idea-3");
+      if (i3) i3.createdBy = { role: "architect", agentId: "eng-gamma" };
+    }
+
+    it("filter: createdBy.role selects architect-created ideas only", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_ideas",
+        { filter: { "createdBy.role": "architect" } },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.ideas.length).toBe(2);
+      expect(parsed.ideas.every((i: any) => i.createdBy.role === "architect")).toBe(true);
+    });
+
+    it("filter: createdBy.agentId selects a specific agent", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_ideas",
+        { filter: { "createdBy.agentId": "eng-beta" } },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.ideas.length).toBe(1);
+      expect(parsed.ideas[0].id).toBe("idea-2");
+    });
+
+    it("filter: createdBy.id matches computed `${role}:${agentId}`", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_ideas",
+        { filter: { "createdBy.id": "architect:eng-gamma" } },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.ideas.length).toBe(1);
+      expect(parsed.ideas[0].id).toBe("idea-3");
+    });
+
+    it("sort: createdBy.id asc orders by the `role:agentId` composite", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_ideas",
+        { sort: [{ field: "createdBy.id", order: "asc" }] },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      // Lexical: architect:eng-alpha < architect:eng-gamma < engineer:eng-beta
+      expect(parsed.ideas.map((i: any) => i.id)).toEqual(["idea-1", "idea-3", "idea-2"]);
+    });
+
+    it("yields _ois_query_unmatched when filter matches nothing", async () => {
+      await seedWithCreatedBy();
+      const result = await router.handle(
+        "list_ideas",
+        { filter: { "createdBy.role": "director" } },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.ideas.length).toBe(0);
+      expect(parsed._ois_query_unmatched).toBe(true);
+    });
+
+    it("filter.status wins over legacy scalar status when both present", async () => {
+      // Verifies backwards-compat legacy path still works post-rewrite
+      await router.handle("create_idea", { text: "Open A" }, ctx);
+      const createResult = await router.handle("create_idea", { text: "Open B" }, ctx);
+      const { ideaId } = JSON.parse(createResult.content[0].text);
+      await router.handle("update_idea", { ideaId, status: "triaged" }, ctx);
+
+      const result = await router.handle(
+        "list_ideas",
+        { status: "open", filter: { status: "triaged" } },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.ideas.length).toBe(1);
+      expect(parsed.ideas[0].status).toBe("triaged");
+    });
+  });
+
   it("update_idea changes status", async () => {
     const createResult = await router.handle("create_idea", { text: "Update me" }, ctx);
     const { ideaId } = JSON.parse(createResult.content[0].text);
