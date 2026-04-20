@@ -26,10 +26,11 @@ If you're picking up cold, read in this order:
 
 1. **This file, then** `docs/audits/phase-2x-closing.md` (most recent closed phase) and `docs/audits/phase-2c-closing.md` (preceding).
 2. **Current in-flight:** nothing. task-304 (D-CP1) + task-305 (entity-provenance atomic cutover) both shipped this session and are `in_review` at the Hub awaiting architect review.
-3. **Awaiting architect triage:** idea-115 (dynamic tool scope), idea-116 (tele-10 Precision Context Engineering), idea-118 (cross-item circuit breaker), **idea-121 (API v2.0 tool-surface modernization)**.
-4. **Deferred:** H (Phase 4 quota — no 429s observed), bug-13 (id-sort lexicographic tail refinement).
-5. **Role & session plumbing.** Role is set by the adapter at startup (plugin config / `hub-config.json`) — not by the LLM. `McpAgentClient.runHandshake` auto-calls `register_role` on connect; do not re-register. MCP tool-discovery is per-session — if Hub shipped new tools since last connect, restart the session. If role uncertain, confirm via `get_engineer_status`.
-6. **Recent commits:** `git log --grep='M-Cognitive-Hypervisor\|task-30' --oneline -20` for code trail.
+3. **Awaiting architect triage:** idea-115 (dynamic tool scope), idea-116 (tele-10 Precision Context Engineering), idea-118 (cross-item circuit breaker), **idea-121 (API v2.0 tool-surface modernization)**, **idea-122 (`reset_agent` operator affordance)**.
+4. **Awaiting architect / director triage:** bug-14 (update-kind no-op gap), bug-15 (INV-TH17 shadow instrumentation), **bug-16 (Agent lifecycle — no reaper + labels/role not refreshed on reconnect; major)**, bug-17 (clientName "unknown" from dev-channel plugin).
+5. **Deferred:** H (Phase 4 quota — no 429s observed), bug-13 (id-sort lexicographic tail refinement).
+6. **Role & session plumbing.** Role is set by the adapter at startup (plugin config / `hub-config.json`) — not by the LLM. `McpAgentClient.runHandshake` auto-calls `register_role` on connect; do not re-register. MCP tool-discovery is per-session — if Hub shipped new tools since last connect, restart the session. If role uncertain, confirm via `get_engineer_status`.
+7. **Recent commits:** `git log --grep='M-Cognitive-Hypervisor\|task-30' --oneline -20` for code trail.
 
 ---
 
@@ -71,8 +72,7 @@ _(nothing claimed — task-304 + task-305 both in-review at Hub; architect triag
 - ✅ **D-CP1 (task-304)** — Phase 2d CP1 shipped across 5 commits (`eab52be` → `a6d5bb0`). Metrics primitive + shadow-invariant logger + cascade-failure-type buckets + idempotency contract tests (5/5 spawn handlers CERTIFIED) + audit report `docs/audits/phase-2d-cp1-observability-report.md`. 503 Hub tests + 96 network-adapter tests passing. Hub report filed; task status = `in_review`. CP2 + CP4 unblocked (CP3 was independent).
 - ✅ **task-305** — Mission-24 Phase A shipped across 4 commits (`613cf29` → `add9d0f`). Director-approved atomic A+B+D collapse (thread-226). `EntityProvenance` type; `createdBy` required on Thread + Idea (legacy `author` / `initiatedBy` REMOVED); additive on 8 other entities; `resolveCreatedBy(ctx)` helper; migrate-on-read shims; one-shot `scripts/backfill-created-by.ts`. 510 Hub tests passing. Hub report filed; task status = `in_review`. Phase C (idea-119 P2 / F) unblocks once architect reviews + backfill runs in prod.
 - ✅ **thread-226** — task-305 scope-revision heads-up converged bilaterally. Architect ratified director's atomic-cutover call with 4 technical recommendations — all absorbed into C1-C4.
-- ✅ **idea-120 triage (thread-225)** — entity-provenance unification ratified bilaterally. Canonical `createdBy: {role, agentId}`; `surfacedBy` stays distinct (Bug discovery channel ≠ agent identity); mandatory audit-trail backfill; prereq for F. Architect issued Phase A impl task.
-- ✅ **task-305 issued** — Mission-24 Phase A (createdBy schema + `create_*` handler population). Status = `pending`, unclaimed.
+- ✅ **idea-120 triage (thread-225)** — entity-provenance unification ratified bilaterally. Canonical `createdBy: {role, agentId}`; `surfacedBy` stays distinct (Bug discovery channel ≠ agent identity); mandatory audit-trail backfill; prereq for F. Architect issued Phase A impl task-305 (shipped — see task-305 entry above).
 - ✅ **Ideas filed:** idea-119 (query-shape engineering), idea-120 (entity-provenance unification), idea-121 (API v2.0 tool-surface modernization), idea-122 (`reset_agent` operator affordance).
 - ✅ **Bugs filed:** bug-13 (id-sort lexicographic), bug-14 (update-kind no-op detection gap), bug-15 (INV-TH17 shadow-instrumentation gap), bug-16 (Agent lifecycle gaps — no reaper + labels/role not refreshed on reconnect), bug-17 (clientName "unknown" from dev-channel plugin handshake).
 
@@ -151,7 +151,9 @@ None of idea-115, 116, 118 is load-bearing for current production stability. Tri
 ## Canonical references
 
 - Phase closing audits: `docs/audits/phase-2x-closing.md`, `phase-2c-closing.md`, `phase-2b-closing.md`, `phase-2a-baseline-measurement.md`, `phase-1-baseline-measurement.md`
+- Phase 2d CP1 audit: `docs/audits/phase-2d-cp1-observability-report.md`
 - Mission spec: `docs/planning/m-cognitive-hypervisor.md`
 - Telemetry harness: `scripts/architect-telemetry/`
-- Open ideas (Hub): 115, 116, 117 (shipped), 118, 119 (Phase 1 shipped), 120
-- Open bugs (Hub): bug-13
+- Backfill script: `scripts/backfill-created-by.ts` (task-305 C4; not yet executed in prod)
+- Open ideas (Hub): 115, 116, 117 (shipped), 118, 119 (Phase 1 shipped; Phase 2 = F), 120 (ratified thread-225; Phase A shipped task-305), 121, 122
+- Open bugs (Hub): bug-13, bug-14, bug-15, bug-16, bug-17
