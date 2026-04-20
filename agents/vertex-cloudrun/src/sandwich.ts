@@ -424,9 +424,16 @@ async function attemptThreadReply(
     // committed payload and update context summary on convergence.
     let replyArgs: Record<string, unknown> | null = null;
     let replyResult: Record<string, unknown> | null = null;
+    // M-Hypervisor-Adapter-Mitigations Task 0/3: also capture the last
+    // rejected create_thread_reply response (if any) and the last tool
+    // name attempted, so the exhaustion + gate-rejection telemetry
+    // events can carry forensic context for bug-11 analysis.
+    let replyRejection: Record<string, unknown> | null = null;
+    let lastToolName: string | null = null;
 
     const allowSet = new Set(THREAD_REPLY_TOOLS);
     const executeToolCall: ToolExecutor = async (name, args) => {
+      lastToolName = name;
       // Defensive allow-list: Gemini occasionally reaches for tools named
       // in the system prompt even when not declared here (observed 2026-04-18
       // with create_audit_entry). Reject them at the executor so the LLM
@@ -457,12 +464,24 @@ async function attemptThreadReply(
             : { output: result };
         const succeeded =
           !("error" in wrapped) && (wrapped as Record<string, unknown>).success !== false;
-        if (name === "create_thread_reply" && succeeded) {
-          replyResult = wrapped;
+        if (name === "create_thread_reply") {
+          if (succeeded) {
+            replyResult = wrapped;
+          } else {
+            replyRejection = wrapped;
+          }
         }
         return wrapped;
       } catch (err: any) {
-        return { error: err.message || String(err) };
+        // M-Hypervisor-Adapter-Mitigations Task 0/3: preserve the
+        // Hub-returned error envelope on cognitive-path HubReturnedError
+        // throws so the rejection-path telemetry can extract the CP2 C2
+        // structured fields (subtype, remediation, metadata).
+        const out: Record<string, unknown> = { error: err?.message || String(err) };
+        if (err && typeof err === "object" && "envelope" in err) {
+          out.envelope = (err as { envelope: unknown }).envelope;
+        }
+        return out;
       }
     };
 
@@ -542,9 +561,22 @@ async function attemptThreadReply(
       console.error(
         `[Sandwich] Thread reply for ${threadId} hit MAX_TOOL_ROUNDS before completing`,
       );
+      // M-Hypervisor-Adapter-Mitigations Task 0/3 (bug-11 measurement):
+      // emit a structured telemetry event alongside the Hub audit so
+      // longitudinal analytics can frequency-correlate exhaustion
+      // events by threadId / correlationId / round / tool pattern.
+      architectTelemetry.emitToolRoundsExhausted(
+        {
+          threadId,
+          correlationId: typeof thread.correlationId === "string" ? thread.correlationId : undefined,
+          finalRound,
+          lastToolName: lastToolName ?? undefined,
+        },
+        { sessionId: threadId, tags: { sandwich: "thread-reply" } },
+      );
       await hub.createAuditEntry(
         "auto_thread_reply_failed",
-        `Thread reply for ${threadId} exceeded tool-call rounds without converging`,
+        `Thread reply for ${threadId} exceeded tool-call rounds without converging (finalRound=${finalRound}, lastTool=${lastToolName ?? "<none>"})`,
         threadId,
       );
       // Transient: LLM stuck in a tool-call loop on this attempt; a fresh
@@ -572,9 +604,30 @@ async function attemptThreadReply(
       console.error(
         `[Sandwich] create_thread_reply for ${threadId} did not succeed; see tool response in LLM history`,
       );
+      // M-Hypervisor-Adapter-Mitigations Task 0/3 (Error Elision v1):
+      // when the Hub returned the CP2 C2 structured error shape
+      // ({success:false, error, subtype, remediation, metadata?}),
+      // emit a telemetry event carrying the structured fields so
+      // analytics can correlate rejections by subtype. v1 records the
+      // forensic trail; auto-correction rules keyed off subtype are a
+      // follow-up task.
+      const rejection = extractStructuredGateError(replyRejection);
+      if (rejection) {
+        architectTelemetry.emitThreadReplyRejectedByGate(
+          {
+            threadId,
+            correlationId: typeof thread.correlationId === "string" ? thread.correlationId : undefined,
+            subtype: rejection.subtype,
+            remediation: rejection.remediation,
+            metadata: rejection.metadata,
+            errorMessage: rejection.error,
+          },
+          { sessionId: threadId, tags: { sandwich: "thread-reply" } },
+        );
+      }
       await hub.createAuditEntry(
         "auto_thread_reply_failed",
-        `Thread reply for ${threadId} rejected by Hub — args: ${JSON.stringify(committedArgs).substring(0, 500)}`,
+        `Thread reply for ${threadId} rejected by Hub — subtype=${rejection?.subtype ?? "<unstructured>"} remediation=${rejection?.remediation ?? "<none>"} args: ${JSON.stringify(committedArgs).substring(0, 500)}`,
         threadId,
       );
       // Permanent: Hub rejected with these specific args (e.g. gate
@@ -812,4 +865,68 @@ function extractDocumentPaths(text: string): string[] {
   }
 
   return Array.from(paths);
+}
+
+/**
+ * M-Hypervisor-Adapter-Mitigations Task 0/3 (Error Elision v1):
+ * extract the CP2 C2 structured error fields from a rejected
+ * `create_thread_reply` response. Accepts both shapes observed in
+ * the sandwich's executeToolCall wrapper:
+ *
+ *   - `{error, envelope: {isError, content:[{text: "<json>"}]}}` —
+ *     the cognitive-path `HubReturnedError` shape preserved on
+ *     catch; the JSON in `envelope.content[0].text` carries the
+ *     `{success, error, subtype, remediation, metadata?}` payload.
+ *   - `{success:false, error, subtype, remediation, metadata?}` —
+ *     the legacy non-cognitive path where the envelope was
+ *     unwrapped to JSON by downstream code.
+ *
+ * Returns null when the response is unstructured (pre-CP2 error
+ * shape, unexpected plain-text error, or no rejection at all).
+ */
+export function extractStructuredGateError(
+  rejection: Record<string, unknown> | null,
+): { error?: string; subtype?: string; remediation?: string; metadata?: Record<string, unknown> } | null {
+  if (!rejection) return null;
+  // Shape 1: envelope-preserving wrapper.
+  const envelope = (rejection as { envelope?: unknown }).envelope;
+  if (envelope && typeof envelope === "object") {
+    const content = (envelope as { content?: Array<{ text?: string }> }).content;
+    const text = Array.isArray(content) && typeof content[0]?.text === "string" ? content[0].text : null;
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as Record<string, unknown>;
+        const subtype = typeof parsed.subtype === "string" ? parsed.subtype : undefined;
+        const remediation = typeof parsed.remediation === "string" ? parsed.remediation : undefined;
+        if (subtype || remediation) {
+          const metadataRaw = parsed.metadata;
+          return {
+            error: typeof parsed.error === "string" ? parsed.error : undefined,
+            subtype,
+            remediation,
+            metadata:
+              metadataRaw && typeof metadataRaw === "object" && !Array.isArray(metadataRaw)
+                ? (metadataRaw as Record<string, unknown>)
+                : undefined,
+          };
+        }
+      } catch {
+        /* fall through to shape 2 */
+      }
+    }
+  }
+  // Shape 2: already-unwrapped JSON.
+  const subtype = typeof rejection.subtype === "string" ? rejection.subtype : undefined;
+  const remediation = typeof rejection.remediation === "string" ? rejection.remediation : undefined;
+  if (!subtype && !remediation) return null;
+  const metadataRaw = rejection.metadata;
+  return {
+    error: typeof rejection.error === "string" ? rejection.error : undefined,
+    subtype,
+    remediation,
+    metadata:
+      metadataRaw && typeof metadataRaw === "object" && !Array.isArray(metadataRaw)
+        ? (metadataRaw as Record<string, unknown>)
+        : undefined,
+  };
 }

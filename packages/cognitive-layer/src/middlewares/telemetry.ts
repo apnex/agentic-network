@@ -35,7 +35,23 @@ export type TelemetryEventKind =
    * the same sink as tool-call events so consumers can cross-
    * correlate LLM token spend with tool-surface token pressure.
    */
-  | "llm_usage";
+  | "llm_usage"
+  /**
+   * M-Hypervisor-Adapter-Mitigations Task 0/3 (bug-11 measurement).
+   * Fires when the shim's LLM loop hits the round budget without
+   * converging. Carries `threadId`, `finalRound`, `lastToolName` in
+   * the new `bug11*` fields plus `correlationId` when available so
+   * downstream analytics can group by mission / thread context.
+   */
+  | "tool_rounds_exhausted"
+  /**
+   * M-Hypervisor-Adapter-Mitigations Task 0/3 (Error Elision v1).
+   * Fires when the Hub rejects a thread reply at the convergence
+   * gate and returns the CP2 C2 structured error shape (subtype +
+   * remediation + optional metadata). v1 surface records the
+   * forensic trail; a later task lands auto-correction rules.
+   */
+  | "thread_reply_rejected_by_gate";
 
 export interface TelemetryEvent {
   kind: TelemetryEventKind;
@@ -84,6 +100,22 @@ export interface TelemetryEvent {
   llmTotalTokens?: number;
   llmFinishReason?: string;
   llmParallelToolCalls?: number;
+  /**
+   * Bug-11 measurement fields — populated on `tool_rounds_exhausted`
+   * and `thread_reply_rejected_by_gate` events. `threadId` +
+   * `correlationId` let analytics group exhaustions by mission or
+   * dispute. `finalRound` + `lastToolName` name the exhaustion point.
+   * `gateSubtype` + `gateRemediation` + `gateMetadata` carry the
+   * CP2 C2 structured error fields verbatim when the gate rejects a
+   * staged reply.
+   */
+  threadId?: string;
+  correlationId?: string;
+  finalRound?: number;
+  lastToolName?: string;
+  gateSubtype?: string;
+  gateRemediation?: string;
+  gateMetadata?: Record<string, unknown>;
   timestamp: number;
 }
 
@@ -291,6 +323,69 @@ export class CognitiveTelemetry implements CognitiveMiddleware {
       llmTotalTokens: usage.totalTokens,
       llmFinishReason: usage.finishReason,
       llmParallelToolCalls: usage.parallelToolCalls,
+      timestamp: this.now(),
+    });
+  }
+
+  /**
+   * M-Hypervisor-Adapter-Mitigations Task 0/3: emit a
+   * `tool_rounds_exhausted` event when the shim's LLM loop hits the
+   * round budget without converging. Captures the longitudinal fields
+   * the bug-11 analysis needs (threadId, correlationId, finalRound,
+   * lastToolName) so consumers can frequency-correlate over time.
+   */
+  emitToolRoundsExhausted(
+    info: {
+      threadId?: string;
+      correlationId?: string;
+      finalRound?: number;
+      lastToolName?: string;
+    },
+    ctx?: { sessionId?: string; agentId?: string; tags?: Record<string, string> },
+  ): void {
+    this.emit({
+      kind: "tool_rounds_exhausted",
+      sessionId: ctx?.sessionId,
+      agentId: ctx?.agentId,
+      tags: ctx?.tags ? { ...ctx.tags } : undefined,
+      threadId: info.threadId,
+      correlationId: info.correlationId,
+      finalRound: info.finalRound,
+      lastToolName: info.lastToolName,
+      timestamp: this.now(),
+    });
+  }
+
+  /**
+   * M-Hypervisor-Adapter-Mitigations Task 0/3 (Error Elision v1): emit
+   * a `thread_reply_rejected_by_gate` event when the Hub rejects a
+   * thread-reply tool call at the convergence gate with the CP2 C2
+   * structured error shape (`{success:false, error, subtype,
+   * remediation, metadata?}`). v1 records the forensic trail; later
+   * tasks absorb auto-correction rules keyed off `gateSubtype`.
+   */
+  emitThreadReplyRejectedByGate(
+    info: {
+      threadId?: string;
+      correlationId?: string;
+      subtype?: string;
+      remediation?: string;
+      metadata?: Record<string, unknown>;
+      errorMessage?: string;
+    },
+    ctx?: { sessionId?: string; agentId?: string; tags?: Record<string, string> },
+  ): void {
+    this.emit({
+      kind: "thread_reply_rejected_by_gate",
+      sessionId: ctx?.sessionId,
+      agentId: ctx?.agentId,
+      tags: ctx?.tags ? { ...ctx.tags } : undefined,
+      threadId: info.threadId,
+      correlationId: info.correlationId,
+      gateSubtype: info.subtype,
+      gateRemediation: info.remediation,
+      gateMetadata: info.metadata ? { ...info.metadata } : undefined,
+      errorMessage: info.errorMessage,
       timestamp: this.now(),
     });
   }

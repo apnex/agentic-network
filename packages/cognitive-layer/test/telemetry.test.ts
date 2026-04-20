@@ -336,6 +336,105 @@ describe("CognitiveTelemetry.emitLlmUsage — Phase 2a ckpt-C", () => {
   });
 });
 
+// ── M-Hypervisor-Adapter-Mitigations Task 0/3 (bug-11 measurement) ─
+
+describe("CognitiveTelemetry.emitToolRoundsExhausted — Task 0/3", () => {
+  it("emits a tool_rounds_exhausted event with the longitudinal fields", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    t.emitToolRoundsExhausted(
+      {
+        threadId: "thread-42",
+        correlationId: "idea-132",
+        finalRound: 12,
+        lastToolName: "get_thread",
+      },
+      { sessionId: "thread-42", tags: { sandwich: "thread-reply" } },
+    );
+    await flushMicrotasks();
+
+    expect(events).toHaveLength(1);
+    const ev = events[0];
+    expect(ev.kind).toBe("tool_rounds_exhausted");
+    expect(ev.threadId).toBe("thread-42");
+    expect(ev.correlationId).toBe("idea-132");
+    expect(ev.finalRound).toBe(12);
+    expect(ev.lastToolName).toBe("get_thread");
+    expect(ev.sessionId).toBe("thread-42");
+    expect(ev.tags).toEqual({ sandwich: "thread-reply" });
+    expect(typeof ev.timestamp).toBe("number");
+  });
+
+  it("accepts sparse info — omitted fields stay undefined", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+    t.emitToolRoundsExhausted({ threadId: "thread-7" });
+    await flushMicrotasks();
+    expect(events[0].kind).toBe("tool_rounds_exhausted");
+    expect(events[0].threadId).toBe("thread-7");
+    expect(events[0].finalRound).toBeUndefined();
+    expect(events[0].lastToolName).toBeUndefined();
+    expect(events[0].correlationId).toBeUndefined();
+  });
+});
+
+describe("CognitiveTelemetry.emitThreadReplyRejectedByGate — Task 0/3", () => {
+  it("emits a thread_reply_rejected_by_gate event carrying CP2 C2 structured fields", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+
+    t.emitThreadReplyRejectedByGate(
+      {
+        threadId: "thread-99",
+        correlationId: "mission-38",
+        subtype: "summary_missing",
+        remediation: "Provide a non-empty summary narrating the thread's agreed outcome.",
+        metadata: { entityType: "thread", entityId: "thread-99" },
+        errorMessage: "Convergence gate rejected: summary_missing",
+      },
+      { sessionId: "thread-99" },
+    );
+    await flushMicrotasks();
+
+    expect(events).toHaveLength(1);
+    const ev = events[0];
+    expect(ev.kind).toBe("thread_reply_rejected_by_gate");
+    expect(ev.threadId).toBe("thread-99");
+    expect(ev.correlationId).toBe("mission-38");
+    expect(ev.gateSubtype).toBe("summary_missing");
+    expect(ev.gateRemediation).toBe("Provide a non-empty summary narrating the thread's agreed outcome.");
+    expect(ev.gateMetadata).toEqual({ entityType: "thread", entityId: "thread-99" });
+    expect(ev.errorMessage).toBe("Convergence gate rejected: summary_missing");
+  });
+
+  it("metadata is shallow-cloned so sink mutations don't leak back", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+    const metadata = { entityType: "mission", entityId: "mission-38" };
+    t.emitThreadReplyRejectedByGate({
+      threadId: "thread-99",
+      subtype: "stale_reference",
+      metadata,
+    });
+    await flushMicrotasks();
+    (events[0].gateMetadata as Record<string, unknown>).entityId = "tampered";
+    expect(metadata.entityId).toBe("mission-38"); // unchanged
+  });
+
+  it("accepts sparse info — omitted structured fields stay undefined", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+    t.emitThreadReplyRejectedByGate({ threadId: "thread-1" });
+    await flushMicrotasks();
+    expect(events[0].kind).toBe("thread_reply_rejected_by_gate");
+    expect(events[0].threadId).toBe("thread-1");
+    expect(events[0].gateSubtype).toBeUndefined();
+    expect(events[0].gateRemediation).toBeUndefined();
+    expect(events[0].gateMetadata).toBeUndefined();
+  });
+});
+
 describe("CognitiveTelemetry — bytes + approximate tokens", () => {
   it("emits inputBytes + inputTokensApprox on tool_call success", async () => {
     const events: TelemetryEvent[] = [];
