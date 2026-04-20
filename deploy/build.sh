@@ -10,6 +10,14 @@
 #   ./build.sh architect          # build + deploy Architect only
 #   ./build.sh --build-only       # build images without terraform apply
 #
+# After `terraform apply`, this script forces a new Cloud Run revision
+# for each target service via `gcloud run services update
+# --update-labels=deploy-ts=<epoch>`. This works around Terraform's
+# behaviour of leaving the existing revision in place when the image
+# tag (`:latest`) resolves to the same digest as the currently-deployed
+# revision — a frequent scenario during Phase 2b/2c/2x development
+# cycles where the image changes but Terraform-managed fields don't.
+#
 # Prerequisites:
 #   - gcloud CLI authenticated
 #   - terraform init completed in this directory
@@ -109,6 +117,53 @@ if [[ ! -f "$TFVARS" ]]; then
 fi
 
 terraform apply -var-file="$TFVARS" -auto-approve
+
+# ── Force new revisions (Phase 2x P2-7) ───────────────────────────────
+#
+# Terraform leaves the existing Cloud Run revision in place when the
+# image tag (:latest) resolves to the same digest as the current
+# revision's image, even though we just built a fresh image under the
+# same tag. The label bump below is an in-place service-config update
+# that Cloud Run treats as a new revision trigger — the ready revision
+# advances and the new image is actually rolled out. Without this,
+# `./build.sh` would silently serve stale code for any change that
+# didn't modify a Terraform-managed field.
+#
+# Only bumps the services in the current TARGET scope so building just
+# the architect doesn't recycle a warm Hub instance (or vice versa).
+
+REGION="$(terraform output -raw region 2>/dev/null || echo "")"
+DEPLOY_TS="$(date +%s)"
+force_revision() {
+  local svc="$1"
+  if [[ -z "$REGION" ]]; then
+    echo "  WARN: no region Terraform output — skipping revision-force for $svc"
+    return
+  fi
+  echo "  Forcing new revision for $svc..."
+  gcloud run services update "$svc" \
+    --region="$REGION" \
+    --update-labels="deploy-ts=$DEPLOY_TS" \
+    --quiet >/dev/null
+  local rev
+  rev="$(gcloud run services describe "$svc" --region="$REGION" --format='value(status.latestReadyRevisionName)' 2>/dev/null || echo "?")"
+  echo "  $svc → $rev"
+}
+
+echo ""
+echo "── Forcing new Cloud Run revisions ───────────────────"
+case "$TARGET" in
+  hub)
+    force_revision "$(terraform output -raw hub_service_name 2>/dev/null || echo "hub")"
+    ;;
+  architect)
+    force_revision "$(terraform output -raw architect_service_name 2>/dev/null || echo "architect-agent")"
+    ;;
+  all)
+    force_revision "$(terraform output -raw hub_service_name 2>/dev/null || echo "hub")"
+    force_revision "$(terraform output -raw architect_service_name 2>/dev/null || echo "architect-agent")"
+    ;;
+esac
 
 echo ""
 echo "── Deploy Complete ───────────────────────────────────"
