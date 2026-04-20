@@ -224,6 +224,7 @@ describe("TaskPolicy", () => {
 
     // SystemPolicy tools
     expect(canonical).toContain("get_pending_actions");
+    expect(canonical).toContain("get_metrics");
   });
 
   it("createTask creates a task and emits task_issued", async () => {
@@ -872,5 +873,68 @@ describe("TaskPolicy", () => {
     expect(result.isError).toBe(true);
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.error).toContain("task-999");
+  });
+
+  // ── SystemPolicy: get_metrics (Phase 2d CP2) ─────────────────────
+  describe("get_metrics", () => {
+    it("returns an empty snapshot when no counters have been touched", async () => {
+      const result = await router.handle("get_metrics", {}, ctx);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.snapshot).toBeDefined();
+      expect(Object.keys(parsed.snapshot).length).toBe(0);
+    });
+
+    it("returns a snapshot reflecting counter increments", async () => {
+      ctx.metrics.increment("cascade.idempotent_skip");
+      ctx.metrics.increment("cascade.idempotent_skip");
+      ctx.metrics.increment("inv_th19.shadow_breach", { subtype: "stage_missing" });
+      const result = await router.handle("get_metrics", {}, ctx);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.snapshot["cascade.idempotent_skip"]).toBe(2);
+      expect(parsed.snapshot["inv_th19.shadow_breach"]).toBe(1);
+    });
+
+    it("returns count + recentDetails when a specific bucket is requested", async () => {
+      ctx.metrics.increment("inv_th18.shadow_breach", { routingMode: "unicast", reason: "missing_recipientAgentId" });
+      ctx.metrics.increment("inv_th18.shadow_breach", { routingMode: "broadcast", reason: "has_recipientAgentId" });
+      const result = await router.handle(
+        "get_metrics",
+        { bucket: "inv_th18.shadow_breach" },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.bucket).toBe("inv_th18.shadow_breach");
+      expect(parsed.count).toBe(2);
+      expect(parsed.recentDetails.length).toBe(2);
+      expect(parsed.recentDetails[0].details.reason).toBe("missing_recipientAgentId");
+    });
+
+    it("returns zero count + empty details for an unknown bucket", async () => {
+      const result = await router.handle(
+        "get_metrics",
+        { bucket: "nonexistent.bucket" },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(0);
+      expect(parsed.recentDetails).toEqual([]);
+    });
+
+    it("respects limit when paging recentDetails", async () => {
+      for (let i = 0; i < 10; i++) {
+        ctx.metrics.increment("cascade_fail.execute_threw", { iteration: i });
+      }
+      const result = await router.handle(
+        "get_metrics",
+        { bucket: "cascade_fail.execute_threw", limit: 3 },
+        ctx,
+      );
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.count).toBe(10);
+      expect(parsed.recentDetails.length).toBe(3);
+      // Most-recent-wins slicing: iterations 7, 8, 9
+      expect(parsed.recentDetails[0].details.iteration).toBe(7);
+      expect(parsed.recentDetails[2].details.iteration).toBe(9);
+    });
   });
 });

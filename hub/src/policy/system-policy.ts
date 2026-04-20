@@ -6,8 +6,10 @@
  * preserve bounded contexts.
  */
 
+import { z } from "zod";
 import type { PolicyRouter } from "./router.js";
 import type { IPolicyContext, PolicyResult } from "./types.js";
+import { RECENT_DETAILS_CAP } from "../observability/metrics.js";
 
 // ── Handlers ────────────────────────────────────────────────────────
 
@@ -172,6 +174,40 @@ async function getPendingActions(_args: Record<string, unknown>, ctx: IPolicyCon
   };
 }
 
+// ── get_metrics (Phase 2d CP2) ──────────────────────────────────────
+// Read-only snapshot of the Hub's in-memory observability counters
+// (shadow-invariant breaches, cascade-failure types, convergence-gate
+// rejections, etc.). Closes task-304 CP1 Finding §4.4. Counters live
+// per-process, so a restart resets them — not a replacement for the
+// audit-log channel, but a live-debugging affordance for the architect.
+
+async function getMetrics(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
+  const bucket = typeof args.bucket === "string" ? args.bucket : undefined;
+  const rawLimit = typeof args.limit === "number" ? args.limit : undefined;
+  const limit = Math.max(1, Math.min(RECENT_DETAILS_CAP, rawLimit ?? RECENT_DETAILS_CAP));
+
+  const snapshot = ctx.metrics.snapshot();
+
+  if (bucket) {
+    const count = snapshot[bucket] ?? 0;
+    const recentDetails = ctx.metrics.recentDetails(bucket, limit);
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ bucket, count, recentDetails }, null, 2),
+      }],
+    };
+  }
+
+  // Default: full snapshot, no details (keeps payload compact).
+  return {
+    content: [{
+      type: "text" as const,
+      text: JSON.stringify({ snapshot }, null, 2),
+    }],
+  };
+}
+
 // ── Registration ────────────────────────────────────────────────────
 
 export function registerSystemPolicy(router: PolicyRouter): void {
@@ -180,5 +216,21 @@ export function registerSystemPolicy(router: PolicyRouter): void {
     "[Architect] Get a summary of all items requiring Architect attention: unread reports, pending proposals, active threads awaiting Architect reply, and tasks needing review. Designed for autonomous event loop polling.",
     {},
     getPendingActions,
+  );
+
+  router.register(
+    "get_metrics",
+    "[Architect] Read-only snapshot of in-memory observability counters (Phase 2d CP1 taxonomy). " +
+    "Default (no `bucket`) returns a compact `snapshot` object mapping every counter name to its integer count. " +
+    "Pass `bucket: 'name'` to additionally get `recentDetails` (ring-buffer up to 32 entries per bucket) for that specific counter. " +
+    "Counter taxonomy (CP1): `inv_th<N>.shadow_breach`, `inv_th25.near_miss`, `convergence_gate.rejected`, `convergence_gate.authority_rejected`, `create_thread.routing_mode_rejected`, `cascade_fail.{depth_exhausted,unknown_spec,execute_threw,dispatch_failed,audit_failed}`, `cascade.idempotent_skip`, `cascade.idempotent_update_skip`. " +
+    "Counter state is per-process (Hub restart resets all counts); use `list_audit_entries` for a persisted view where available.",
+    {
+      bucket: z.string().optional()
+        .describe("Specific counter bucket to drill into (returns count + recentDetails for that bucket)."),
+      limit: z.number().int().positive().max(RECENT_DETAILS_CAP).optional()
+        .describe(`Cap on recentDetails entries returned (max ${RECENT_DETAILS_CAP}, default ${RECENT_DETAILS_CAP}). Ignored when no bucket is specified.`),
+    },
+    getMetrics,
   );
 }
