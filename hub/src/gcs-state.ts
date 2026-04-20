@@ -332,6 +332,10 @@ interface Counters {
   turnCounter: number;
   teleCounter: number;
   bugCounter: number;
+  // Phase 2x P0-1 — GCS persistence for ADR-017 pending-action queue
+  // and Director-escalation notifications.
+  pendingActionCounter: number;
+  directorNotificationCounter: number;
 }
 
 const counterLock = new AsyncLock();
@@ -361,6 +365,8 @@ export async function getAndIncrementCounter(
       turnCounter: 0,
       teleCounter: 0,
       bugCounter: 0,
+      pendingActionCounter: 0,
+      directorNotificationCounter: 0,
     };
     // Ensure all counters are valid finite numbers (handles NaN, null, undefined)
     const counters: Counters = {
@@ -374,6 +380,8 @@ export async function getAndIncrementCounter(
       turnCounter: safeInt(raw.turnCounter),
       teleCounter: safeInt(raw.teleCounter),
       bugCounter: safeInt(raw.bugCounter),
+      pendingActionCounter: safeInt(raw.pendingActionCounter),
+      directorNotificationCounter: safeInt(raw.directorNotificationCounter),
     };
     counters[field]++;
     await writeJson(bucket, "meta/counter.json", counters);
@@ -402,6 +410,8 @@ async function reconcileCounters(bucket: string): Promise<void> {
       turnCounter: 0,
       teleCounter: 0,
       bugCounter: 0,
+      pendingActionCounter: 0,
+      directorNotificationCounter: 0,
     };
     const counters: Counters = {
       taskCounter: safeInt(raw.taskCounter),
@@ -414,6 +424,8 @@ async function reconcileCounters(bucket: string): Promise<void> {
       turnCounter: safeInt(raw.turnCounter),
       teleCounter: safeInt(raw.teleCounter),
       bugCounter: safeInt(raw.bugCounter),
+      pendingActionCounter: safeInt(raw.pendingActionCounter),
+      directorNotificationCounter: safeInt(raw.directorNotificationCounter),
     };
 
     // Scan each entity type and find the highest existing numeric ID

@@ -15,6 +15,7 @@ import {
   MemoryIdeaStore, MemoryMissionStore, MemoryTurnStore, MemoryTeleStore, MemoryBugStore,
   GcsIdeaStore, GcsMissionStore, GcsTurnStore, GcsTeleStore, GcsBugStore,
   MemoryPendingActionStore, MemoryDirectorNotificationStore,
+  GcsPendingActionStore, GcsDirectorNotificationStore,
   type IIdeaStore, type IMissionStore, type ITurnStore, type ITeleStore, type IBugStore,
   type IPendingActionStore, type IDirectorNotificationStore,
 } from "./entities/index.js";
@@ -53,9 +54,10 @@ let missionStore: IMissionStore;
 let turnStore: ITurnStore;
 let teleStore: ITeleStore;
 let bugStore: IBugStore;
-// ADR-017: comms reliability layer. Memory-only in v1 (Hub restart drops the
-// queue); GCS persistence is a Phase-1-extension follow-up. Queue rebuild
-// after restart is a manual reconcile pass against audit for now.
+// ADR-017: comms reliability layer. GCS-backed in Phase 2x P0-1 (was
+// memory-only in v1 — Hub restarts wiped the queue, observed twice
+// during Phase 2b-B measurement). Queue state now survives restart
+// identically to other entities.
 let pendingActionStore: IPendingActionStore;
 let directorNotificationStore: IDirectorNotificationStore;
 
@@ -73,8 +75,8 @@ if (STORAGE_BACKEND === "gcs") {
   turnStore = new GcsTurnStore(GCS_BUCKET, missionStore, taskStore);
   teleStore = new GcsTeleStore(GCS_BUCKET);
   bugStore = new GcsBugStore(GCS_BUCKET);
-  pendingActionStore = new MemoryPendingActionStore();
-  directorNotificationStore = new MemoryDirectorNotificationStore();
+  pendingActionStore = new GcsPendingActionStore(GCS_BUCKET);
+  directorNotificationStore = new GcsDirectorNotificationStore(GCS_BUCKET);
 } else {
   if (process.env.NODE_ENV === "production") {
     console.error("[Hub] FATAL: STORAGE_BACKEND is 'memory' in production. Set STORAGE_BACKEND=gcs to prevent silent state loss.");

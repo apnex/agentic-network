@@ -30,6 +30,7 @@ export type {
   EnqueueOptions,
 } from "./pending-action.js";
 export { MemoryPendingActionStore, DEFAULT_RECEIPT_SLA_MS, DEFAULT_COMPLETION_SLA_MS } from "./pending-action.js";
+export { GcsPendingActionStore } from "./gcs/gcs-pending-action.js";
 
 export type {
   DirectorNotification,
@@ -39,3 +40,4 @@ export type {
   CreateNotificationOptions,
 } from "./director-notification.js";
 export { MemoryDirectorNotificationStore } from "./director-notification.js";
+export { GcsDirectorNotificationStore } from "./gcs/gcs-director-notification.js";
