@@ -9,24 +9,41 @@
 import type { ZodType } from "zod";
 import type { IPolicyContext, PolicyHandler, PolicyResult, DomainEvent } from "./types.js";
 
-type RoleTag = "architect" | "engineer" | "any";
+type Role = "architect" | "engineer" | "director" | "any";
+export type RoleSet = ReadonlySet<Role>;
 
 interface RegisteredTool {
   description: string;
   schema: Record<string, ZodType>;
   handler: PolicyHandler;
   deprecatedAlias?: string;
-  roleTag: RoleTag;
+  /**
+   * Set of roles permitted to call this tool. The sentinel "any" member
+   * bypasses the RBAC check entirely (Phase 2x P2-6 made the role set
+   * an actual Set so composite tags like `[Architect|Director]` are
+   * first-class — no more inline role checks inside handlers for
+   * admin-shared tools).
+   */
+  roles: RoleSet;
 }
 
 /**
- * Parse the role tag from a tool description.
- * Looks for [Architect], [Engineer], or [Any] at the start.
+ * Parse the role tag(s) from a tool description.
+ * Looks for `[Role]` or `[Role1|Role2|...]` at the start. Known role
+ * tokens: Architect, Engineer, Director, Any (case-insensitive).
+ * Missing or unrecognised tokens fall back to { "any" }.
  */
-function parseRoleTag(description: string): RoleTag {
-  if (description.startsWith("[Architect]")) return "architect";
-  if (description.startsWith("[Engineer]")) return "engineer";
-  return "any";
+function parseRoleTag(description: string): RoleSet {
+  const m = /^\[([^\]]+)\]/.exec(description);
+  if (!m) return new Set<Role>(["any"]);
+  const roles = new Set<Role>();
+  for (const token of m[1].split("|")) {
+    const t = token.trim().toLowerCase();
+    if (t === "architect" || t === "engineer" || t === "director" || t === "any") {
+      roles.add(t);
+    }
+  }
+  return roles.size > 0 ? roles : new Set<Role>(["any"]);
 }
 
 // Internal event handler type
@@ -50,8 +67,8 @@ export class PolicyRouter {
     handler: PolicyHandler,
     deprecatedAlias?: string
   ): void {
-    const roleTag = parseRoleTag(description);
-    this.tools.set(name, { description, schema, handler, deprecatedAlias, roleTag });
+    const roles = parseRoleTag(description);
+    this.tools.set(name, { description, schema, handler, deprecatedAlias, roles });
   }
 
   /**
@@ -65,7 +82,7 @@ export class PolicyRouter {
     this.tools.set(aliasName, {
       ...canonical,
       deprecatedAlias: canonicalName,
-      roleTag: canonical.roleTag,
+      roles: canonical.roles,
       handler: async (args, ctx) => {
         this.log(`[DEPRECATION] Tool '${aliasName}' invoked. Consumers must migrate to '${canonicalName}'.`);
         return canonical.handler(args, ctx);
@@ -93,13 +110,19 @@ export class PolicyRouter {
       };
     }
 
-    // RBAC enforcement: resolve caller's role and check against tool's role tag
+    // RBAC enforcement: resolve caller's role and check against the
+    // tool's permitted role set. The "any" sentinel bypasses the check.
+    // Unknown callers (pre-register_role) also bypass — parity with the
+    // prior behaviour. Composite tags like [Architect|Director] let
+    // admin-shared tools declare their audience declaratively without
+    // inline handler checks.
     const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
-    if (tool.roleTag !== "any" && callerRole !== "unknown") {
-      if (tool.roleTag !== callerRole) {
-        this.log(`[RBAC] Rejected ${toolName}: requires [${tool.roleTag}], caller is [${callerRole}]`);
+    if (!tool.roles.has("any") && callerRole !== "unknown") {
+      if (!tool.roles.has(callerRole as Role)) {
+        const permittedList = Array.from(tool.roles).join("|");
+        this.log(`[RBAC] Rejected ${toolName}: requires [${permittedList}], caller is [${callerRole}]`);
         return {
-          content: [{ type: "text", text: JSON.stringify({ error: `Authorization denied: tool '${toolName}' requires role '${tool.roleTag}', but caller is '${callerRole}'` }) }],
+          content: [{ type: "text", text: JSON.stringify({ error: `Authorization denied: tool '${toolName}' requires role '${permittedList}', but caller is '${callerRole}'` }) }],
           isError: true,
         };
       }

@@ -79,16 +79,9 @@ async function pruneStuckQueueItems(
   ctx: IPolicyContext,
 ): Promise<PolicyResult> {
   // idea-117 Phase 2c preamble — admin tool to break failure-amplification
-  // loops. Restricted to Architect + Director roles (inline check because
-  // the router's RoleTag supports [Architect]/[Engineer]/[Any], not
-  // Director). Wider RBAC re-architecture is out of scope for this PR.
-  const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
-  if (callerRole !== "architect" && callerRole !== "director") {
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({ error: `Authorization denied: prune_stuck_queue_items requires role 'architect' or 'director', but caller is '${callerRole}'` }) }],
-      isError: true,
-    };
-  }
+  // loops. Role-gated at the router via [Architect|Director] tag prefix
+  // (Phase 2x P2-6 made director a first-class RBAC role, so the inline
+  // check previously here is no longer needed).
 
   const olderThanMinutes = typeof args.olderThanMinutes === "number" ? args.olderThanMinutes : 15;
   const dispatchType = typeof args.dispatchType === "string" ? args.dispatchType as any : undefined;
@@ -173,7 +166,7 @@ export function registerPendingActionPolicy(router: PolicyRouter): void {
 
   router.register(
     "prune_stuck_queue_items",
-    "[Any] idea-117 Phase 2c admin: abandon pending-action items stuck in receipt_acked state. Matches items whose state is receipt_acked AND whose enqueuedAt is older than olderThanMinutes (default 15). Optionally filter by dispatchType or targetAgentId. Set dryRun=true to preview matches without mutation. Abandoned items transition to errored state; emits audit entries + a Director notification summarising the prune. Role-gated at runtime to Architect or Director only.",
+    "[Architect|Director] idea-117 Phase 2c admin: abandon pending-action items stuck in receipt_acked state. Matches items whose state is receipt_acked AND whose enqueuedAt is older than olderThanMinutes (default 15). Optionally filter by dispatchType or targetAgentId. Set dryRun=true to preview matches without mutation. Abandoned items transition to errored state; emits audit entries + a Director notification summarising the prune.",
     {
       olderThanMinutes: z.number().optional().describe("Only prune items enqueued more than N minutes ago (default 15)"),
       dispatchType: z.enum(["thread_message", "thread_convergence_finalized", "task_issued", "proposal_submitted", "report_created", "review_requested"]).optional().describe("Filter by dispatch type"),

@@ -417,13 +417,8 @@ async function closeThread(args: Record<string, unknown>, ctx: IPolicyContext): 
  * doesn't include Director).
  */
 async function forceCloseThread(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
-  const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
-  if (callerRole !== "architect" && callerRole !== "director") {
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify({ error: `Authorization denied: force_close_thread requires role 'architect' or 'director', but caller is '${callerRole}'` }) }],
-      isError: true,
-    };
-  }
+  // Role-gated at the router via [Architect|Director] tag prefix
+  // (Phase 2x P2-6 made director a first-class RBAC role).
 
   const threadId = args.threadId as string;
   const reason = typeof args.reason === "string" && args.reason.trim().length > 0
@@ -464,6 +459,7 @@ async function forceCloseThread(args: Record<string, unknown>, ctx: IPolicyConte
     }
   }
 
+  const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
   await ctx.stores.audit.logEntry(
     "hub",
     "thread_force_closed",
@@ -760,7 +756,7 @@ export function registerThreadPolicy(router: PolicyRouter): void {
 
   router.register(
     "force_close_thread",
-    "[Any] idea-117 Phase 2c admin: force-close a structurally stuck thread. Distinct from close_thread — runtime-gated to Architect or Director roles, atomically abandons any non-terminal queue items for the thread, and emits a distinct audit action (thread_force_closed) + Director notification. Use when the architect cannot itself close the thread (e.g., MAX_TOOL_ROUNDS death spiral) or when director-level intervention is needed for queue-stuck threads.",
+    "[Architect|Director] idea-117 Phase 2c admin: force-close a structurally stuck thread. Distinct from close_thread — atomically abandons any non-terminal queue items for the thread, and emits a distinct audit action (thread_force_closed) + Director notification. Use when the architect cannot itself close the thread (e.g., MAX_TOOL_ROUNDS death spiral) or when director-level intervention is needed for queue-stuck threads.",
     {
       threadId: z.string().describe("The thread ID to force-close"),
       reason: z.string().optional().describe("Human-readable reason for the force-close; persisted on the audit entry and Director notification"),
