@@ -1794,6 +1794,18 @@ describe("ThreadPolicy — cascade handlers (M24-T5)", () => {
    * opens, eng replies (no stage, converged=true; gate needs a staged
    * action, so inject first), then arch converges. */
   async function convergeWithInjectedAction(type: string, payload: Record<string, unknown>, summary: string): Promise<string> {
+    const result = await convergeWithInjectedActionResult(type, payload, summary);
+    return result.threadId;
+  }
+
+  // CP2 C4: some tests need the final arch-converge result to assert
+  // gate rejections (stale_reference, invalid_transition). Expose via
+  // a sibling helper that returns the threadId + final reply result.
+  async function convergeWithInjectedActionResult(
+    type: string,
+    payload: Record<string, unknown>,
+    summary: string,
+  ): Promise<{ threadId: string; finalReply: any }> {
     const r = await router.handle("create_thread", { routingMode: "broadcast",title: "t", message: "m" }, archCtx);
     const threadId = JSON.parse(r.content[0].text).threadId;
     // Stage via direct injection BEFORE the eng converge reply.
@@ -1807,10 +1819,10 @@ describe("ThreadPolicy — cascade handlers (M24-T5)", () => {
       threadId, message: "eng-converge", converged: true,
     }, engCtx);
     // arch converges to seal.
-    await router.handle("create_thread_reply", {
+    const finalReply = await router.handle("create_thread_reply", {
       threadId, message: "arch-converge", converged: true,
     }, archCtx);
-    return threadId;
+    return { threadId, finalReply };
   }
 
   // ── create_task ──────────────────────────────────────────────
@@ -2048,14 +2060,23 @@ describe("ThreadPolicy — cascade handlers part 2 (M24-T9)", () => {
   }
 
   async function convergeWithInjectedAction(type: string, payload: Record<string, unknown>, summary: string): Promise<string> {
+    const { threadId } = await convergeWithInjectedActionResult(type, payload, summary);
+    return threadId;
+  }
+
+  async function convergeWithInjectedActionResult(
+    type: string,
+    payload: Record<string, unknown>,
+    summary: string,
+  ): Promise<{ threadId: string; finalReply: any }> {
     const r = await router.handle("create_thread", { routingMode: "broadcast",title: "t", message: "m" }, archCtx);
     const threadId = JSON.parse(r.content[0].text).threadId;
     await router.handle("create_thread_reply", { threadId, message: "stage" }, engCtx);
     injectStagedAction(threadId, type, payload, archCtx);
     await router.handle("create_thread_reply", { threadId, message: "arch", summary }, archCtx);
     await router.handle("create_thread_reply", { threadId, message: "eng-c", converged: true }, engCtx);
-    await router.handle("create_thread_reply", { threadId, message: "arch-c", converged: true }, archCtx);
-    return threadId;
+    const finalReply = await router.handle("create_thread_reply", { threadId, message: "arch-c", converged: true }, archCtx);
+    return { threadId, finalReply };
   }
 
   // ── update_idea ──────────────────────────────────────────────
@@ -2084,30 +2105,36 @@ describe("ThreadPolicy — cascade handlers part 2 (M24-T9)", () => {
     expect(final.status).toBe("closed");
   });
 
-  it("update_idea handler fails cleanly when ideaId does not exist", async () => {
-    await convergeWithInjectedAction(
+  it("update_idea: non-existent ideaId rejected by convergence gate (stale_reference)", async () => {
+    // CP2 C4 (task-307): gate now catches stale references fail-fast,
+    // before the cascade runs. The arch-converge call returns isError
+    // with subtype=stale_reference + metadata naming the missing entity.
+    const { finalReply } = await convergeWithInjectedActionResult(
       "update_idea",
       { ideaId: "idea-missing", changes: { status: "dismissed" } },
       "Try to update a non-existent idea.",
     );
-
+    expect(finalReply.isError).toBe(true);
+    const parsed = JSON.parse(finalReply.content[0].text);
+    expect(parsed.subtype).toBe("stale_reference");
+    expect(parsed.metadata).toEqual({ entityType: "idea", entityId: "idea-missing" });
+    expect(parsed.error).toMatch(/no longer exists/);
+    // No cascade ran — no thread_convergence_finalized event.
     const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
-    expect(finalized.data.report[0].status).toBe("failed");
-    expect(finalized.data.report[0].error).toMatch(/not found/);
-    expect(finalized.data.warning).toBe(true);
-    expect(finalized.data.threadTerminal).toBe("cascade_failed");
+    expect(finalized).toBeUndefined();
   });
 
-  it("update_idea handler drops unknown change keys and fails if nothing remains", async () => {
+  it("update_idea: payload.changes with no updatable fields rejected by gate (payload_validation)", async () => {
     const seeded = await archCtx.stores.idea.submitIdea("Seed", "user");
-    await convergeWithInjectedAction(
+    const { finalReply } = await convergeWithInjectedActionResult(
       "update_idea",
       { ideaId: seeded.id, changes: { unknownField: "x" } },
       "Empty update.",
     );
-    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
-    expect(finalized.data.report[0].status).toBe("failed");
-    expect(finalized.data.report[0].error).toMatch(/no updatable fields/);
+    expect(finalReply.isError).toBe(true);
+    const parsed = JSON.parse(finalReply.content[0].text);
+    expect(parsed.subtype).toBe("payload_validation");
+    expect(parsed.error).toMatch(/no updatable fields/);
   });
 
   // ── update_mission_status ────────────────────────────────────
@@ -2128,31 +2155,42 @@ describe("ThreadPolicy — cascade handlers part 2 (M24-T9)", () => {
     expect(finalized.data.report[0].status).toBe("executed");
   });
 
-  it("update_mission_status rejects an invalid transition", async () => {
+  it("update_mission_status: invalid FSM transition rejected by gate (invalid_transition)", async () => {
+    // CP2 C4: gate now reuses MISSION_FSM + isValidTransition. proposed
+    // → completed is not a permitted edge, so the gate rejects with
+    // subtype=invalid_transition + full metadata naming the current +
+    // attempted status.
     const mission = await archCtx.stores.mission.createMission("M2", "Description");
-    // Already at "proposed"; cannot go directly to "completed" per FSM.
-    await convergeWithInjectedAction(
+    const { finalReply } = await convergeWithInjectedActionResult(
       "update_mission_status",
       { missionId: mission.id, status: "completed" },
       "Invalid direct transition.",
     );
-
-    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
-    expect(finalized.data.report[0].status).toBe("failed");
-    expect(finalized.data.report[0].error).toMatch(/invalid transition/);
-    expect(finalized.data.threadTerminal).toBe("cascade_failed");
+    expect(finalReply.isError).toBe(true);
+    const parsed = JSON.parse(finalReply.content[0].text);
+    expect(parsed.subtype).toBe("invalid_transition");
+    expect(parsed.metadata).toEqual({
+      entityType: "mission",
+      entityId: mission.id,
+      currentStatus: "proposed",
+      attemptedStatus: "completed",
+    });
   });
 
-  it("update_mission_status rejects unknown status values", async () => {
+  it("update_mission_status: unknown status value rejected by gate (invalid_transition)", async () => {
+    // Unknown status is an invalid FSM edge from any current status;
+    // validator routes it through the same invalid_transition path
+    // rather than the old handler-level 'invalid mission status' error.
     const mission = await archCtx.stores.mission.createMission("M3", "Description");
-    await convergeWithInjectedAction(
+    const { finalReply } = await convergeWithInjectedActionResult(
       "update_mission_status",
       { missionId: mission.id, status: "frozen" as any },
       "Bogus status.",
     );
-    const finalized = (archCtx as any).dispatchedEvents.find((e: any) => e.event === "thread_convergence_finalized");
-    expect(finalized.data.report[0].status).toBe("failed");
-    expect(finalized.data.report[0].error).toMatch(/invalid mission status/);
+    expect(finalReply.isError).toBe(true);
+    const parsed = JSON.parse(finalReply.content[0].text);
+    expect(parsed.subtype).toBe("invalid_transition");
+    expect(parsed.metadata).toMatchObject({ attemptedStatus: "frozen" });
   });
 
   it("update_mission_status is idempotent when already at target", async () => {

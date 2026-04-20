@@ -159,16 +159,13 @@ const AUDIT_ONLY_CASES: SpawnCase[] = [
   { type: "create_clarification", payload: { question: "q", context: "c" } },
 ];
 
-describe("update-handler idempotency (Phase 2d CP1)", () => {
-  it("update_idea: re-running against an already-applied change is a known gap (actual behavior: re-executes)", async () => {
-    // FINDING for C5 audit report: update_idea's execute() does not compare
-    // the incoming `changes` to the idea's current state, so a second
-    // cascade on the same action re-applies the changes and produces a
-    // second audit entry. For fully-idempotent update semantics the
-    // handler would return null on no-op; today it returns the idea
-    // unchanged and re-audits. This test documents the current behavior
-    // so the gap is visible in the test suite; the fix belongs in an
-    // update-handler hardening task (out of scope for CP1).
+describe("update-handler idempotency (bug-14 fix in CP2 C4 / task-307)", () => {
+  it("update_idea: re-running against an already-applied change now returns skipped_idempotent", async () => {
+    // Bug-14 absorbed into CP2 C4. update_idea.execute now computes a
+    // shallow diff vs current state and returns null when all filtered
+    // fields already match. The cascade runner then fires the
+    // `cascade.idempotent_update_skip` path instead of a redundant
+    // store write + audit entry.
     const ctx = createTestContext();
     ctx.metrics = createMetricsCounter();
     const thread = makeThread("thread-update-idea");
@@ -184,11 +181,11 @@ describe("update-handler idempotency (Phase 2d CP1)", () => {
     const first = await runCascade(ctx, thread, [action], "summary");
     expect(first.report[0].status).toBe("executed");
 
-    // Actual behavior today: second run re-executes (known gap).
+    // Second run: diff is empty, handler returns null, runner reports
+    // skipped_idempotent + emits cascade.idempotent_update_skip metric.
     const second = await runCascade(ctx, thread, [action], "summary");
-    expect(second.report[0].status).toBe("executed");
-    // Cascade did NOT detect the no-op; no idempotent_update_skip fired.
-    expect(ctx.metrics.snapshot()["cascade.idempotent_update_skip"]).toBeUndefined();
+    expect(second.report[0].status).toBe("skipped_idempotent");
+    expect(ctx.metrics.snapshot()["cascade.idempotent_update_skip"] ?? 0).toBeGreaterThanOrEqual(1);
   });
 });
 

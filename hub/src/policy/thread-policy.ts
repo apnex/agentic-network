@@ -32,6 +32,8 @@ import { runCascade } from "./cascade.js";
 // registry at module-load time. Adding a new handler type: append
 // to cascade-actions/index.ts.
 import "./cascade-actions/index.js";
+import { validateActionsWithRegistry } from "./action-validators/index.js";
+import type { ValidationContext } from "./action-validators/index.js";
 import { AUTONOMOUS_STAGED_ACTION_TYPES, checkConvergerAuthority } from "./staged-action-payloads.js";
 import { logShadowInvariantBreach } from "../observability/shadow-invariants.js";
 
@@ -296,6 +298,78 @@ async function createThreadReply(args: Record<string, unknown>, ctx: IPolicyCont
           }) }],
           isError: true,
         };
+      }
+
+      // ── Phase 2d CP2 C4 (task-307) ───────────────────────────────
+      // State-reality validation: fail-fast check that every staged
+      // action's referenced entities still exist and are in a
+      // transition-permitted state. Runs at the bilateral-convergence
+      // trigger only (mirrors authority check scope).
+      //
+      // Per architect thread-232: gate is a fail-fast optimization;
+      // the cascade handler remains the transactional arbiter. Race
+      // window between this check and the cascade execution is
+      // accepted (handlers recheck; gate just shortens the common
+      // failure path).
+      const projectedStaged: Array<{ id: string; type: string; status: string; payload: unknown }> = [
+        ...(existing?.convergenceActions ?? [])
+          .filter((a: any) => a.status === "staged")
+          .map((a: any) => ({ id: a.id, type: a.type, status: "staged", payload: a.payload })),
+      ];
+      // Apply the caller's incoming stage/revise/retract ops so the
+      // validator sees the action set as it would look post-commit.
+      const incomingStages = (stagedActions ?? []).filter((op: any) => op?.kind === "stage");
+      incomingStages.forEach((op: any, i: number) => {
+        projectedStaged.push({ id: `pending-${i + 1}`, type: op.type, status: "staged", payload: op.payload });
+      });
+      const reviseOps = (stagedActions ?? []).filter((op: any) => op?.kind === "revise");
+      for (const r of reviseOps as any[]) {
+        const idx = projectedStaged.findIndex((a) => a.id === r.id);
+        if (idx >= 0) projectedStaged[idx] = { ...projectedStaged[idx], payload: r.payload };
+      }
+      const retractIds = new Set((stagedActions ?? []).filter((op: any) => op?.kind === "retract").map((op: any) => op.id));
+      const filteredProjectedStaged = projectedStaged.filter((a) => !retractIds.has(a.id));
+
+      if (filteredProjectedStaged.length > 0) {
+        const validationContext: ValidationContext = {
+          task: ctx.stores.task,
+          idea: ctx.stores.idea,
+          mission: ctx.stores.mission,
+          thread: ctx.stores.thread,
+          proposal: ctx.stores.proposal,
+          turn: ctx.stores.turn,
+          bug: ctx.stores.bug,
+        };
+        const stateValidation = await validateActionsWithRegistry(filteredProjectedStaged, validationContext);
+        if (!stateValidation.ok) {
+          ctx.metrics.increment("convergence_gate.rejected", { threadId, subtype: stateValidation.subtype });
+          logShadowInvariantBreach("INV-TH19", `convergence gate rejected on state-reality check: ${stateValidation.error}`, ctx, {
+            relatedEntity: threadId,
+            extra: {
+              subtype: stateValidation.subtype,
+              actionId: stateValidation.actionId,
+              actionType: stateValidation.type,
+              metadata: stateValidation.metadata,
+            },
+          });
+          const remediation = CONVERGENCE_GATE_REMEDIATION[stateValidation.subtype];
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({
+              success: false,
+              error: stateValidation.error,
+              subtype: stateValidation.subtype,
+              remediation,
+              ...(stateValidation.metadata ? { metadata: stateValidation.metadata } : {}),
+            }) }],
+            isError: true,
+          };
+        }
+        if (stateValidation.noOpActionIds.length > 0) {
+          ctx.metrics.increment("convergence_gate.noop_detected", {
+            threadId,
+            actionIds: stateValidation.noOpActionIds,
+          });
+        }
       }
     }
   }

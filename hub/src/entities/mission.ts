@@ -21,6 +21,21 @@ import type { IIdeaStore, CascadeBacklink } from "./idea.js";
 
 export type MissionStatus = "proposed" | "active" | "completed" | "abandoned";
 
+/** Terminal states — mission's FSM has no outbound edges from these. */
+export const TERMINAL_MISSION_STATUSES: ReadonlySet<MissionStatus> = new Set(["completed", "abandoned"]);
+
+/**
+ * Phase 2d CP2 C4 (task-307): "committable" convention per architect
+ * brainstorm thread-232. A mission is committable when it's in a
+ * non-terminal state — new tasks / ideas / status transitions can still
+ * land against it. Used by action-validators to reject staged actions
+ * that would target a mission which completed or was abandoned between
+ * stage-time and convergence-time.
+ */
+export function isMissionCommittable(mission: Pick<Mission, "status">): boolean {
+  return !TERMINAL_MISSION_STATUSES.has(mission.status);
+}
+
 export interface Mission {
   id: string;
   title: string;

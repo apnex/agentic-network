@@ -517,6 +517,13 @@ interface StagedActionCommon {
   timestamp: string;
   /** If this entry revises a prior action, the prior action's id. */
   revisionOf?: string;
+  /** Phase 2d CP2 C4 (task-307, bug-14): set by the convergence-gate
+   * validator when the action is well-formed but would produce no state
+   * change (e.g. update_idea.changes already match current state). The
+   * cascade runner observes this flag and short-circuits with a
+   * `cascade.idempotent_skip` audit entry instead of performing a
+   * redundant write. Only meaningful on `status === "committed"` entries. */
+  isNoOp?: boolean;
 }
 
 /** Discriminated union on `type` — TypeScript narrows `payload` to the
@@ -557,7 +564,9 @@ export type ConvergenceGateSubtype =
   | "payload_validation"
   | "revise_invalid"
   | "retract_invalid"
-  | "authority";
+  | "authority"
+  | "stale_reference"
+  | "invalid_transition";
 
 /** Canonical remediation text per subtype. Throw sites may override with
  * a more specific hint (e.g., when both stage + summary are missing).
@@ -576,21 +585,37 @@ export const CONVERGENCE_GATE_REMEDIATION: Record<ConvergenceGateSubtype, string
     "`retract` only applies to actions currently in status=\"staged\". A committed action cannot be retracted — open a follow-up thread to revise the outcome.",
   authority:
     "Caller's role lacks the authority to commit one or more staged action types. Either have a caller with the required role converge the thread, or `revise` the offending action to a type the current caller can commit.",
+  stale_reference:
+    "Staged action references an entity that no longer exists (or has been archived/deleted) since stage-time. Revise or retract the action, or stage a replacement that targets a current entity.",
+  invalid_transition:
+    "Staged action would move an entity through an FSM edge that is no longer valid given the entity's current status. Revise the action (e.g. target a different `newStatus`) or retract if the intent is now moot.",
 };
 
 /** Error thrown by the thread store when `converged=true` fails the Phase 1
  * forcing-function gate or when a stage/revise/retract op is structurally
  * invalid. Carries a `subtype` + `remediation` hint so the caller can
- * self-correct without parsing the message string. Phase 2d CP2. */
+ * self-correct without parsing the message string. Phase 2d CP2.
+ *
+ * Optional `metadata` carries structured payload data for stale_reference
+ * (`{entityType, entityId}`) and invalid_transition
+ * (`{entityType, entityId, currentStatus, attemptedStatus}`) — lets the
+ * caller address the exact entity without re-reading the error message. */
 export class ThreadConvergenceGateError extends Error {
   readonly subtype: ConvergenceGateSubtype;
   readonly remediation: string;
+  readonly metadata?: Record<string, unknown>;
 
-  constructor(message: string, subtype: ConvergenceGateSubtype, remediation?: string) {
+  constructor(
+    message: string,
+    subtype: ConvergenceGateSubtype,
+    remediation?: string,
+    metadata?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = "ThreadConvergenceGateError";
     this.subtype = subtype;
     this.remediation = remediation ?? CONVERGENCE_GATE_REMEDIATION[subtype];
+    this.metadata = metadata;
   }
 }
 
