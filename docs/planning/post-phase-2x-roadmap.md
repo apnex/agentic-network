@@ -217,30 +217,29 @@ For each item:
 
 | Item | Status | Evidence |
 |---|---|---|
-| A. M-QueryShape Phase 1 (task-302) | **SHIPPED** | commits `177fb84` + `3e5c0ea`; 799/799 tests; deployed Hub + architect; task-302 report submitted; awaiting architect review |
-| B. Threads 2.0 Phase 2 design brainstorm | **IN PROGRESS** | thread-223 opened to architect 2026-04-20; awaiting round-1 response |
-| C. Threads 2.0 Phase 2 implementation | pending (gated on B) | — |
-| D. Threads 2.0 robustness audit | pending (gated on C) | — |
+| A. M-QueryShape Phase 1 (task-302) | **SHIPPED** | commits `177fb84` + `3e5c0ea`; 799/799 tests; deployed; report in_review |
+| B. Threads 2.0 Phase 2 design brainstorm | **RATIFIED** | thread-223 converged with Phase 2a spec; 5 rounds |
+| C. Threads 2.0 Phase 2a implementation (task-303) | **SHIPPED** | commit `9a5e7d0`; 455/455 Hub tests; per-action commit authority + cascade_failed Director notification (two actual gaps — most Phase 2a infra was already shipped from prior Mission-24 work); report in_review |
+| D. Threads 2.0 robustness audit | **BRAINSTORM OPEN** | thread-224 opened to architect 2026-04-20 |
 | E. Mission Phase 3 — state hydration | pending (gated on D) | — |
-| F. idea-119 Phase 2 (list_ideas + list_threads) | pending (gated on A verification + E) | — |
+| F. idea-119 Phase 2 (list_ideas + list_threads) | pending (gated on A + idea-120 triage) | — |
 | G. idea-119 Phase 3 (projection + indexing) | pending (gated on F) | — |
 | H. Mission Phase 4 — quota | deferred (no 429s observed) | — |
 | I. Architect triage of open ideas | pending | ideas 115, 116, 118, 120 filed |
 
 ## Next actions (rolling)
 
-1. ~~**Engineer claims task-302**~~ — done; report in_review
-2. ~~**Open architect brainstorm thread for Threads 2.0 Phase 2**~~ — done (thread-223)
-3. **Re-run N=20 harness** against the deployed task-302 revision to verify Phase 1 success criterion (MAX_TOOL_ROUNDS rate below 10% on complex prompts)
-4. **Respond to thread-223 architect replies** until converged with ratified Phase 2a spec
-5. On thread-223 converged: mission brief for C (Threads 2.0 Phase 2 implementation)
-6. Execute C — add `stage_task` as first type, with Mission-24 provenance fields
-7. Scope D (robustness audit brainstorm)
-8. Execute D output
-9. Move to Mission Phase 3 (E)
-10. Extend idea-119 (F, then G) in parallel with Phase 3 if bandwidth allows
-11. Phase 4 (H) when 429s appear
-12. Triage I when the queue is clear
+1. ~~Engineer claims task-302~~ — done; report in_review
+2. ~~Open architect brainstorm thread for Threads 2.0 Phase 2~~ — done (thread-223); converged
+3. ~~Execute C (task-303 implementation)~~ — done; report in_review
+4. ~~Scope D via architect brainstorm~~ — done (thread-224 open)
+5. **Respond to thread-224 architect replies** until converged on audit scope + mission shape
+6. On thread-224 converged: execute D output
+7. Move to Mission Phase 3 (E)
+8. Extend idea-119 (F, then G) in parallel with Phase 3 if bandwidth allows; gated on idea-120 triage
+9. Phase 4 (H) when 429s appear
+10. Triage I when the queue is clear
+11. Re-run N=20 harness after D lands to measure cumulative improvement from A + C
 
 ## Newly-surfaced follow-on ideas (during execution)
 
