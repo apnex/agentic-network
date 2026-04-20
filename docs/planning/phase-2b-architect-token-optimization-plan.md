@@ -280,6 +280,52 @@ Round 5 drops 88% from round 4, demonstrating the history-window elision is firi
 
 Cumulative vs Phase 2a baseline: **−82% total Gemini tokens, MAX_TOOL_ROUNDS and scope-reject classes both at zero**. Remaining headroom (~175k tokens above ckpt-C target) is concentrated on design-analysis + parallel-candidate — the response-surface class that ckpt-C's architect-side cognitive pipeline (ResponseSummarizer + cache) is designed to cap.
 
+### ckpt-C measured 2026-04-20, architect revision `00045-2pb`, 6-thread Pass-2 matrix re-run (threads 181-186)
+
+| Metric | Baseline | ckpt-A | ckpt-B | ckpt-C | Target (ckpt-C) |
+|---|---:|---:|---:|---:|---:|
+| Total Gemini tokens | 3,705,002 | 1,300,830 | 675,217 | 637,853 | ≤ 500k ⚠ |
+| MAX_TOOL_ROUNDS attempts | 12 | 1 | 0 | 1 | 0 ⚠ |
+| Out-of-scope rejections | 9 | 0 | 0 | 0 | — |
+| Virtual Tokens Saved | 0 | 0 | 0 | **620,130** | non-zero ✅ |
+| Summarized tool calls | 0 | 0 | 0 | 15 | — |
+| Cache hits | 0 | 0 | 0 | 2 | — |
+| Architect-side tool_call telemetry events | 0 | 0 | 0 | 74 | — |
+
+Per-thread token totals:
+
+| # | Prompt shape | Baseline | ckpt-A | ckpt-B | ckpt-C | Baseline→C Δ |
+|---|---|---:|---:|---:|---:|---:|
+| simple ack | 377,185 | 26,016 | 34,692 | 55,871 | −85% |
+| ideation | 487,717 | 114,627 | 74,299 | 77,212 | −84% |
+| tool-heavy read | 351,188 | 26,932 | 33,375 | 33,437 | −90% |
+| design analysis | 1,363,070 | 479,363 | 273,042 | **410,469** | −70% (hit MAX_TOOL_ROUNDS) |
+| parallel candidate | 862,520 | 628,073 | 233,136 | 32,691 | **−96%** |
+| error path | 263,322 | 25,819 | 26,673 | 28,173 | −89% |
+| **Total** | **3,705,002** | **1,300,830** | **675,217** | **637,853** | **−83%** |
+
+**Partial target miss — ckpt-C total 638k vs target ≤500k.** Excluding thread-184's MAX_TOOL_ROUNDS attempt, the other 5 threads total 227,384 tokens (well under target). Design-analysis specifically hit MAX_TOOL_ROUNDS at 10 rounds, burning 174k on the failed attempt + 236k on retry. Contrast with ckpt-B's thread-178 which converged at round 8 with 273k.
+
+**Unexpected interaction surfaced:** With ResponseSummarizer capping `get_idea` on idea-102 to ~22k tokens (vs ~72k raw), the LLM compensated by issuing more tool calls to "chase" paginated content. Thread-184 round-by-round prompt tokens stayed flat at ~22k rounds 4-8 instead of growing — the summarizer is working, but the LLM does not reliably follow `_ois_pagination.next_offset` hints, treating each summarized response as sufficient context for a fresh reasoning pass.
+
+**Architect-side cognitive pipeline confirmed firing in production:**
+- 15/74 tool calls summarized (~20% summarize rate on the architect's Hub request surface)
+- 620k production Virtual Tokens Saved (Phase 2a primary KPI, first non-zero production value)
+- 2 cache hits collapsed (single-sandwich read-cache savings, as expected)
+
+Net Phase 2b outcome:
+
+| Classes solved | Classes partially solved |
+|---|---|
+| FR-SCOPE-REJECT (ckpt-A) | Gemini doesn't follow `_ois_pagination.next_offset` — stays small but burns rounds (Phase 2c candidate) |
+| Accumulated-history growth (ckpt-B) | Design-analysis still occasionally hits MAX_TOOL_ROUNDS (1/6 threads this run vs 2/6 at baseline) |
+| Production Virtual Tokens Saved = 0 (ckpt-C) | |
+
+**Phase 2c candidates raised by this measurement:**
+- Pagination-hint following: teach the LLM (via prompt framing or a new middleware) to consume `_ois_pagination.next_offset` cursors rather than ignoring them.
+- Round-budget-aware convergence prompt: when budget is low AND context is sufficient, nudge toward `create_thread_reply` instead of more tool calls.
+- (This is complementary to ckpt-A's scope override — scope fix + convergence nudge together close the remaining MAX_TOOL_ROUNDS risk.)
+
 ---
 
 ## Canonical references
