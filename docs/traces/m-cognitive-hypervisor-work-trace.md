@@ -1,22 +1,11 @@
 # M-Cognitive-Hypervisor — Work Trace (live state)
 
-**Mission scope.** Tracks all in-flight, queued, and recently-completed work under the M-Cognitive-Hypervisor mission (spec: `docs/planning/m-cognitive-hypervisor.md`). Work-traces live in `docs/traces/` (separate from `docs/planning/` design artifacts). Naming: `<mission-slug>-work-trace.md`, one per overall mission. When a new overall mission is adopted, drop a new trace file into `docs/traces/`; archive a closed trace by renaming to `<mission-slug>-work-trace.closed.md`.
+**Mission scope.** Tracks all in-flight, queued, and recently-completed work under the M-Cognitive-Hypervisor mission (spec: `docs/planning/m-cognitive-hypervisor.md`).
 
-**What this is.** Living document. Tracks every in-flight item, its dependencies, and recent session history. Updated whenever an item changes state. Single source of truth for "what's happening right now" across sessions.
+**How to read + update this file:** see `docs/traces/trace-management.md` — the canonical engineer handover guide covering anatomy, when-to-patch heuristics, mechanical steps, worked examples, pitfalls, and the cold-session checklist. Everything that used to live in this file's preamble is now in that guide.
 
-**How to read.** Skim the **resumption pointer** first; then the three status sections (In-flight / Queued / Done this session); then the edges if you need dependency context. Use the session log at the bottom to reconstruct history across restarts.
-
-**Update discipline.**
-- Flip a status prefix when state changes (▶/✅/○/⏸)
-- Add new items under the right section — never create a parallel list
-- Append to session log; don't edit prior entries
-- Update resumption pointer when the "current in-flight" changes
-
-**Status legend.**
-- ▶ in-flight (currently working or next-up)
-- ✅ done (this session; moves to closing audit on phase close)
-- ○ queued / filed (waiting on dependency or triage)
-- ⏸ deferred (explicit decision to not pursue now)
+**Status legend** (for quick reference; full semantics in the guide):
+- ▶ in-flight  ✅ done this session  ○ queued / filed  ⏸ deferred
 
 ---
 
