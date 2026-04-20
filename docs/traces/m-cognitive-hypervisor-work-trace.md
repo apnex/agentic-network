@@ -27,7 +27,7 @@ If you're picking up cold, read in this order:
 1. **This file, then** `docs/audits/phase-2x-closing.md` (most recent closed phase) and `docs/audits/phase-2c-closing.md` (preceding).
 2. **Current in-flight:** nothing. task-304 (D-CP1) + task-305 (entity-provenance atomic cutover) both shipped this session and are `in_review` at the Hub awaiting architect review.
 3. **Awaiting architect triage:** idea-115 (dynamic tool scope), idea-116 (tele-10 Precision Context Engineering), idea-118 (cross-item circuit breaker), **idea-121 (API v2.0 tool-surface modernization)**, **idea-122 (`reset_agent` operator affordance)**, **idea-124 (label routing semantics — reserved keys + sender-default inheritance + Agent-SSOT dispatch resolution; supersedes bug-18 caller-patch long-term)**.
-4. **Awaiting architect / director triage:** bug-14 (update-kind no-op gap), bug-15 (INV-TH17 shadow instrumentation), **bug-16 (Agent lifecycle — no reaper + labels/role not refreshed on reconnect; major)**, bug-17 (clientName "unknown" from dev-channel plugin). **bug-18 + bug-19 fixes shipped this session — see "Done this session".**
+4. **Awaiting architect / director triage:** bug-14 (update-kind no-op gap), bug-15 (INV-TH17 shadow instrumentation), **bug-16 (Agent lifecycle — no reaper + labels/role not refreshed on reconnect; major)**, bug-17 (clientName "unknown" from dev-channel plugin). bug-18 + bug-19 shipped + resolved this session.
 5. **Deferred:** H (Phase 4 quota — no 429s observed), bug-13 (id-sort lexicographic tail refinement).
 6. **Role & session plumbing.** Role is set by the adapter at startup (plugin config / `hub-config.json`) — not by the LLM. `McpAgentClient.runHandshake` auto-calls `register_role` on connect; do not re-register. MCP tool-discovery is per-session — if Hub shipped new tools since last connect, restart the session. If role uncertain, confirm via `get_engineer_status`.
 7. **Recent commits:** `git log --grep='M-Cognitive-Hypervisor\|task-30' --oneline -20` for code trail.
@@ -36,7 +36,7 @@ If you're picking up cold, read in this order:
 
 ## In-flight
 
-_(nothing claimed — task-304 + task-305 both in-review at Hub; architect triage pending on ideas 115/116/118/121/122/124 and bugs 14/15/16/17; bugs 18/19 have fixes shipped but remain open in Hub pending close)_
+_(nothing claimed — task-304 + task-305 both in-review at Hub; architect triage pending on ideas 115/116/118/121/122/124 and bugs 14/15/16/17; bugs 18/19 RESOLVED in Hub via commits ace5cbd + fd0710b)_
 
 ---
 
@@ -165,4 +165,5 @@ None of idea-115, 116, 118 is load-bearing for current production stability. Tri
 - Telemetry harness: `scripts/architect-telemetry/`
 - Backfill script: `scripts/backfill-created-by.ts` (task-305 C4; not yet executed in prod)
 - Open ideas (Hub): 115, 116, 117 (shipped), 118, 119 (Phase 1 shipped; Phase 2 = F), 120 (ratified thread-225; Phase A shipped task-305), 121, 122, 123 (ratified as ADR-019), 124
-- Open bugs (Hub): bug-13, bug-14, bug-15, bug-16, bug-17, bug-18 (fix shipped), bug-19 (fix shipped)
+- Open bugs (Hub): bug-13, bug-14, bug-15, bug-16, bug-17
+- Resolved bugs (Hub, this session): bug-18 (fix `ace5cbd`), bug-19 (fix `fd0710b`)
