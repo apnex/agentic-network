@@ -14,7 +14,7 @@
  *     • agent.livenessState = "degraded"
  *     • audit "agent_demoted"
  *     • POST wakeEndpoint (if present)
- *     • extend receiptDeadline
+ *     • extend receiptDeadline by 5× receiptSla (idea-117 exponential backoff)
  *
  *   Stage 3 (attemptCount: 2 → 3) — Escalate to Director:
  *     • item.state = "escalated"
@@ -99,7 +99,7 @@ export class Watchdog {
         item.entityRef,
       );
       await this.wakeIfAble(agent, updated);
-      await this.extendDeadline(item.id, nowMs, agent);
+      await this.extendDeadline(item.id, nowMs, agent, stage);
       this.log(`[Watchdog] Stage 1 re-dispatch: ${item.id}`);
     } else if (stage === 2) {
       if (agent) {
@@ -112,7 +112,7 @@ export class Watchdog {
         item.entityRef,
       );
       await this.wakeIfAble(agent, updated);
-      await this.extendDeadline(item.id, nowMs, agent);
+      await this.extendDeadline(item.id, nowMs, agent, stage);
       this.log(`[Watchdog] Stage 2 demoted: ${item.targetAgentId}`);
     } else {
       // Stage 3+: escalate terminally.
@@ -148,8 +148,20 @@ export class Watchdog {
     }
   }
 
-  private async extendDeadline(itemId: string, nowMs: number, agent: Agent | null): Promise<void> {
-    const sla = agent?.receiptSla ?? 60_000;
+  private async extendDeadline(
+    itemId: string,
+    nowMs: number,
+    agent: Agent | null,
+    stage: number,
+  ): Promise<void> {
+    // idea-117 Phase 2c ckpt-A — exponential backoff between stages so a
+    // pathological item doesn't burn continuous budget across its retry
+    // window. Stage 1 extends by the base SLA; stage 2 extends by 5×
+    // that. Combined with the hard 3-stage cap, total item lifetime is
+    // bounded by (sla + 5×sla) ≈ 6× sla before terminal escalation.
+    const baseSla = agent?.receiptSla ?? 60_000;
+    const multiplier = stage >= 2 ? 5 : 1;
+    const sla = baseSla * multiplier;
     const newDeadline = new Date(nowMs + sla).toISOString();
     await this.stores.pendingAction.rescheduleReceiptDeadline(itemId, newDeadline);
   }

@@ -176,9 +176,12 @@ describe("ADR-017 — persist-first comms queue + liveness FSM", () => {
 
       // Architect never calls drain_pending_actions. Watchdog should fire
       // through its three stages: re-dispatch → demote → escalate.
-      // receiptSla default 60s (idea-105); watchdog ladder is 3× = 180s.
-      // Need >4× to also land on unresponsive via heartbeat recompute.
-      await vi.advanceTimersByTimeAsync(260_000); // 260s covers ladder + unresponsive threshold
+      // receiptSla default 60s (idea-105). idea-117 Phase 2c ckpt-A
+      // adds exponential backoff to the stage 2 extension (5× baseSla =
+      // 300s), so the ladder is now: stage 1 @ 60s + stage 2 @ 120s +
+      // stage 3 @ 420s ≈ 7min. Advance 500s for ladder headroom + 60s
+      // extra for unresponsive-liveness recompute.
+      await vi.advanceTimersByTimeAsync(560_000);
 
       // INV-COMMS-L05 — escalation ladder auditable.
       const audit = await engCtx.stores.audit.listEntries();
