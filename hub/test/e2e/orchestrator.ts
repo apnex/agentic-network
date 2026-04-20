@@ -45,6 +45,7 @@ import { MemoryTeleStore } from "../../src/entities/tele.js";
 import { MemoryBugStore } from "../../src/entities/bug.js";
 import { MemoryPendingActionStore } from "../../src/entities/pending-action.js";
 import { MemoryDirectorNotificationStore } from "../../src/entities/director-notification.js";
+import { createMetricsCounter, type MetricsCounter } from "../../src/observability/metrics.js";
 
 // ── Captured Event ──────────────────────────────────────────────────
 
@@ -169,6 +170,7 @@ export class ActorFacade {
     private readonly role: "architect" | "engineer",
     private readonly sessionId: string,
     private readonly config: { storageBackend: string; gcsBucket: string },
+    private readonly metrics: MetricsCounter,
   ) {}
 
   /** Build a fresh IPolicyContext for this actor. */
@@ -204,6 +206,7 @@ export class ActorFacade {
       role: this.role,
       internalEvents: [],
       config: this.config,
+      metrics: this.metrics,
     };
   }
 
@@ -428,12 +431,14 @@ export class TestOrchestrator {
   readonly router: PolicyRouter;
   readonly stores: AllStores;
   readonly events: EventCapture;
+  readonly metrics: MetricsCounter;
 
   private readonly config = { storageBackend: "memory", gcsBucket: "" };
   private actorCache = new Map<string, ActorFacade>();
 
   private constructor() {
     this.events = new EventCapture();
+    this.metrics = createMetricsCounter();
     this.stores = this.createStores();
     this.router = this.createRouter();
   }
@@ -450,7 +455,7 @@ export class TestOrchestrator {
       this.actorCache.set(key, new ActorFacade(
         this.router, this.stores, this.events,
         "architect", "session-architect",
-        this.config,
+        this.config, this.metrics,
       ));
     }
     return this.actorCache.get(key)!;
@@ -463,7 +468,7 @@ export class TestOrchestrator {
       this.actorCache.set(key, new ActorFacade(
         this.router, this.stores, this.events,
         "engineer", `session-engineer-${engineerId}`,
-        this.config,
+        this.config, this.metrics,
       ));
     }
     return this.actorCache.get(key)!;

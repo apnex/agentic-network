@@ -38,6 +38,7 @@ import { registerPendingActionPolicy } from "./policy/pending-action-policy.js";
 import { Watchdog } from "./policy/watchdog.js";
 import { bindRouterToMcp } from "./policy/mcp-binding.js";
 import type { AllStores } from "./policy/index.js";
+import { createMetricsCounter } from "./observability/metrics.js";
 
 // ── Global State ──────────────────────────────────────────────────────
 const STORAGE_BACKEND = process.env.STORAGE_BACKEND || "memory";
@@ -190,6 +191,9 @@ function createMcpServer(
   );
 
   // Layer 7: PolicyRouter-bound tools (Task + System domains)
+  // Shared per-process metrics counter — all ctx instances share it so
+  // counter state accumulates across requests (see Phase 2d CP1).
+  const metrics = createMetricsCounter();
   const ctxFactory = () => ({
     stores: allStores,
     emit: notifyEvent,
@@ -199,6 +203,7 @@ function createMcpServer(
     role: "unknown", // resolved at handler level via engineerRegistry
     internalEvents: [],
     config: { storageBackend: STORAGE_BACKEND, gcsBucket: GCS_BUCKET },
+    metrics,
   });
 
   bindRouterToMcp(server, policyRouter, ctxFactory);

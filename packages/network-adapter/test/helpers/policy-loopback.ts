@@ -28,6 +28,7 @@ import { MemoryTeleStore } from "../../../../hub/src/entities/tele.js";
 import { MemoryPendingActionStore } from "../../../../hub/src/entities/pending-action.js";
 import { MemoryDirectorNotificationStore } from "../../../../hub/src/entities/director-notification.js";
 import { MemoryBugStore } from "../../../../hub/src/entities/bug.js";
+import { createMetricsCounter, type MetricsCounter } from "../../../../hub/src/observability/metrics.js";
 import type { ILoopbackHub, LoopbackTransport, ToolCall } from "./loopback-transport.js";
 
 export interface DispatchedEvent {
@@ -55,10 +56,12 @@ export class PolicyLoopbackHub implements ILoopbackHub {
   private toolCallLog: ToolCall[] = [];
   private nextSessionId = 1;
   private nextEventId = 1;
+  private metrics: MetricsCounter;
 
   constructor() {
     this.stores = this.createStores();
     this.router = this.createRouter();
+    this.metrics = createMetricsCounter();
   }
 
   // ── ILoopbackHub contract ───────────────────────────────────────────
@@ -159,6 +162,7 @@ export class PolicyLoopbackHub implements ILoopbackHub {
       role: this.stores.engineerRegistry.getRole(sessionId),
       internalEvents: [],
       config: { storageBackend: "memory", gcsBucket: "" },
+      metrics: this.metrics,
     };
   }
 

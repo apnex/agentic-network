@@ -24,6 +24,7 @@ import { MemoryTeleStore } from "../../../../hub/src/entities/tele.js";
 import { PolicyRouter } from "../../../../hub/src/policy/router.js";
 import { registerSessionPolicy } from "../../../../hub/src/policy/session-policy.js";
 import type { IPolicyContext, AllStores } from "../../../../hub/src/policy/types.js";
+import { createMetricsCounter } from "../../../../hub/src/observability/metrics.js";
 
 export type PolicyRegistrationFn = (router: PolicyRouter) => void;
 
@@ -131,7 +132,8 @@ function createMcpServer(
       role: stores.engineerRegistry.getRole(sessionId),
       internalEvents: [],
       config: { storageBackend: "memory", gcsBucket: "" },
-    };
+      metrics: createMetricsCounter(),
+    } as IPolicyContext;
   }
 
   const server = new McpServer(

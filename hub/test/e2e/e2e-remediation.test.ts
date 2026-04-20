@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { TestOrchestrator } from "./orchestrator.js";
 import type { ActorFacade } from "./orchestrator.js";
+import { createMetricsCounter } from "../../src/observability/metrics.js";
 
 describe("Registry Remediation", () => {
   let orch: TestOrchestrator;
@@ -112,6 +113,7 @@ describe("Registry Remediation", () => {
         role: "engineer",
         internalEvents: [],
         config: { storageBackend: "memory", gcsBucket: "" },
+        metrics: createMetricsCounter(),
       };
 
       // Register as engineer first
@@ -215,6 +217,7 @@ describe("Registry Remediation", () => {
         role: "unknown",
         internalEvents: [],
         config: { storageBackend: "memory", gcsBucket: "" },
+        metrics: createMetricsCounter(),
       } as any);
       expect(unknownResult.isError).toBeUndefined();
     });

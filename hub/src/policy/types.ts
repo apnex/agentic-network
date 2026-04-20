@@ -13,6 +13,7 @@ import type {
   IPendingActionStore,
   IDirectorNotificationStore,
 } from "../entities/index.js";
+import type { MetricsCounter } from "../observability/metrics.js";
 
 // ── Domain Event (internal, synchronous) ────────────────────────────
 
@@ -57,6 +58,8 @@ export interface IPolicyContext {
     storageBackend: string;
     gcsBucket: string;
   };
+  /** Phase 2d CP1: in-process counter for invariant + cascade telemetry. */
+  metrics: MetricsCounter;
 }
 
 // ── Policy Result (what handlers return) ────────────────────────────

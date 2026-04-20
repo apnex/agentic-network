@@ -15,6 +15,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { TestOrchestrator } from "./orchestrator.js";
 import type { ActorFacade } from "./orchestrator.js";
+import { createMetricsCounter } from "../../src/observability/metrics.js";
 
 describe("E2E Convergence Cascade (Mission-24 Phase 2)", () => {
   let orch: TestOrchestrator;
@@ -265,6 +266,7 @@ describe("E2E Convergence Cascade (Mission-24 Phase 2)", () => {
         dispatch: async () => {},
         sessionId: "test", clientIp: "127.0.0.1", role: "architect",
         internalEvents: [], config: { storageBackend: "memory", gcsBucket: "" },
+        metrics: createMetricsCounter(),
       },
       threadRec!,
       [action],

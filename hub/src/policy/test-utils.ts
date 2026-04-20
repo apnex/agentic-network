@@ -9,6 +9,7 @@ import { MemoryTeleStore } from "../entities/tele.js";
 import { MemoryBugStore } from "../entities/bug.js";
 import { MemoryPendingActionStore } from "../entities/pending-action.js";
 import { MemoryDirectorNotificationStore } from "../entities/director-notification.js";
+import { createMetricsCounter } from "../observability/metrics.js";
 
 interface EmittedEvent {
   event: string;
@@ -66,6 +67,7 @@ export function createTestContext(overrides?: Partial<TestPolicyContext>): TestP
     role: "architect",
     internalEvents: [],
     config: { storageBackend: "memory", gcsBucket: "" },
+    metrics: createMetricsCounter(),
     emittedEvents,
     dispatchedEvents,
     ...overrides,
