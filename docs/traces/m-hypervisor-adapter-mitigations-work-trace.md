@@ -23,7 +23,7 @@ If you're picking up cold:
 
 ## In-flight
 
-_(nothing claimed — task-310 shipped + `completed` at Hub post architect review. Awaiting Task 2 directive per the thread-235 locked sequence: Task 3 → Task 2 → Task 1a → Task 4 → Task 1b.)_
+- ▶ **Passive check-in on architect stall** (thread-236, semanticIntent=inform). task-310 reviewed 23:47:07Z; no task-311 issued in the 33 min that followed. Surfaced **bug-20** as a new orchestration class (architect `auto_review` doesn't advance to next ratified task in mission-sequence); opened thread-236 as an inform-only nudge so the architect's event loop re-enters. Awaiting either task-311 issuance OR a response on thread-236.
 
 ---
 
@@ -34,6 +34,8 @@ _(nothing claimed — task-310 shipped + `completed` at Hub post architect revie
 - ○ **Task 4 (Chunked Reply Composition)** — detect when LLM-composed `create_thread_reply` args exceed safe output bounds; split across consecutive turns while preserving convergence intent. Unblocked.
 - ○ **Task 1b (Graceful Exhaustion — Hub-side)** — new queue-item state `continuation_required`; resumption payload; adapter `[SAVE_STATE]` synthetic on critical-budget threshold. Sequenced last per thread-233 (introduces new Hub queue-item semantics).
 - ○ **task-310 v2 follow-up** — per-gate-subtype auto-correction rules for Error Elision. task-310 v1 is measurement-only; auto-correct rules need per-subtype design + fault-injection tests. Not yet architect-directed; flagged in task-310 report.
+- ○ **bug-20** — Architect event loop doesn't auto-issue next mission-sequence task after reviewing prior task. Major severity; surfaced on mission-38 during the task-310 → Task 2 handoff. Two proposed fix paths (Path A adapter-side post-review advancement handler; Path B Hub-side stateful mission sequencer). Architect-triage-pending.
+- ○ **Architect Cloud Run redeploy (adjacent to task-310)** — architect revision `architect-agent-00055-p8l` predates task-310's cognitive-layer + network-adapter tarballs. Rebuild + redeploy required before the `tool_rounds_exhausted` + `thread_reply_rejected_by_gate` telemetry actually fires in prod. Deploy-gap observation, not a separate bug; flagged in bug-20 "adjacent finding" section.
 
 ---
 
@@ -64,6 +66,7 @@ task-310 v2 auto-correction (Error Elision v2) ○  [independent; post-v1 measur
 
 ## Session log (append-only)
 
+- **2026-04-22 mid (post-review stall investigation)** — **bug-20 filed; thread-236 passive check-in opened.** Director flagged that ~33 min had passed since task-310 `auto_review` (23:47:07Z) with no task-311 issuance. Audit-log investigation found: architect online + reachable (sessionEpoch 110; lastSeenAt heartbeats current); review handler ran cleanly; no `auto_thread_reply_failed` or cascade escalations since the review. **Root cause is structural, not cognitive:** the architect's event loop has no handler that advances to the next ratified-but-unissued task in a mission's sequence after reviewing a prior task. Filed **bug-20** (major severity, class=missing-feature, tags=mission-38/architect-loop/orchestration-gap) with two proposed fix paths. **Adjacent finding captured in bug-20 body (not a separate bug):** the architect Cloud Run image (`architect-agent-00055-p8l`) predates task-310's tarballs, so the new bug-11 measurement telemetry isn't firing in prod yet — rebuild + redeploy required. Opened thread-236 (unicast, inform, correlationId=mission-38) as a minimal-signal nudge so the architect's event loop re-enters.
 - **2026-04-22 mid (continuation)** — **mission-38 formalized; task-310 shipped.** Thread-235 opened to architect (unicast, seek_approval, correlationId=idea-132) citing cleared gates (CP3 ✅ `8c14b65`, shim-cleanup ✅ `644c6e2`) and the thread-233 5-task scope. Architect ratified + created mission-37 at 23:30:16Z and mission-38 at 23:32:17Z (duplicate; mission-38 carries task-310 while mission-37 carries the documentRef). Engineer converged thread-235 first-party with close_no_action, flagging the dup for architect cleanup. Task-310 implementation shipped in commits `c74d069` + `cfab717`: adapter-side `tool_rounds_exhausted` telemetry + `thread_reply_rejected_by_gate` telemetry (Error Elision v1 measurement-only). 164 + 46 tests pass. Mission brief authored at `documents/missions/m-hypervisor-adapter-mitigations.md` per architect's task-310 directive.
 
 ---
