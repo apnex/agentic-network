@@ -51,7 +51,26 @@ export type TelemetryEventKind =
    * remediation + optional metadata). v1 surface records the
    * forensic trail; a later task lands auto-correction rules.
    */
-  | "thread_reply_rejected_by_gate";
+  | "thread_reply_rejected_by_gate"
+  /**
+   * M-Hypervisor-Adapter-Mitigations Task 4 (task-313). Fires when
+   * the adapter detects a `create_thread_reply` whose composed
+   * `message` exceeds `MAX_REPLY_CHUNK_SIZE` and splits it into
+   * multiple chunks for sequential delivery across turns. Event
+   * carries `threadId`, `totalChunks`, `totalSize` so analytics
+   * can measure how often oversized replies occur + whether
+   * bug-11 mitigations reduce the rate.
+   */
+  | "thread_reply_chunked"
+  /**
+   * M-Hypervisor-Adapter-Mitigations Task 4 (task-313). Fires when
+   * the adapter detects LLM output truncation (invalid JSON on
+   * `create_thread_reply.message` parsing, or a raw string longer
+   * than the model's max_output_tokens would emit cleanly).
+   * Carries `threadId` + `round` so cross-correlation with the
+   * bug-11 exhaustion class is possible.
+   */
+  | "llm_output_truncated";
 
 export interface TelemetryEvent {
   kind: TelemetryEventKind;
@@ -129,6 +148,18 @@ export interface TelemetryEvent {
    */
   cacheHit?: boolean;
   cacheFlushed?: boolean;
+  /**
+   * M-Hypervisor-Adapter-Mitigations Task 4 fields — populated on
+   * `thread_reply_chunked` and `llm_output_truncated` events.
+   * `totalChunks` + `totalSize` describe the oversized reply that
+   * was split; `chunkRound` names the LLM loop iteration on which
+   * the chunking decision was made. Measured together with task-311
+   * cache fields + task-310 tool_rounds_exhausted so analytics can
+   * correlate oversize-reply frequency with bug-11 triggers.
+   */
+  totalChunks?: number;
+  totalSize?: number;
+  chunkRound?: number;
   timestamp: number;
 }
 
@@ -406,6 +437,67 @@ export class CognitiveTelemetry implements CognitiveMiddleware {
       gateSubtype: info.subtype,
       gateRemediation: info.remediation,
       gateMetadata: info.metadata ? { ...info.metadata } : undefined,
+      errorMessage: info.errorMessage,
+      timestamp: this.now(),
+    });
+  }
+
+  /**
+   * Task 4 (task-313): emit a `thread_reply_chunked` event when the
+   * adapter detects an oversized `create_thread_reply.message` and
+   * splits it into multiple chunks for sequential delivery. Captures
+   * the total size + chunk count + the round on which the split was
+   * decided so analytics can aggregate oversize-reply frequency
+   * over time and correlate it with bug-11 exhaustion events.
+   */
+  emitThreadReplyChunked(
+    info: {
+      threadId?: string;
+      correlationId?: string;
+      totalChunks?: number;
+      totalSize?: number;
+      chunkRound?: number;
+    },
+    ctx?: { sessionId?: string; agentId?: string; tags?: Record<string, string> },
+  ): void {
+    this.emit({
+      kind: "thread_reply_chunked",
+      sessionId: ctx?.sessionId,
+      agentId: ctx?.agentId,
+      tags: ctx?.tags ? { ...ctx.tags } : undefined,
+      threadId: info.threadId,
+      correlationId: info.correlationId,
+      totalChunks: info.totalChunks,
+      totalSize: info.totalSize,
+      chunkRound: info.chunkRound,
+      timestamp: this.now(),
+    });
+  }
+
+  /**
+   * Task 4 (task-313): emit a `llm_output_truncated` event when the
+   * adapter detects that the LLM's response was truncated (e.g.
+   * invalid-JSON on a structured tool-call args parse). Distinct
+   * from `tool_rounds_exhausted` (task-310) — this is single-turn
+   * output truncation, not loop-level exhaustion.
+   */
+  emitLlmOutputTruncated(
+    info: {
+      threadId?: string;
+      correlationId?: string;
+      chunkRound?: number;
+      errorMessage?: string;
+    },
+    ctx?: { sessionId?: string; agentId?: string; tags?: Record<string, string> },
+  ): void {
+    this.emit({
+      kind: "llm_output_truncated",
+      sessionId: ctx?.sessionId,
+      agentId: ctx?.agentId,
+      tags: ctx?.tags ? { ...ctx.tags } : undefined,
+      threadId: info.threadId,
+      correlationId: info.correlationId,
+      chunkRound: info.chunkRound,
       errorMessage: info.errorMessage,
       timestamp: this.now(),
     });

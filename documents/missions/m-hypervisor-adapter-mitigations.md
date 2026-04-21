@@ -85,9 +85,28 @@ Combined deliverable — the measurement primitive is a prerequisite for quantif
 - `director-chat.ts` intentionally NOT wired — director↔architect chat has no thread convergence semantics; adding it there would inject a meaningless budget. Thread-budget is a thread-reply-path concern.
 - 8 new unit tests in `agents/vertex-cloudrun/test/thread-budget.test.ts` pinning the string-shape contract (turnAboutToTake = `currentRound + 1`; leading `\n\n`; conservative fallback on invalid input; stable across different limits).
 
-### Task 4 — Chunked Reply Composition
+### Task 4 — Chunked Reply Composition (task-313, adapter-side)
 
-Detect when the LLM's generated `create_thread_reply` args exceed safe output bounds; split into chunks that post across consecutive turns while preserving the original convergence intent. Ensures full-context replies can land even when individual chunks would otherwise exceed limits.
+**Status:** ✅ shipped. Oversized `create_thread_reply.message` values split into chunks of at most `ARCHITECT_MAX_REPLY_CHUNK_SIZE` chars (default 100,000) and delivered across consecutive architect turns. Telemetry covers both the split event (`thread_reply_chunked`) and the LLM-side truncation class (`llm_output_truncated`).
+
+**Architect refinements absorbed (thread-238):**
+1. Conservative 100,000 char threshold (env-configurable for tunability without redeploy).
+2. State management via in-adapter `pendingChunksByThread` module-level map. First chunk emitted synchronously from the split point; remaining chunks buffered. Pre-invoke drain at the top of `attemptThreadReply` consumes one chunk per subsequent sandwich invocation; final chunk restores the original `converged`/`stagedActions`/`summary` payload.
+3. `thread_reply_chunked` telemetry carries `threadId`, `totalChunks`, `totalSize`, `chunkRound` so analytics can measure oversize-reply frequency over time + correlate with bug-11 exhaustion events. `llm_output_truncated` fires when Gemini finishReason is `MAX_TOKENS` — distinct from `tool_rounds_exhausted` (single-turn output cut vs loop exhaustion).
+
+**Implementation surface:**
+- `chunkReplyMessage(message, maxChunkSize)` exported helper on `agents/vertex-cloudrun/src/sandwich.ts` — pure slice-based split, single-element return when input fits threshold. Reserves room for the continuation suffix in non-final chunks.
+- Module-level `pendingChunksByThread: Map<threadId, {remainingChunks, finalArgs, createdAt}>`. 30 min TTL defense against stale buffers. Test-only accessors `__resetChunkBufferForTests` + `__peekChunkBufferForTests`.
+- `attemptThreadReply` pre-invoke drain: consumes one chunk per invocation before the LLM call; final chunk restores original metadata + clears the buffer entry. On drain failure the buffer is cleared + outcome is `transient_failure` so the sandwich retry engine picks up.
+- `executeToolCall` wraps the Gemini-emitted `create_thread_reply` call: when `args.message.length > MAX_REPLY_CHUNK_SIZE`, splits, buffers, rewrites args for chunk[0] (suffix appended, `converged=false`, stagedActions/summary stripped), emits `thread_reply_chunked` telemetry.
+- sandwich `onUsage` callback: when `u.finishReason === "MAX_TOKENS"`, emits `emitLlmOutputTruncated` with threadId + round.
+
+**Known v1 limitations (documented in source + report):**
+- **Cloud Run restart = buffer loss.** Module-level Map not persisted. If the architect instance restarts mid-chunk, subsequent chunks are dropped. Full durability requires Hub-side continuation semantics (Task 1b scope).
+- **Raw slice, no word/sentence boundary preservation.** v1 cuts at arbitrary character positions. Surrogate-pair splits are possible. Semantic-boundary-aware splitting is a v2 refinement.
+- **Chunk-order dispatching relies on architect-regains-turn.** Each chunk requires the thread's turn to flip back to architect (engineer responds, or Hub re-dispatches). For long chunks on idle threads, this can stretch delivery across hours. Not a correctness issue — just throughput.
+
+**Testing:** 8 new in `agents/vertex-cloudrun/test/chunk-reply.test.ts` pinning the chunker's slice contract + buffer-state test hooks. 3 new in `packages/cognitive-layer/test/telemetry.test.ts` pinning `emitThreadReplyChunked` + `emitLlmOutputTruncated` shapes. 172 cognitive-layer + 62 vertex-cloudrun tests pass.
 
 ### Task 1b — Graceful Exhaustion (Hub-side)
 

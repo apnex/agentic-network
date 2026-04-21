@@ -435,6 +435,71 @@ describe("CognitiveTelemetry.emitThreadReplyRejectedByGate — Task 0/3", () => 
   });
 });
 
+// ── M-Hypervisor-Adapter-Mitigations Task 4 (task-313) ─────────────
+
+describe("CognitiveTelemetry.emitThreadReplyChunked — Task 4", () => {
+  it("emits thread_reply_chunked with totalChunks/totalSize/chunkRound", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+    t.emitThreadReplyChunked(
+      {
+        threadId: "thread-42",
+        correlationId: "mission-38",
+        totalChunks: 3,
+        totalSize: 125_000,
+        chunkRound: 4,
+      },
+      { sessionId: "thread-42", tags: { sandwich: "thread-reply" } },
+    );
+    await flushMicrotasks();
+    expect(events).toHaveLength(1);
+    const ev = events[0];
+    expect(ev.kind).toBe("thread_reply_chunked");
+    expect(ev.threadId).toBe("thread-42");
+    expect(ev.correlationId).toBe("mission-38");
+    expect(ev.totalChunks).toBe(3);
+    expect(ev.totalSize).toBe(125_000);
+    expect(ev.chunkRound).toBe(4);
+    expect(ev.sessionId).toBe("thread-42");
+    expect(ev.tags).toEqual({ sandwich: "thread-reply" });
+  });
+
+  it("accepts sparse info — omitted fields stay undefined", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+    t.emitThreadReplyChunked({ threadId: "thread-7" });
+    await flushMicrotasks();
+    expect(events[0].kind).toBe("thread_reply_chunked");
+    expect(events[0].threadId).toBe("thread-7");
+    expect(events[0].totalChunks).toBeUndefined();
+    expect(events[0].totalSize).toBeUndefined();
+  });
+});
+
+describe("CognitiveTelemetry.emitLlmOutputTruncated — Task 4", () => {
+  it("emits llm_output_truncated with round + errorMessage", async () => {
+    const events: TelemetryEvent[] = [];
+    const t = new CognitiveTelemetry({ sink: (e) => events.push(e) });
+    t.emitLlmOutputTruncated(
+      {
+        threadId: "thread-9",
+        correlationId: "mission-38",
+        chunkRound: 7,
+        errorMessage: "Gemini finishReason=MAX_TOKENS at round 7",
+      },
+      { sessionId: "thread-9" },
+    );
+    await flushMicrotasks();
+    expect(events).toHaveLength(1);
+    const ev = events[0];
+    expect(ev.kind).toBe("llm_output_truncated");
+    expect(ev.threadId).toBe("thread-9");
+    expect(ev.chunkRound).toBe(7);
+    expect(ev.errorMessage).toContain("MAX_TOKENS");
+    expect(ev.correlationId).toBe("mission-38");
+  });
+});
+
 describe("CognitiveTelemetry — bytes + approximate tokens", () => {
   it("emits inputBytes + inputTokensApprox on tool_call success", async () => {
     const events: TelemetryEvent[] = [];

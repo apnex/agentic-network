@@ -19,6 +19,69 @@ import {
 import { pruneThreadMessages } from "./prune.js";
 import { architectTelemetry } from "./telemetry.js";
 
+// ── Task 4 (task-313): Chunked Reply Composition ───────────────────
+// Oversized `create_thread_reply.message` values are split into chunks
+// of at most MAX_REPLY_CHUNK_SIZE characters and delivered across
+// consecutive architect turns. Module-level buffer holds the remaining
+// chunks (+ final-chunk metadata like stagedActions/summary) keyed by
+// threadId. The pre-invoke drain at the top of attemptThreadReply
+// consumes one chunk per sandwich invocation; the final chunk restores
+// the original args (converged/stagedActions/summary) so the thread
+// can close cleanly.
+//
+// v1 durability: module-level Map. Cloud Run restart = buffer loss;
+// subsequent sandwich invocations fall through to normal LLM pass.
+// Full durability would require Hub-side continuation semantics
+// (Task 1b scope). v1 stale-entry defense: 30 min TTL eviction.
+
+const MAX_REPLY_CHUNK_SIZE = parseInt(
+  process.env.ARCHITECT_MAX_REPLY_CHUNK_SIZE ?? "100000",
+  10,
+);
+const CHUNK_CONTINUATION_SUFFIX = " [CONTINUED IN NEXT TURN]";
+const CHUNK_BUFFER_TTL_MS = 30 * 60 * 1000;
+
+interface ChunkBufferEntry {
+  remainingChunks: string[];
+  finalArgs: Record<string, unknown>;
+  createdAt: number;
+}
+
+const pendingChunksByThread = new Map<string, ChunkBufferEntry>();
+
+/**
+ * Task 4 (task-313): split an oversized thread-reply message into
+ * chunks of at most `maxChunkSize - CHUNK_CONTINUATION_SUFFIX.length`
+ * characters (non-final chunks get the suffix appended; the final
+ * chunk preserves the raw boundary). v1 is raw-slice; word/sentence
+ * boundary refinement is a v2 deferred item in the mission brief.
+ *
+ * Returns a single-element array when the input fits under the
+ * threshold — callers treat length===1 as "no chunking needed".
+ */
+export function chunkReplyMessage(message: string, maxChunkSize: number): string[] {
+  if (!Number.isFinite(maxChunkSize) || maxChunkSize <= CHUNK_CONTINUATION_SUFFIX.length + 1) {
+    return [message];
+  }
+  if (message.length <= maxChunkSize) return [message];
+  const effectiveSize = maxChunkSize - CHUNK_CONTINUATION_SUFFIX.length;
+  const chunks: string[] = [];
+  for (let i = 0; i < message.length; i += effectiveSize) {
+    chunks.push(message.slice(i, i + effectiveSize));
+  }
+  return chunks;
+}
+
+/** Test-only: clear the module-level chunk buffer. */
+export function __resetChunkBufferForTests(): void {
+  pendingChunksByThread.clear();
+}
+
+/** Test-only: peek at the chunk buffer state. */
+export function __peekChunkBufferForTests(threadId: string): ChunkBufferEntry | undefined {
+  return pendingChunksByThread.get(threadId);
+}
+
 /**
  * Phase 2b ckpt-A — Sandwich scope override builder.
  *
@@ -291,6 +354,57 @@ async function attemptThreadReply(
   sourceQueueItemId?: string
 ): Promise<SandwichOutcome> {
   try {
+    // Task 4 (task-313) — pre-invoke chunk drain. If a prior sandwich
+    // invocation split an oversized reply and buffered chunks[1..N-1],
+    // the architect regaining the turn on this dispatch means we
+    // should emit the NEXT buffered chunk rather than re-invoke the
+    // LLM. Stale buffers (30 min TTL) fall through to normal path.
+    const pendingEntry = pendingChunksByThread.get(threadId);
+    if (pendingEntry && pendingEntry.remainingChunks.length > 0) {
+      if (Date.now() - pendingEntry.createdAt > CHUNK_BUFFER_TTL_MS) {
+        console.warn(
+          `[Sandwich] chunk buffer for thread ${threadId} is stale (>${CHUNK_BUFFER_TTL_MS}ms) — discarding + falling through to LLM`,
+        );
+        pendingChunksByThread.delete(threadId);
+      } else {
+        const nextChunk = pendingEntry.remainingChunks.shift()!;
+        const isFinal = pendingEntry.remainingChunks.length === 0;
+        // Final chunk restores the original converged/stagedActions/summary
+        // payload; intermediate chunks append the continuation suffix and
+        // strip convergence metadata so the thread doesn't close prematurely.
+        const chunkArgs: Record<string, unknown> = isFinal
+          ? { ...pendingEntry.finalArgs, message: nextChunk }
+          : {
+              ...pendingEntry.finalArgs,
+              message: nextChunk + CHUNK_CONTINUATION_SUFFIX,
+              converged: false,
+            };
+        if (!isFinal) {
+          delete chunkArgs.stagedActions;
+          delete chunkArgs.summary;
+        }
+        // Each drain responds to a distinct incoming queue item — use the
+        // current sourceQueueItemId, not the one that triggered the split.
+        if (sourceQueueItemId) chunkArgs.sourceQueueItemId = sourceQueueItemId;
+        else delete chunkArgs.sourceQueueItemId;
+        try {
+          console.log(
+            `[Sandwich] thread ${threadId} chunk drain: ${isFinal ? "final" : "intermediate"} chunk (${nextChunk.length} chars; ${pendingEntry.remainingChunks.length} remaining)`,
+          );
+          await hub.callTool("create_thread_reply", chunkArgs);
+          if (isFinal) pendingChunksByThread.delete(threadId);
+          return { kind: "success" };
+        } catch (err) {
+          console.error(`[Sandwich] chunk drain failed for thread ${threadId}:`, err);
+          pendingChunksByThread.delete(threadId);
+          return {
+            kind: "transient_failure",
+            reason: `chunk drain failed: ${(err as Error).message ?? String(err)}`,
+          };
+        }
+      }
+    }
+
     // 1. FETCH
     const thread = await hub.getThread(threadId);
     if (!thread) {
@@ -448,6 +562,40 @@ async function attemptThreadReply(
       }
       try {
         if (name === "create_thread_reply") {
+          // Task 4 (task-313) — detect oversized reply + split. Split
+          // must happen BEFORE sourceQueueItemId injection so chunk[0]
+          // carries the inbound queue-item settlement and subsequent
+          // chunks pick up the next dispatch's sourceQueueItemId on
+          // their own turn via the pre-invoke drain path.
+          const composedMessage = typeof args.message === "string" ? args.message : "";
+          if (composedMessage.length > MAX_REPLY_CHUNK_SIZE) {
+            const chunks = chunkReplyMessage(composedMessage, MAX_REPLY_CHUNK_SIZE);
+            architectTelemetry.emitThreadReplyChunked(
+              {
+                threadId,
+                correlationId: typeof thread.correlationId === "string" ? thread.correlationId : undefined,
+                totalChunks: chunks.length,
+                totalSize: composedMessage.length,
+                chunkRound: finalRound,
+              },
+              { sessionId: threadId, tags: { sandwich: "thread-reply" } },
+            );
+            console.log(
+              `[Sandwich] thread ${threadId} create_thread_reply message=${composedMessage.length}ch exceeds ${MAX_REPLY_CHUNK_SIZE} — splitting into ${chunks.length} chunks; sending chunk[0], buffering [1..${chunks.length - 1}]`,
+            );
+            pendingChunksByThread.set(threadId, {
+              remainingChunks: chunks.slice(1),
+              finalArgs: { ...args },
+              createdAt: Date.now(),
+            });
+            args = {
+              ...args,
+              message: chunks[0] + CHUNK_CONTINUATION_SUFFIX,
+              converged: false,
+            };
+            delete (args as Record<string, unknown>).stagedActions;
+            delete (args as Record<string, unknown>).summary;
+          }
           // ADR-017: inject sourceQueueItemId into the reply args so the
           // Hub completion-ACKs the drained queue item atomically with
           // the reply. LLM doesn't need to know about queue identity —
@@ -545,6 +693,23 @@ async function attemptThreadReply(
               sessionId: threadId,
               tags: { sandwich: "thread-reply" },
             });
+            // Task 4 (task-313) — detect LLM-side output truncation
+            // via finishReason. MAX_TOKENS means Gemini cut the
+            // response off mid-generation; downstream parsing of the
+            // function-call args may fail or be silently incomplete.
+            // Emit dedicated telemetry so we can measure frequency +
+            // cross-correlate with bug-11 exhaustion events.
+            if (u.finishReason === "MAX_TOKENS") {
+              architectTelemetry.emitLlmOutputTruncated(
+                {
+                  threadId,
+                  correlationId: typeof thread.correlationId === "string" ? thread.correlationId : undefined,
+                  chunkRound: u.round,
+                  errorMessage: `Gemini finishReason=MAX_TOKENS at round ${u.round}`,
+                },
+                { sessionId: threadId, tags: { sandwich: "thread-reply" } },
+              );
+            }
           },
         },
       );
