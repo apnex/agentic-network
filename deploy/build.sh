@@ -29,6 +29,20 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TFVARS="${TFVARS:-$SCRIPT_DIR/env/prod.tfvars}"
 
+# ── ADC auto-export (mission-38 closing audit §7.4) ───────────────────
+#
+# `terraform apply` uses Application Default Credentials, a separate auth
+# path from `gcloud auth activate-service-account`. Without
+# GOOGLE_APPLICATION_CREDENTIALS set for this subprocess, terraform fails
+# with `oauth2: "invalid_grant"` even when `gcloud auth list` shows the
+# service account active. Auto-export the labops key when present + env
+# unset; back-compat preserved (explicit env wins, file-missing is a
+# silent no-op for non-labops operators).
+if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" && -f "$REPO_ROOT/labops-389703.json" ]]; then
+  export GOOGLE_APPLICATION_CREDENTIALS="$REPO_ROOT/labops-389703.json"
+  echo "Auto-exported GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_APPLICATION_CREDENTIALS"
+fi
+
 # ── Parse args ────────────────────────────────────────────────────────
 
 TARGET="${1:-all}"

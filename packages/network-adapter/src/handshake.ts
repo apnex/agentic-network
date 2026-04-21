@@ -167,6 +167,33 @@ export interface HandshakeResult {
 }
 
 /**
+ * bug-17 fix: resolve clientName / clientVersion with proxy-fallback.
+ *
+ * The MCP `initialize` handshake is supposed to carry the host's `clientInfo`
+ * (name + version), but some hosts — notably the claude-plugin dev-channel
+ * load path (`claude --dangerously-load-development-channels`) — don't
+ * forward clientInfo through the stdio transport. The Hub then persists
+ * `clientName: "unknown"` + `clientVersion: "0.0.0"` into the Agent record,
+ * losing the identity signal entirely.
+ *
+ * Fallback policy: when either field is missing/empty/sentinel, substitute
+ * the proxy identity (`@ois/claude-plugin` / `@ois/vertex-cloudrun` / etc.)
+ * which is authoritative at the adapter layer. The Agent record then
+ * surfaces a meaningful identity even when MCP clientInfo is absent.
+ *
+ * Exported for unit-test access.
+ */
+export function resolveClientName(raw: string | undefined, proxyName: string): string {
+  if (!raw || raw === "unknown") return proxyName;
+  return raw;
+}
+
+export function resolveClientVersion(raw: string | undefined, proxyVersion: string): string {
+  if (!raw || raw === "0.0.0") return proxyVersion;
+  return raw;
+}
+
+/**
  * Build the enriched register_role payload.
  */
 export function buildHandshakePayload(config: HandshakeConfig): HandshakePayload {
@@ -174,8 +201,8 @@ export function buildHandshakePayload(config: HandshakeConfig): HandshakePayload
     role: config.role,
     globalInstanceId: config.globalInstanceId,
     clientMetadata: {
-      clientName: config.clientInfo.name,
-      clientVersion: config.clientInfo.version,
+      clientName: resolveClientName(config.clientInfo.name, config.proxyName),
+      clientVersion: resolveClientVersion(config.clientInfo.version, config.proxyVersion),
       proxyName: config.proxyName,
       proxyVersion: config.proxyVersion,
       transport: config.transport,

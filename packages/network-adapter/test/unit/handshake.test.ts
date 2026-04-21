@@ -19,6 +19,8 @@ import {
   parseHandshakeResponse,
   performHandshake,
   buildHandshakePayload,
+  resolveClientName,
+  resolveClientVersion,
   FATAL_CODES,
   type HandshakeConfig,
   type HandshakeFatalError,
@@ -118,6 +120,64 @@ describe("buildHandshakePayload", () => {
   it("defaults llmModel to 'unknown' when missing", () => {
     const payload = buildHandshakePayload({ ...baseConfig, llmModel: undefined });
     expect(payload.advisoryTags.llmModel).toBe("unknown");
+  });
+
+  // ── bug-17: clientName/clientVersion proxy fallback ─────────────
+  it("bug-17: falls back to proxyName when clientInfo.name is 'unknown' (dev-channel load path)", () => {
+    const payload = buildHandshakePayload({
+      ...baseConfig,
+      clientInfo: { name: "unknown", version: "0.1.0" },
+    });
+    expect(payload.clientMetadata.clientName).toBe("@ois/claude-plugin");
+    expect(payload.clientMetadata.clientVersion).toBe("0.1.0"); // version was fine — stays
+  });
+
+  it("bug-17: falls back to proxyVersion when clientInfo.version is '0.0.0'", () => {
+    const payload = buildHandshakePayload({
+      ...baseConfig,
+      clientInfo: { name: "claude-code", version: "0.0.0" },
+    });
+    expect(payload.clientMetadata.clientName).toBe("claude-code"); // name was fine — stays
+    expect(payload.clientMetadata.clientVersion).toBe("1.0.0"); // fell back to proxyVersion
+  });
+
+  it("bug-17: falls back on both fields when host announces nothing (empty strings)", () => {
+    const payload = buildHandshakePayload({
+      ...baseConfig,
+      clientInfo: { name: "", version: "" },
+    });
+    expect(payload.clientMetadata.clientName).toBe("@ois/claude-plugin");
+    expect(payload.clientMetadata.clientVersion).toBe("1.0.0");
+  });
+});
+
+describe("resolveClientName (bug-17)", () => {
+  it("returns the raw value when non-empty and not 'unknown'", () => {
+    expect(resolveClientName("claude-code", "@ois/claude-plugin")).toBe("claude-code");
+  });
+  it("falls back to proxyName on empty string", () => {
+    expect(resolveClientName("", "@ois/claude-plugin")).toBe("@ois/claude-plugin");
+  });
+  it("falls back to proxyName on 'unknown' sentinel", () => {
+    expect(resolveClientName("unknown", "@ois/claude-plugin")).toBe("@ois/claude-plugin");
+  });
+  it("falls back to proxyName on undefined", () => {
+    expect(resolveClientName(undefined, "@ois/vertex-cloudrun")).toBe("@ois/vertex-cloudrun");
+  });
+});
+
+describe("resolveClientVersion (bug-17)", () => {
+  it("returns the raw value when non-empty and not '0.0.0'", () => {
+    expect(resolveClientVersion("0.1.0", "1.0.0")).toBe("0.1.0");
+  });
+  it("falls back to proxyVersion on empty string", () => {
+    expect(resolveClientVersion("", "1.0.0")).toBe("1.0.0");
+  });
+  it("falls back to proxyVersion on '0.0.0' sentinel", () => {
+    expect(resolveClientVersion("0.0.0", "1.0.0")).toBe("1.0.0");
+  });
+  it("falls back to proxyVersion on undefined", () => {
+    expect(resolveClientVersion(undefined, "1.0.0")).toBe("1.0.0");
   });
 });
 
