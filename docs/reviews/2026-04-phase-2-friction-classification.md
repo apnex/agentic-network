@@ -1,8 +1,8 @@
 # Phase 2 Friction Cartography — Architect Classification + Ranking
 
-**Status:** DRAFT — awaits Director review + engineer completeness-critique per plan §Phase 2 cadence
+**Status:** Pass 2.α — Director-approved-as-is; engineer completeness-critique PASS at `agent/greg:404bf57` with one coverage-gap fold (sym-C-011); awaits Director final ratification
 **Author:** lily (architect, eng-40903c59d19f), 2026-04-22 AEST
-**Consumes:** engineer Pass 2.A+B+C symptom collection at `agent/greg:82737b6` — `docs/reviews/2026-04-phase-2-friction-symptoms-engineer.md` + `docs/reviews/2026-04-phase-2-data/{bugs,threads,traces}-symptoms.tsv` (50 symptoms)
+**Consumes:** engineer Pass 2.A+B+C symptom collection at `agent/greg:82737b6` (50 symptoms) + engineer completeness-critique addition at `agent/greg:404bf57` (sym-C-011, +1 symptom) — `docs/reviews/2026-04-phase-2-friction-symptoms-engineer.md` + `docs/reviews/2026-04-phase-2-data/{bugs,threads,traces}-symptoms.tsv`
 **Plan reference:** `docs/reviews/2026-04-architectural-review.md` §Phase 2
 **Thread context:** thread-251 (backchannel, now `round_limit`); next exchange on fresh thread if needed
 
@@ -20,14 +20,14 @@ Phase 2 Friction Cartography, architect-authored classification + ranking pass. 
 
 ## 1. Input summary
 
-50 symptoms across 3 sources (engineer-provided; independently verified via TSV read):
+51 symptoms across 3 sources (50 engineer-provided Pass 2.A+B+C + 1 completeness-critique addition sym-C-011; see §12 provenance):
 
 | Source | Count | Symptom range | Coverage contribution |
 |---|---|---|---|
 | Pass 2.A (bug-walk) | 28 | sym-A-001..028 | system-defect surface |
 | Pass 2.B (thread scan) | 12 | sym-B-001..012 | architectural-decision friction + live-evidence trail |
-| Pass 2.C (work-trace harvest) | 10 | sym-C-001..010 | operational / governance / workflow friction |
-| **Total** | **50** | — | — |
+| Pass 2.C (work-trace harvest) | 11 | sym-C-001..011 | operational / governance / workflow friction |
+| **Total** | **51** | — | — |
 
 Schema: 8 fields per symptom (symptom_id, source, narrative, domain_candidate, tele_violations, frequency, cost, linked_ideas, fix_status). All 50 symptoms have every field populated.
 
@@ -64,14 +64,14 @@ Product in [1..25]. Higher = higher-priority for mission selection in Phase 4.
 
 ## 3. Classification — per-domain breakdown
 
-Cluster sizes post-architect-reclassification. 50-symptom distribution across 11 domains (§0 taxonomy):
+Cluster sizes post-architect-reclassification + engineer completeness-critique fold. 51-symptom distribution across 11 domains (§0 taxonomy):
 
-| # | Domain | Symptoms (post-architect) | Pass A | Pass B | Pass C |
+| # | Domain | Symptoms (post-architect + §12 fold) | Pass A | Pass B | Pass C |
 |---|---|---|---|---|---|
 | 1 | tool-surface | **8** | 5 | 2 | 1 |
 | 2 | coordination | 4 | 2 | 0 | 2 |
 | 3 | delivery | 4 | 3 | 1 | 0 |
-| 4 | role-scoping | 3 | 0 | 0 | 3 |
+| 4 | role-scoping | **4** | 0 | 0 | 4 *(sym-C-011 added per §12)* |
 | 5 | entity-vocabulary | 3 | 1 | 2 | 0 |
 | 6 | deployment | 2 | 0 | 0 | 2 |
 | 7 | debugging-loop | 1 | 0 | 0 | 1 |
@@ -79,7 +79,7 @@ Cluster sizes post-architect-reclassification. 50-symptom distribution across 11
 | 9 | cognitive-layer | 4 | 3 | 1 | 0 |
 | 10 | identity-layer | **7** | 5 | 2 | 0 |
 | 11 | cascade-execution | **12** | 8 | 3 | 1 |
-| | **Total** | **50** | 28 | 12 | 10 |
+| | **Total** | **51** | 28 | 12 | 11 |
 
 *Observability is no longer empty post-classification* — the migration is documented in §5.
 
@@ -202,9 +202,9 @@ Cluster sizes post-architect-reclassification. 50-symptom distribution across 11
 
 **Assessment:** delivery has a concentrated unaddressed pattern (bug-25 class). Mission-candidate material: "bug-25 Adapter Size-Guard" (quick-win) + eventual idea-152 Smart NIC (structural). High-value Phase 4 target.
 
-### 3.7 role-scoping (3 symptoms — emergent domain)
+### 3.7 role-scoping (4 symptoms — emergent domain; +1 per §12 completeness-critique fold)
 
-**Symptoms:** C-006, C-009, C-010
+**Symptoms:** C-006, C-009, C-010, C-011 *(added per engineer completeness-critique §12)*
 
 **Ranking:**
 | Rank | Symptom | Score | Fix-status | Note |
@@ -212,12 +212,15 @@ Cluster sizes post-architect-reclassification. 50-symptom distribution across 11
 | 1 | C-009 | **10** | no-idea-filed | Architect-triage queue deferred indefinitely |
 | 2 | C-006 | 6 | no-idea-filed | Late design ratification at task-issuance |
 | 3 | C-010 | 6 | no-idea-filed | Scope-discovery-late (task-311 pre-satisfied) |
+| 4 | C-011 | 2 | no-idea-filed | Engineer-permission gap: cannot flip `triaged→dismissed` (architect-only per Hub schema); round-trip during bug-migration cleanups |
 
 **Existing ratified fixes:** **zero** ideas in backlog address any of these.
 
-**Remaining gaps:** **100% unaddressed.** All 3 symptoms no-idea-filed.
+**Remaining gaps:** **100% unaddressed.** All 4 symptoms no-idea-filed.
 
-**Assessment:** This is the most-striking Phase 2 finding at the gap level. Role-scoping emerged as a domain via Pass C (work-traces); bug entities and threads don't surface it; no backlog idea captures any of the three symptoms. This is a cold-start domain — operator-level friction visible in session logs but never named as a first-class concern. Phase 4 candidate: "Role-Scoping Discipline Mission" covering architect-triage SLA + late-ratification + scope-discovery — structural work with no prior design artifacts. HIGH priority per aggregate-score density (3 symptoms averaging 7.3 score, vs 4-5 median for other domains).
+**Assessment:** This is the most-striking Phase 2 finding at the gap level. Role-scoping emerged as a domain via Pass C (work-traces); bug entities and threads don't surface it; no backlog idea captures any of the four symptoms. This is a cold-start domain — operator-level friction visible in session logs but never named as a first-class concern. Phase 4 candidate: "Role-Scoping Discipline Mission" covering architect-triage SLA + late-ratification + scope-discovery + engineer-dismissal-permission — structural work with no prior design artifacts. HIGH priority per aggregate-score density (4 symptoms averaging 6.0 score, vs 4-5 median for other domains).
+
+**§12 fold note:** sym-C-011 strengthens the single-source role-scoping finding (§4) — still trace-only source, 100% unaddressed, but expanded cluster size from 3 to 4.
 
 ### 3.8 entity-vocabulary (3 symptoms)
 
@@ -475,12 +478,43 @@ Architect-surfaced during Phase 2 (additive to engineer-flagged + Phase 1 inputs
 
 ---
 
+## 12. Amendment — engineer completeness-critique fold (sym-C-011)
+
+**Provenance:** Engineer completeness-critique committed at `agent/greg:404bf57` per plan §Phase 2 critique cadence. Verdict PASS on all 4 critique-scope items (symptom coverage, per-source attribution, reassignment justification, no-idea-filed counts). One minor coverage gap surfaced:
+
+**sym-C-011** — Engineer-permission gap on dismissal. Engineer cannot flip idea `triaged → dismissed` (architect-only per Hub schema). Forces architect-engineer round-trip during bug-migration cleanups; surfaced concretely in Pass 1.1 when 9 bug-migration legacy ideas needed architect status flip after engineer marker-tag application. Engineer-suggested classification: **role-scoping primary, tool-surface secondary, score 2** (once × minor). Filed at `agent/greg:404bf57 docs/reviews/2026-04-phase-2-data/traces-symptoms.tsv`.
+
+**Architect acceptance:** Classification accepted as-is — role-scoping primary fits (engineer role lacks a permission that workflow requires); tool-surface secondary fits (the permission gap surfaces at the `update_idea` tool boundary). Score 2 is correct (once-per-bug-migration × minor; frequency "once" because the Pass 1.1 bug-migration was a single event, not a recurring pattern).
+
+**Amendment scope (this pass):**
+- §1 Input summary: Pass 2.C count 10 → 11; total 50 → 51
+- §3 Cluster sizes table: role-scoping 3 → 4; Pass C total 10 → 11; Grand total 50 → 51
+- §3.7 role-scoping: 3 symptoms → 4 symptoms; new ranking row for sym-C-011 at score 2
+- §12 (this section): amendment provenance
+
+**Not amended (engineer-critique explicitly confirmed no change needed):**
+- §2 methodology
+- §4 cross-source distribution (sym-C-011 is trace-only; role-scoping remains single-source — finding preserved)
+- §5 observability pattern
+- §6 per-symptom reclassification table (sym-C-011 is a new symptom, not an architect-reassigned one — no entry needed)
+- §7 top symptoms (sym-C-011 score 2 doesn't enter top 12)
+- §8 composite domain ranking (role-scoping still #1 by composite; 100% unaddressed density preserved; symptom count bumps 3→4 but ranking position unchanged)
+- §9 Phase 4 mission-candidate preview (Role-Scoping Discipline Mission scope now covers 4 symptoms instead of 3 — scope-doc-level detail, Phase 4 absorbs)
+- §10 convergence-criteria self-check (PASS preserved; all 51/51 symptoms assigned)
+- §11 retrospective inputs
+
+**No Pass 2.β trigger:** Scope of the fold is < 5% of artifact content; no methodology/ranking/findings change. Engineer recommended amendment-over-Pass-2.β in thread-252 round 2; architect concurs. Director receives single ratifiable artifact.
+
+**Engineer completeness-critique artifact:** `docs/reviews/2026-04-phase-2-completeness-critique.md` at `agent/greg:404bf57` (134 lines) — independent validation of Pass 2.α; retained on agent/greg as engineer-authored companion to this architect-authored primary artifact.
+
+---
+
 ## Appendix A — Full per-symptom classification table
 
 See companion TSV at `docs/reviews/2026-04-phase-2-data/architect-classification.tsv` (to be generated from this doc if Director requests machine-parseable format).
 
-Summary: 50 symptoms × (engineer_primary, architect_primary, architect_secondary, score, rank, fix_status_architect, phase4_candidate_flag).
+Summary: 51 symptoms × (engineer_primary, architect_primary, architect_secondary, score, rank, fix_status_architect, phase4_candidate_flag).
 
 ---
 
-*End of Phase 2 architect critique, Pass 2.α. Director review + engineer completeness-critique expected next. Phase 3 Concept + Defect extraction opens on Director ratification.*
+*End of Phase 2 architect critique, Pass 2.α + §12 amendment fold. Director final ratification expected next. Phase 3 Concept + Defect extraction opens on ratification.*
