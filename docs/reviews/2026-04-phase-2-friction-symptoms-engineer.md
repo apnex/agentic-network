@@ -1,6 +1,6 @@
-# Phase 2 Friction Symptoms — Engineer Collection (Pass 2.A: Bugs)
+# Phase 2 Friction Symptoms — Engineer Collection (Pass 2.A + 2.C: Bugs + Work-Traces)
 
-**Status:** Pass 2.A — incremental commit covering Pass A (bug walk, 28 symptoms). Pass B (thread content scan) and Pass C (work-trace harvest) trailing in subsequent commits per agreed parallel cadence (thread-251).
+**Status:** Pass 2.C incremental — covers Pass A (bug walk, 28 symptoms) and Pass C (work-trace harvest, 10 symptoms). Pass B (thread content scan) trailing. Architect 11-domain final taxonomy ratified on thread-251 round 6 (lily independent prep converged on same 3 emergent domains as engineer Pass A — cognitive-layer / identity-layer / cascade-execution — formalized).
 
 **Author:** greg (engineer, eng-0d2c690e7dd5), 2026-04-22 AEST.
 **Architect consumer:** lily (eng-40903c59d19f), classification + ranking pass.
@@ -24,21 +24,47 @@
 
 ---
 
-## 1. Pass 2.A summary stats (bugs only)
+## 0. Architect-ratified 11-domain final taxonomy (thread-251 round 6)
 
-**Total symptoms collected:** 28 (one per bug entity).
-
-**Domain distribution (engineer first-pass):**
-
-| Domain candidate | Count | Symptom IDs |
+| # | Domain | Provenance |
 |---|---|---|
-| cognitive-layer | 7 | sym-A-003, A-010, A-011, A-013, A-019 (others in cluster) |
-| cascade-execution | 7 | sym-A-001, A-002, A-007, A-008, A-014, A-022, A-027 |
-| identity-layer | 4 | sym-A-005, A-016, A-017, A-018, A-026 |
-| tool-surface | 4 | sym-A-004, A-006, A-012, A-021, A-023 |
-| entity-vocabulary | 2 | sym-A-024 (no retirement primitive for teles), A-013 (list_tasks sort) |
-| delivery | 2 | sym-A-010 (architect-liveness ancestor of bug-25), A-025 (thread truncation) |
-| coordination | 2 | sym-A-020 (workflow advancement), A-023 (bilateral-seal race) |
+| 1 | tool-surface | plan §Phase 2 |
+| 2 | coordination | plan §Phase 2 |
+| 3 | delivery | plan §Phase 2 (bug-25 class) |
+| 4 | role-scoping | plan §Phase 2 |
+| 5 | entity-vocabulary | plan §Phase 2 |
+| 6 | deployment | plan §Phase 2 |
+| 7 | debugging-loop | plan §Phase 2 |
+| 8 | observability | plan §Phase 2 |
+| 9 | **cognitive-layer** | emergent — Phase 1 tele-11/12 filings + bug-walk (4-7 symptoms) |
+| 10 | **identity-layer** | emergent — mission-40 resolution + bug-walk (4 symptoms) |
+| 11 | **cascade-execution** | emergent — bug-14/15/27/28 cluster + bug-walk (7 symptoms) |
+
+Methodology-retrospective input flagged by lily: plan's 8 starting domains were correct but insufficient (38% expansion via Phase 2). Question for Phase 4 retrospective: should the plan's starting domains be derived from current Hub-state rather than hand-authored?
+
+**FSM-enforcement** held as a cross-cutting pattern (not a domain) — workflow-registry §7 has 28 "Tested By: NONE" invariants, but symptoms manifest within specific entity domains; revisit if Pass B/C surface a concentration pattern.
+
+---
+
+## 1. Pass 2.A + 2.C summary stats (bugs + work-traces)
+
+**Total symptoms collected:** 38 (28 from bugs + 10 from work-traces; thread-derived symptoms still pending in Pass B).
+
+**Domain distribution (post-architect §10 reclassifications):**
+
+| Domain | Pass A bug-count | Pass C trace-count | Total |
+|---|---|---|---|
+| cognitive-layer | 6 (was 7; sym-A-013 reclassified to tool-surface per architect §10 Q1 ratification) | 0 | 6 |
+| cascade-execution | 7 | 1 (sym-C-002 mission-dup) | 8 |
+| identity-layer | 4 | 0 | 4 |
+| tool-surface | 5 (was 4; +sym-A-013 from architect reclassification) | 1 (sym-C-007 tarball regen) | 6 |
+| entity-vocabulary | 1 (was 2; sym-A-013 left, only sym-A-024 remains) | 0 | 1 |
+| delivery | 2 | 0 | 2 |
+| coordination | 2 | 2 (sym-C-001 nudge-cycle, sym-C-005 ack-without-state) | 4 |
+| deployment | 0 | 2 (sym-C-003 deploy-gap, sym-C-004 ADC gotcha) | 2 |
+| role-scoping | 0 | 3 (sym-C-006 late design ratification, sym-C-009 architect-triage queue, sym-C-010 scope-discovery-late) | 3 |
+| debugging-loop | 0 | 1 (sym-C-008 idea-promotion-late) | 1 |
+| observability | 0 | 0 | 0 |
 
 **Fix-status distribution:**
 
@@ -143,13 +169,37 @@ Not a direct bug entity, but worth flagging at the symptom level: mission-40 shi
 
 ---
 
-## 6. Companion data location
+## 6. Pass C — Work-trace symptoms (10 symptoms)
 
-Authoritative TSV: `docs/reviews/2026-04-phase-2-data/bugs-symptoms.tsv` (regenerable via the python script noted in §A1 below).
+10 symptoms extracted from `docs/traces/m-cognitive-hypervisor-work-trace.md` + `docs/traces/m-hypervisor-adapter-mitigations-work-trace.md`. These represent process / governance / workflow friction that is NOT bug-tracked — observable patterns from session logs.
 
-Pass B output will land at `docs/reviews/2026-04-phase-2-data/threads-symptoms.tsv`.
-Pass C output will land at `docs/reviews/2026-04-phase-2-data/traces-symptoms.tsv`.
-Combined view (unified ID space across A+B+C) will be assembled in a final Pass 2.D commit.
+| Symptom | Source-class | Domain | Notes |
+|---|---|---|---|
+| sym-C-001 | bug-20 nudge-cycle protocol | coordination | Engineer must thread-nudge architect after every task review; idea-144 triaged |
+| sym-C-002 | mission-37/38 dup, mission-31-34 quad-dup | cascade-execution | Mission entities created in duplicate during cascade-spawning; no idea filed |
+| sym-C-003 | deploy-gap (task-310 telemetry un-deployed ~2 days) | deployment | Code commits land but adapter changes don't reach prod until manual redeploy |
+| sym-C-004 | ADC gotcha (`oauth2: invalid_grant`) | deployment | RESOLVED post-mission-38 via auto-export in deploy/build.sh — fix-status `shipped` |
+| sym-C-005 | architect ACK without state mutation (thread-236) | coordination | Verbal ACK doesn't propagate to Hub state; bug-20 stays open after architect "I'll keep on triage list" |
+| sym-C-006 | late design ratification at task-issuance | role-scoping | Architect ratifies design directions mid-thread alongside task issuance vs upfront mission decomposition |
+| sym-C-007 | tarball regen commits | tool-surface | Repeated package-lock + tarball regen separate commits; manual + error-prone |
+| sym-C-008 | director-sharpening idea-promotion-late | debugging-loop | Ideas surface as blockers mid-work after Director clarification (idea-120 promoted to blocker on Phase F) |
+| sym-C-009 | architect-triage queue deferred indefinitely | role-scoping | Ideas 115/116/118 stayed deferred across multiple sessions, no SLA |
+| sym-C-010 | scope-discovery-late (task-311 pre-satisfied) | role-scoping | Engineer found task-311 deliverables already shipped by Phase 1 ckpt-4 only after claim; mission brief had to be rewritten |
+
+**New friction classes surfaced (not in bug-walk):**
+- **Coordination friction is dominant in Pass C** (4 symptoms) — work-trace evidence reveals process gaps that bug entities don't capture: nudge protocol, ACK-without-state, mission-dup, scope-discovery-late
+- **Deployment friction emerges** (2 symptoms) — bug-walk had zero `deployment` domain; trace harvest surfaces 2 explicit deploy-gap symptoms (one shipped, one open)
+- **Role-scoping friction emerges** (3 symptoms) — late design ratification, architect-triage SLA absence, scope-discovery-late all live in the trace layer
+
+---
+
+## 7. Companion data location
+
+Authoritative TSVs:
+- `docs/reviews/2026-04-phase-2-data/bugs-symptoms.tsv` (29 rows including header)
+- `docs/reviews/2026-04-phase-2-data/traces-symptoms.tsv` (11 rows including header)
+
+Pass B output lands at `docs/reviews/2026-04-phase-2-data/threads-symptoms.tsv` next commit. Combined view (unified ID space across A+B+C) assembled in a final Pass 2.D commit if needed.
 
 ---
 
