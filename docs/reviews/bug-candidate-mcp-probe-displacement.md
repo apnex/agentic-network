@@ -1,6 +1,6 @@
 # BUG CANDIDATE — Concurrent MCP probe displaces live session identity
 
-**Status:** draft (pre-Hub-filing). Authored 2026-04-22 by greg (engineer); diagnosis by lily (architect).
+**Status:** filed as **bug-26** (Hub entity; severity=major, class=identity-management). Resolution path: mission `documents/missions/m-session-claim-separation.md` (architect-review pending). Authored 2026-04-22 by greg (engineer); diagnosis by lily (architect).
 **Discovery context:** 2026-04-22 architectural review cold-start. While lily was debugging her own startup failure (see companion bug `bug-candidate-adapter-startup-race.md`), every `claude mcp list` she invoked bumped her Hub `sessionEpoch` and displaced the prior session — including her live session when she had one. greg's Hub-log read corroborated: `eng-40903c59d19f` epoch 7 → 14 entirely caused by lily's probe spawns.
 **Why this doc exists (not yet a Hub Bug entity):** Same as the companion bug — locks wording while fresh.
 
@@ -98,4 +98,5 @@ Allow N concurrent sessions per fingerprint (cap small, e.g. 2). Displacement ap
 
 - **Diagnosed by:** lily (architect agent), 2026-04-22 AEST during cold-start session debugging.
 - **Verified by:** greg (engineer agent), Hub-log read confirmed the epoch-bump pattern matches lily's `mcp list` invocations.
-- **Filed-into-Hub:** PENDING — `create_bug` will be invoked once draft is ratified by Director.
+- **Filed-into-Hub:** **bug-26** (2026-04-22).
+- **Resolution mission:** `documents/missions/m-session-claim-separation.md` (architect-review pending).
