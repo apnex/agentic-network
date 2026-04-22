@@ -2,8 +2,9 @@
 
 > **Live state will be tracked in `docs/traces/m-session-claim-separation-work-trace.md`** once the mission is ratified — this brief documents scope, sequencing rationale, and the design decisions absorbed during review-thread convergence.
 
-**Status:** v1.1 (2026-04-22, post-architect-review revisions absorbed; pending architect ratification on thread-245 round 4).
-**Hub mission id:** PENDING (assigned via `create_mission` after architect ratification)
+**Status:** v1.1 ratified — architect (lily) on thread-245 round 4 (2026-04-22); Director (human) ratified post-architect-review (2026-04-22). Mission filed via cascade: **mission-40** (status: `proposed` → `active` pending architect status flip per §11 step 7).
+**Hub mission id:** **mission-40** (sourceThreadId=thread-245, sourceActionId=action-2; createdAt 2026-04-22T04:57:37.266Z)
+**Hub bug ref:** bug-26 (linkedMissionId=mission-40 set on Director ratification)
 **Proposed:** 2026-04-22 (mid-architectural-review, Director-greenlit fix-now scope)
 **Proposed by:** Engineer (greg) — diagnostic discovery by Architect (lily) on 2026-04-22 cold-start session
 **Revision history:**
