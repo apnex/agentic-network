@@ -38,6 +38,10 @@ import type {
   AgentRole,
   RegisterAgentPayload,
   RegisterAgentResult,
+  AssertIdentityPayload,
+  AssertIdentityResult,
+  ClaimSessionResult,
+  ClaimSessionTrigger,
   Selector,
   ReplyToThreadOptions,
   OpenThreadOptions,
@@ -957,34 +961,86 @@ export class GcsEngineerRegistry implements IEngineerRegistry {
     // Mission-24 Phase 2 (ADR-014 §77): SessionRole now carries the
     // "director" literal directly rather than mapping to "unknown".
     this.sessionRoles.set(sessionId, tokenRole as SessionRole);
+
+    // M-Session-Claim-Separation (mission-40) T1: split into the new
+    // assertIdentity + claimSession helpers. Externally byte-identical
+    // to pre-T1 — register_role still both creates/finds the Agent and
+    // binds the session in one logical call. T2 cuts over.
+    const identity = await this.assertIdentity(
+      {
+        globalInstanceId: payload.globalInstanceId,
+        role: tokenRole,
+        clientMetadata: payload.clientMetadata,
+        advisoryTags: payload.advisoryTags,
+        labels: payload.labels,
+        receiptSla: payload.receiptSla,
+        wakeEndpoint: payload.wakeEndpoint,
+      },
+      address,
+    );
+    if (!identity.ok) {
+      return identity;
+    }
+    const claim = await this.claimSession(identity.engineerId, sessionId, "sse_subscribe");
+    if (!claim.ok) {
+      if (claim.code === "unknown_engineer") {
+        // Impossible by construction unless GCS lost the per-engineerId
+        // file between the two writes, which would indicate corrupted
+        // bucket state — surface as an internal error not a user-visible
+        // RegisterAgentFailure code.
+        throw new Error(
+          `Internal invariant violation: assertIdentity wrote ${identity.engineerId} but claimSession could not read it`,
+        );
+      }
+      return { ok: false, code: claim.code, message: claim.message };
+    }
+    return {
+      ok: true,
+      engineerId: claim.engineerId,
+      sessionEpoch: claim.sessionEpoch,
+      wasCreated: identity.wasCreated,
+      clientMetadata: identity.clientMetadata,
+      advisoryTags: identity.advisoryTags,
+      labels: identity.labels,
+      ...(identity.changedFields ? { changedFields: identity.changedFields } : {}),
+      ...(identity.priorLabels ? { priorLabels: identity.priorLabels } : {}),
+      ...(claim.displacedPriorSession ? { displacedPriorSession: claim.displacedPriorSession } : {}),
+    };
+  }
+
+  // ── M-Session-Claim-Separation (mission-40) T1: split helpers ─────
+
+  async assertIdentity(
+    payload: AssertIdentityPayload,
+    _address?: string,
+  ): Promise<AssertIdentityResult> {
     const fingerprint = computeFingerprint(payload.globalInstanceId);
     const fpPath = `agents/by-fingerprint/${fingerprint}.json`;
-
     // Two attempts: one for the natural path, one to retry on OCC contention.
     for (let attempt = 0; attempt < 2; attempt++) {
       const existing = await readJsonWithGeneration<Agent>(this.bucket, fpPath);
       const now = new Date().toISOString();
 
       if (!existing) {
-        // First-contact create: ifGenerationMatch=0 ensures "must not exist".
-        // Mission-24 Phase 2 (ADR-014 §77): director sessions get the
-        // reserved director-* agentId prefix for at-a-glance identification.
-        const agentIdPrefix = tokenRole === "director" ? "director" : "eng";
+        // First-contact create: NO session bound (claimSession's job).
+        // sessionEpoch starts at 0; status/livenessState=offline until a
+        // session claims. Mission-24 Phase 2 director-* prefix preserved.
+        const agentIdPrefix = payload.role === "director" ? "director" : "eng";
         const engineerId = `${agentIdPrefix}-${shortHash(fingerprint)}`;
         const agent: Agent = {
           engineerId,
           fingerprint,
-          role: tokenRole,
-          status: "online",
+          role: payload.role,
+          status: "offline",
           archived: false,
-          sessionEpoch: 1,
-          currentSessionId: sessionId,
+          sessionEpoch: 0,
+          currentSessionId: null,
           clientMetadata: payload.clientMetadata,
           advisoryTags: payload.advisoryTags ?? {},
           labels: payload.labels ?? {},
           firstSeenAt: now,
           lastSeenAt: now,
-          livenessState: "online",
+          livenessState: "offline",
           lastHeartbeatAt: now,
           receiptSla: payload.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
           wakeEndpoint: payload.wakeEndpoint ?? null,
@@ -992,20 +1048,17 @@ export class GcsEngineerRegistry implements IEngineerRegistry {
         try {
           await writeJsonWithPrecondition(this.bucket, fpPath, agent, 0);
           await writeJson(this.bucket, `agents/${engineerId}.json`, agent);
-          this.sessionToEngineerId.set(sessionId, engineerId);
-          this.lastTouchAt.set(engineerId, Date.now());
-          console.log(`[GcsEngineerRegistry] Agent created: ${engineerId}`);
+          console.log(`[GcsEngineerRegistry] Agent identity asserted (created): ${engineerId}`);
           return {
             ok: true,
             engineerId,
-            sessionEpoch: 1,
             wasCreated: true,
             clientMetadata: agent.clientMetadata,
             advisoryTags: agent.advisoryTags,
             labels: agent.labels,
           };
         } catch (err) {
-          if (err instanceof GcsOccPreconditionFailed) continue; // race: another create won
+          if (err instanceof GcsOccPreconditionFailed) continue;
           throw err;
         }
       }
@@ -1013,63 +1066,42 @@ export class GcsEngineerRegistry implements IEngineerRegistry {
       const { data: agent, generation } = existing;
 
       // Role mismatch = hard security boundary.
-      if (agent.role !== tokenRole) {
+      if (agent.role !== payload.role) {
         return {
           ok: false,
           code: "role_mismatch",
-          message: `Token role '${tokenRole}' does not match persisted agent role '${agent.role}' for engineerId=${agent.engineerId}`,
+          message: `Token role '${payload.role}' does not match persisted agent role '${agent.role}' for engineerId=${agent.engineerId}`,
         };
       }
 
-      // Thrashing circuit breaker (only counts live displacements).
-      if (agent.status === "online") {
-        const history = this.displacementHistory.get(fingerprint) ?? [];
-        const tripped = recordDisplacementAndCheck(history, Date.now());
-        this.displacementHistory.set(fingerprint, history);
-        if (tripped) {
-          return {
-            ok: false,
-            code: "agent_thrashing_detected",
-            message: `Agent ${agent.engineerId} exceeded ${THRASHING_THRESHOLD} displacements in ${THRASHING_WINDOW_MS / 1000}s — halting to prevent fork-bomb. Check ~/.ois/instance.json for duplicate processes.`,
-          };
-        }
-      }
-
-      // Displace: increment epoch, rebind session, update mutable metadata.
-      // CP3 C5 (bug-16): labels refresh on reconnect when the caller supplies
-      // them in the handshake payload; omitting labels preserves the stored set.
+      // CP3 C5 (bug-16): labels refresh path — provided overwrites stored;
+      // omitted preserves stored. INVARIANT (T1): same code path, no redefine.
       // Defensive migration: older Agents may lack the labels field entirely.
       const priorLabels = agent.labels ?? {};
       const nextLabels = payload.labels ?? priorLabels;
       const labelsChanged = !shallowEqualLabels(priorLabels, nextLabels);
       const updated: Agent = {
         ...agent,
-        sessionEpoch: agent.sessionEpoch + 1,
-        currentSessionId: sessionId,
-        status: "online",
         clientMetadata: payload.clientMetadata,
         advisoryTags: payload.advisoryTags ?? agent.advisoryTags ?? {},
         labels: nextLabels,
         lastSeenAt: now,
-        // ADR-017: liveness reset + mutable config re-apply.
-        livenessState: "online",
-        lastHeartbeatAt: now,
+        // ADR-017 mutable config refresh on identity assertion.
         receiptSla: payload.receiptSla ?? agent.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
         wakeEndpoint: payload.wakeEndpoint ?? agent.wakeEndpoint ?? null,
+        // INVARIANT (T1): do NOT touch sessionEpoch, currentSessionId,
+        // status, livenessState, lastHeartbeatAt. Identity assertion is
+        // identity-only; session state belongs to claimSession.
       };
 
       try {
         await writeJsonWithPrecondition(this.bucket, fpPath, updated, generation);
         await writeJson(this.bucket, `agents/${updated.engineerId}.json`, updated);
-        this.sessionToEngineerId.set(sessionId, updated.engineerId);
-        this.lastTouchAt.set(updated.engineerId, Date.now());
-        console.log(`[GcsEngineerRegistry] Agent displaced: ${updated.engineerId} epoch=${updated.sessionEpoch}`);
         const changedFields: ("labels" | "advisoryTags" | "clientMetadata")[] = [];
         if (labelsChanged) changedFields.push("labels");
         return {
           ok: true,
           engineerId: updated.engineerId,
-          sessionEpoch: updated.sessionEpoch,
           wasCreated: false,
           clientMetadata: updated.clientMetadata,
           advisoryTags: updated.advisoryTags,
@@ -1078,16 +1110,112 @@ export class GcsEngineerRegistry implements IEngineerRegistry {
           ...(labelsChanged ? { priorLabels } : {}),
         };
       } catch (err) {
-        if (err instanceof GcsOccPreconditionFailed) continue; // race: retry once
+        if (err instanceof GcsOccPreconditionFailed) continue;
         throw err;
       }
     }
 
-    // Both attempts lost the OCC race — caller should retry on its own.
+    // Both attempts lost the OCC race — caller should retry.
+    return {
+      ok: false,
+      code: "role_mismatch",
+      message: `OCC contention exceeded retry budget on assertIdentity for fingerprint=${fingerprint}; likely concurrent registration storm.`,
+    };
+  }
+
+  async claimSession(
+    engineerId: string,
+    sessionId: string,
+    trigger: ClaimSessionTrigger,
+  ): Promise<ClaimSessionResult> {
+    // Two attempts to handle OCC contention with concurrent claims.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const path = `agents/${engineerId}.json`;
+      const existing = await readJsonWithGeneration<Agent>(this.bucket, path);
+      if (!existing) {
+        return {
+          ok: false,
+          code: "unknown_engineer",
+          message: `claimSession: engineerId=${engineerId} not found — call assertIdentity first`,
+        };
+      }
+      const { data: agent, generation } = existing;
+      // Thrashing rate-limit (only when displacing a live session).
+      if (agent.status === "online") {
+        const history = this.displacementHistory.get(agent.fingerprint) ?? [];
+        const tripped = recordDisplacementAndCheck(history, Date.now());
+        this.displacementHistory.set(agent.fingerprint, history);
+        if (tripped) {
+          return {
+            ok: false,
+            code: "agent_thrashing_detected",
+            message: `Agent ${agent.engineerId} exceeded ${THRASHING_THRESHOLD} displacements in ${THRASHING_WINDOW_MS / 1000}s — halting to prevent fork-bomb. Check ~/.ois/instance.json for duplicate processes.`,
+          };
+        }
+      }
+      const now = new Date().toISOString();
+      const displaced =
+        agent.currentSessionId && agent.currentSessionId !== sessionId
+          ? { sessionId: agent.currentSessionId, epoch: agent.sessionEpoch }
+          : undefined;
+      const updated: Agent = {
+        ...agent,
+        sessionEpoch: agent.sessionEpoch + 1,
+        currentSessionId: sessionId,
+        status: "online",
+        lastSeenAt: now,
+        // ADR-017 liveness reset on claim.
+        livenessState: "online",
+        lastHeartbeatAt: now,
+      };
+      try {
+        // Claim writes the per-engineerId file; the by-fingerprint file
+        // mirror is identity state (stable across claims) and is updated
+        // by assertIdentity. We update both for atomicity at the read
+        // boundary (selectAgents may read either path depending on call site).
+        await writeJsonWithPrecondition(this.bucket, path, updated, generation);
+        // Best-effort mirror update on by-fingerprint; OCC failure here
+        // is non-fatal because the per-engineerId file is the source of
+        // truth for session state.
+        try {
+          const fpPath = `agents/by-fingerprint/${agent.fingerprint}.json`;
+          const fpExisting = await readJsonWithGeneration<Agent>(this.bucket, fpPath);
+          if (fpExisting) {
+            await writeJsonWithPrecondition(this.bucket, fpPath, updated, fpExisting.generation);
+          }
+        } catch (err) {
+          if (!(err instanceof GcsOccPreconditionFailed)) throw err;
+          // Fingerprint mirror lost a race; per-engineerId file already
+          // has the new state; selectAgents will read the canonical path.
+        }
+        this.sessionToEngineerId.set(sessionId, updated.engineerId);
+        this.lastTouchAt.set(updated.engineerId, Date.now());
+        if (displaced) {
+          console.log(
+            `[GcsEngineerRegistry] Agent displaced: ${updated.engineerId} epoch=${updated.sessionEpoch} (trigger=${trigger}, prior sessionId=${displaced.sessionId} epoch=${displaced.epoch})`,
+          );
+        } else {
+          console.log(
+            `[GcsEngineerRegistry] Agent session claimed: ${updated.engineerId} epoch=${updated.sessionEpoch} (trigger=${trigger})`,
+          );
+        }
+        return {
+          ok: true,
+          engineerId: updated.engineerId,
+          sessionEpoch: updated.sessionEpoch,
+          trigger,
+          ...(displaced ? { displacedPriorSession: displaced } : {}),
+        };
+      } catch (err) {
+        if (err instanceof GcsOccPreconditionFailed) continue;
+        throw err;
+      }
+    }
+
     return {
       ok: false,
       code: "agent_thrashing_detected",
-      message: `OCC contention exceeded retry budget for fingerprint=${fingerprint}; likely concurrent registration storm.`,
+      message: `OCC contention exceeded retry budget on claimSession for engineerId=${engineerId}; likely concurrent claim storm.`,
     };
   }
 

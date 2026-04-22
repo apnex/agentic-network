@@ -58,10 +58,53 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
         isError: true,
       };
     }
+    // M-Session-Claim-Separation (mission-40) T1: register_role's internal
+    // call to registerAgent always invokes assertIdentity then
+    // claimSession(..., "sse_subscribe") — emit the corresponding audits.
+    // All three audit writes are best-effort (failure does not block the
+    // handshake response, matching the pre-T1 agent_handshake_refreshed
+    // pattern).
+    try {
+      await ctx.stores.audit.logEntry(
+        "hub",
+        "agent_identity_asserted",
+        `Agent ${result.engineerId} identity asserted (wasCreated=${result.wasCreated})`,
+        result.engineerId,
+      );
+    } catch (err) {
+      console.warn(`[session-policy] agent_identity_asserted audit write failed for ${result.engineerId}: ${(err as Error).message ?? err}`);
+    }
+    try {
+      // T1 always claims via the back-compat sse_subscribe trigger from
+      // register_role. T2's other call sites (explicit claim_session
+      // tool, first-tools/call hook) emit different actions/triggers
+      // through the same helper.
+      await ctx.stores.audit.logEntry(
+        "hub",
+        "agent_session_implicit_claim",
+        `Agent ${result.engineerId} session implicitly claimed (trigger=sse_subscribe, epoch=${result.sessionEpoch}, wasCreated=${result.wasCreated})`,
+        result.engineerId,
+      );
+    } catch (err) {
+      console.warn(`[session-policy] agent_session_implicit_claim audit write failed for ${result.engineerId}: ${(err as Error).message ?? err}`);
+    }
+    if (result.displacedPriorSession) {
+      try {
+        await ctx.stores.audit.logEntry(
+          "hub",
+          "agent_session_displaced",
+          `Agent ${result.engineerId} session displaced (priorSessionId=${result.displacedPriorSession.sessionId}, priorEpoch=${result.displacedPriorSession.epoch}, newEpoch=${result.sessionEpoch}, trigger=sse_subscribe)`,
+          result.engineerId,
+        );
+      } catch (err) {
+        console.warn(`[session-policy] agent_session_displaced audit write failed for ${result.engineerId}: ${(err as Error).message ?? err}`);
+      }
+    }
     // CP3 C5 (bug-16): on reconnect, if any mutable handshake field refreshed
     // stored state, write an audit trail so operators can forensically trace
     // label/role/metadata drift. Best-effort: audit failure does not block
-    // the handshake response.
+    // the handshake response. Preserved from pre-T1 — separate from the new
+    // identity/claim audits (which run on every register_role).
     if (result.changedFields && result.changedFields.length > 0) {
       const diffDetails = result.changedFields.includes("labels")
         ? `changedFields=${result.changedFields.join(",")} priorLabels=${JSON.stringify(result.priorLabels ?? {})} newLabels=${JSON.stringify(result.labels)}`

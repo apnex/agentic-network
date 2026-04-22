@@ -242,6 +242,11 @@ export interface RegisterAgentSuccess {
   // Absent on first-contact creation and on no-op reconnects.
   changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata")[];
   priorLabels?: AgentLabels;
+  // M-Session-Claim-Separation (mission-40) T1: populated when the internal
+  // claimSession call evicted a prior session. Used by the policy layer to
+  // emit `agent_session_displaced` audit alongside the implicit-claim audit.
+  // Absent on first-contact creation and when no prior session existed.
+  displacedPriorSession?: { sessionId: string; epoch: number };
 }
 
 export interface RegisterAgentFailure {
@@ -251,6 +256,66 @@ export interface RegisterAgentFailure {
 }
 
 export type RegisterAgentResult = RegisterAgentSuccess | RegisterAgentFailure;
+
+// ── M-Session-Claim-Separation (mission-40) T1: split helpers ──────────
+//
+// `assertIdentity` is the idempotent identity-claim half. `claimSession`
+// is the displacing session-claim half. T1 wires both internally to the
+// existing `registerAgent` path so externally-observable behavior is
+// byte-identical to pre-T1; T2 cuts over and exposes claimSession via
+// a dedicated MCP tool + SSE-subscribe / first-tools-call hooks.
+
+export type ClaimSessionTrigger = "explicit" | "sse_subscribe" | "first_tool_call";
+
+export interface AssertIdentityPayload {
+  globalInstanceId: string;
+  role: AgentRole;
+  clientMetadata: AgentClientMetadata;
+  advisoryTags?: AgentAdvisoryTags;
+  labels?: AgentLabels;
+  // ADR-017 mutable config carried through the same handshake-refresh path:
+  wakeEndpoint?: string;
+  receiptSla?: number;
+}
+
+export interface AssertIdentitySuccess {
+  ok: true;
+  engineerId: string;
+  wasCreated: boolean;
+  clientMetadata: AgentClientMetadata;
+  advisoryTags: AgentAdvisoryTags;
+  labels: AgentLabels;
+  // bug-16 C5 label-refresh diff (only present on reconnect with changes):
+  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata")[];
+  priorLabels?: AgentLabels;
+}
+
+export interface AssertIdentityFailure {
+  ok: false;
+  code: "role_mismatch";
+  message: string;
+}
+
+export type AssertIdentityResult = AssertIdentitySuccess | AssertIdentityFailure;
+
+export interface ClaimSessionSuccess {
+  ok: true;
+  engineerId: string;
+  sessionEpoch: number;
+  trigger: ClaimSessionTrigger;
+  // Set when a prior session for this engineerId was evicted by the claim.
+  // Absent when no prior session existed (first claim after assertIdentity)
+  // or when the same sessionId is re-claiming (no-op re-bind).
+  displacedPriorSession?: { sessionId: string; epoch: number };
+}
+
+export interface ClaimSessionFailure {
+  ok: false;
+  code: "agent_thrashing_detected" | "unknown_engineer";
+  message: string;
+}
+
+export type ClaimSessionResult = ClaimSessionSuccess | ClaimSessionFailure;
 
 export type ProposalStatus = "submitted" | "approved" | "rejected" | "changes_requested" | "implemented";
 
@@ -945,6 +1010,39 @@ export interface IEngineerRegistry {
   }>;
   // M18: Agent entity operations.
   registerAgent(sessionId: string, tokenRole: AgentRole, payload: RegisterAgentPayload, address?: string): Promise<RegisterAgentResult>;
+  /**
+   * M-Session-Claim-Separation (mission-40) T1 — idempotent identity
+   * assertion. Ensures Agent record exists with the given fingerprint+
+   * role+labels. Refreshes mutable handshake fields (labels, advisoryTags,
+   * clientMetadata, receiptSla, wakeEndpoint, lastSeenAt) per the bug-16
+   * C5 label-refresh contract — DOES NOT redefine those semantics, just
+   * invokes the same code path. NEVER touches sessionEpoch, currentSessionId,
+   * status, livenessState, lastHeartbeatAt, or SSE stream.
+   *
+   * Session work belongs to claimSession(). Caller decides whether/when
+   * to claim a session for the asserted identity. T1 invokes both helpers
+   * from registerAgent() under the hood; T2 wires the new MCP tool +
+   * SSE-subscribe / first-tools-call hooks.
+   */
+  assertIdentity(payload: AssertIdentityPayload, address?: string): Promise<AssertIdentityResult>;
+  /**
+   * M-Session-Claim-Separation (mission-40) T1 — single helper for all
+   * session-claim paths. Increments sessionEpoch, binds currentSessionId
+   * to the supplied sessionId, evicts the prior session (if any).
+   *
+   * `trigger` distinguishes call paths for audit emission and the §10
+   * deprecation-runway dashboard:
+   * - "explicit"        : called by the new claim_session MCP tool (T2)
+   * - "sse_subscribe"   : called from the SSE-stream-open hook (T2 back-compat)
+   * - "first_tool_call" : called from the first-tools/call hook (T2 back-compat)
+   *
+   * In T1, only invoked by registerAgent() with trigger="sse_subscribe"
+   * to preserve byte-identical external behavior of register_role.
+   * Returns displacedPriorSession when a prior session was evicted —
+   * the policy layer uses this to emit `agent_session_displaced` audit
+   * alongside the claim audit.
+   */
+  claimSession(engineerId: string, sessionId: string, trigger: ClaimSessionTrigger): Promise<ClaimSessionResult>;
   getAgent(engineerId: string): Promise<Agent | null>;
   /** Mission-19: resolve the Agent bound to an SSE session (null if none). */
   getAgentForSession(sessionId: string): Promise<Agent | null>;
@@ -1901,68 +1999,106 @@ export class MemoryEngineerRegistry implements IEngineerRegistry {
     payload: RegisterAgentPayload,
     address?: string,
   ): Promise<RegisterAgentResult> {
-    const fingerprint = computeFingerprint(payload.globalInstanceId);
-    const now = new Date().toISOString();
     // Mission-24 Phase 2 (ADR-014 §77): SessionRole widened with
     // "director" so the director-* agentId prefix flow can authorize
     // MCP tools via the existing getRole()-driven RBAC without the
     // legacy "unknown" → "engineer" fallback in task-policy auto-register.
     this.sessionRoles.set(sessionId, tokenRole as SessionRole);
 
+    // M-Session-Claim-Separation (mission-40) T1: split into the new
+    // assertIdentity + claimSession helpers. Externally byte-identical
+    // to pre-T1 — register_role still both creates/finds the Agent and
+    // binds the session in one logical call. T2 will cut over and stop
+    // calling claimSession from this method (replacing it with
+    // SSE-subscribe + first-tools/call auto-claim hooks at the policy
+    // layer, plus the new explicit claim_session MCP tool).
+    const identity = await this.assertIdentity(
+      {
+        globalInstanceId: payload.globalInstanceId,
+        role: tokenRole,
+        clientMetadata: payload.clientMetadata,
+        advisoryTags: payload.advisoryTags,
+        labels: payload.labels,
+        receiptSla: payload.receiptSla,
+        wakeEndpoint: payload.wakeEndpoint,
+      },
+      address,
+    );
+    if (!identity.ok) {
+      return identity;
+    }
+    const claim = await this.claimSession(identity.engineerId, sessionId, "sse_subscribe");
+    if (!claim.ok) {
+      if (claim.code === "unknown_engineer") {
+        // Impossible by construction: assertIdentity just succeeded for
+        // this engineerId on the same registry instance. If we hit it,
+        // something corrupted the in-memory map between calls.
+        throw new Error(
+          `Internal invariant violation: assertIdentity returned ${identity.engineerId} but claimSession reports unknown_engineer`,
+        );
+      }
+      // Narrowed: claim.code is "agent_thrashing_detected", which matches
+      // RegisterAgentFailure's union exactly.
+      return { ok: false, code: claim.code, message: claim.message };
+    }
+    return {
+      ok: true,
+      engineerId: claim.engineerId,
+      sessionEpoch: claim.sessionEpoch,
+      wasCreated: identity.wasCreated,
+      clientMetadata: identity.clientMetadata,
+      advisoryTags: identity.advisoryTags,
+      labels: identity.labels,
+      ...(identity.changedFields ? { changedFields: identity.changedFields } : {}),
+      ...(identity.priorLabels ? { priorLabels: identity.priorLabels } : {}),
+      ...(claim.displacedPriorSession ? { displacedPriorSession: claim.displacedPriorSession } : {}),
+    };
+  }
+
+  // ── M-Session-Claim-Separation (mission-40) T1: split helpers ─────
+
+  async assertIdentity(
+    payload: AssertIdentityPayload,
+    _address?: string,
+  ): Promise<AssertIdentityResult> {
+    const fingerprint = computeFingerprint(payload.globalInstanceId);
+    const now = new Date().toISOString();
     const existingId = this.byFingerprint.get(fingerprint);
     let agent = existingId ? this.agents.get(existingId) ?? null : null;
 
     if (agent) {
       // Role mismatch is a hard security boundary.
-      if (agent.role !== tokenRole) {
+      if (agent.role !== payload.role) {
         return {
           ok: false,
           code: "role_mismatch",
-          message: `Token role '${tokenRole}' does not match persisted agent role '${agent.role}' for engineerId=${agent.engineerId}`,
+          message: `Token role '${payload.role}' does not match persisted agent role '${agent.role}' for engineerId=${agent.engineerId}`,
         };
       }
-      // Thrashing rate-limit (before displacement write).
-      if (agent.status === "online") {
-        const history = this.displacementHistory.get(fingerprint) ?? [];
-        const tripped = recordDisplacementAndCheck(history, Date.now());
-        this.displacementHistory.set(fingerprint, history);
-        if (tripped) {
-          return {
-            ok: false,
-            code: "agent_thrashing_detected",
-            message: `Agent ${agent.engineerId} exceeded ${THRASHING_THRESHOLD} displacements in ${THRASHING_WINDOW_MS / 1000}s — halting to prevent fork-bomb. Check ~/.ois/instance.json for duplicate processes.`,
-          };
-        }
-      }
-      // Displacement: increment epoch, rebind session.
-      // CP3 C5 (bug-16): labels now refresh on reconnect when the caller supplies
-      // them in the handshake payload; omitting labels preserves the stored set.
+      // CP3 C5 (bug-16): labels refresh path — provided overwrites stored;
+      // omitted preserves stored. INVARIANT (T1): this method MUST invoke
+      // the same code path and MUST NOT redefine these semantics.
       const priorLabels = agent.labels ?? {};
       const nextLabels = payload.labels ?? priorLabels;
       const labelsChanged = !shallowEqualLabels(priorLabels, nextLabels);
-      agent.sessionEpoch += 1;
-      agent.currentSessionId = sessionId;
-      agent.status = "online";
       agent.clientMetadata = payload.clientMetadata;
       agent.advisoryTags = payload.advisoryTags ?? {};
       agent.labels = nextLabels;
       agent.lastSeenAt = now;
-      // ADR-017: liveness reset on displacement; wakeEndpoint + receiptSla
-      // are mutable config and accept updates per payload.
-      agent.livenessState = "online";
-      agent.lastHeartbeatAt = now;
+      // ADR-017 mutable config: refresh the agent-wide settings on each
+      // identity assertion (matches pre-T1 registerAgent reconnect path).
       agent.receiptSla = payload.receiptSla ?? agent.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS;
       agent.wakeEndpoint = payload.wakeEndpoint ?? agent.wakeEndpoint ?? null;
+      // INVARIANT (T1): do NOT touch sessionEpoch, currentSessionId,
+      // status, livenessState, lastHeartbeatAt, sessionToEngineerId.
+      // Identity assertion is identity-only; session-bound state belongs
+      // to claimSession.
       this.agents.set(agent.engineerId, agent);
-      this.sessionToEngineerId.set(sessionId, agent.engineerId);
-      this.lastTouchAt.set(agent.engineerId, Date.now());
-      console.log(`[MemoryEngineerRegistry] Agent displaced: ${agent.engineerId} epoch=${agent.sessionEpoch}`);
       const changedFields: ("labels" | "advisoryTags" | "clientMetadata")[] = [];
       if (labelsChanged) changedFields.push("labels");
       return {
         ok: true,
         engineerId: agent.engineerId,
-        sessionEpoch: agent.sessionEpoch,
         wasCreated: false,
         clientMetadata: agent.clientMetadata,
         advisoryTags: agent.advisoryTags,
@@ -1972,46 +2108,102 @@ export class MemoryEngineerRegistry implements IEngineerRegistry {
       };
     }
 
-    // First-contact: create a new Agent entity. Mission-24 Phase 2
-    // (ADR-014 §77): director sessions get the reserved director-*
-    // agentId prefix so dispatch selectors + audit trails can identify
-    // Director actors at a glance (distinct from architect/engineer
-    // which share the eng-* prefix). The prefix is cosmetic for routing
-    // (the `role` field on the Agent is the authoritative check) but
-    // makes cross-session traces immediately legible.
-    const agentIdPrefix = tokenRole === "director" ? "director" : "eng";
+    // First-contact: create a new Agent record. NO session bound (that
+    // is claimSession's job). sessionEpoch=0 here; claimSession will
+    // increment to 1 on first call. status/livenessState=offline until
+    // a session claims. Mission-24 Phase 2 (ADR-014 §77): director
+    // sessions get the reserved director-* agentId prefix.
+    const agentIdPrefix = payload.role === "director" ? "director" : "eng";
     const engineerId = `${agentIdPrefix}-${shortHash(fingerprint)}`;
     agent = {
       engineerId,
       fingerprint,
-      role: tokenRole,
-      status: "online",
+      role: payload.role,
+      status: "offline",
       archived: false,
-      sessionEpoch: 1,
-      currentSessionId: sessionId,
+      sessionEpoch: 0,
+      currentSessionId: null,
       clientMetadata: payload.clientMetadata,
       advisoryTags: payload.advisoryTags ?? {},
       labels: payload.labels ?? {},
       firstSeenAt: now,
       lastSeenAt: now,
-      livenessState: "online",
+      livenessState: "offline",
       lastHeartbeatAt: now,
       receiptSla: payload.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
       wakeEndpoint: payload.wakeEndpoint ?? null,
     };
     this.agents.set(engineerId, agent);
     this.byFingerprint.set(fingerprint, engineerId);
-    this.sessionToEngineerId.set(sessionId, engineerId);
-    this.lastTouchAt.set(engineerId, Date.now());
-    console.log(`[MemoryEngineerRegistry] Agent created: ${engineerId}`);
+    console.log(`[MemoryEngineerRegistry] Agent identity asserted (created): ${engineerId}`);
     return {
       ok: true,
       engineerId,
-      sessionEpoch: 1,
       wasCreated: true,
       clientMetadata: agent.clientMetadata,
       advisoryTags: agent.advisoryTags,
       labels: agent.labels,
+    };
+  }
+
+  async claimSession(
+    engineerId: string,
+    sessionId: string,
+    trigger: ClaimSessionTrigger,
+  ): Promise<ClaimSessionResult> {
+    const agent = this.agents.get(engineerId);
+    if (!agent) {
+      return {
+        ok: false,
+        code: "unknown_engineer",
+        message: `claimSession: engineerId=${engineerId} not found — call assertIdentity first`,
+      };
+    }
+    // Thrashing rate-limit (only when displacing a live session — matches
+    // pre-T1 registerAgent semantics).
+    if (agent.status === "online") {
+      const history = this.displacementHistory.get(agent.fingerprint) ?? [];
+      const tripped = recordDisplacementAndCheck(history, Date.now());
+      this.displacementHistory.set(agent.fingerprint, history);
+      if (tripped) {
+        return {
+          ok: false,
+          code: "agent_thrashing_detected",
+          message: `Agent ${agent.engineerId} exceeded ${THRASHING_THRESHOLD} displacements in ${THRASHING_WINDOW_MS / 1000}s — halting to prevent fork-bomb. Check ~/.ois/instance.json for duplicate processes.`,
+        };
+      }
+    }
+    const now = new Date().toISOString();
+    const displaced =
+      agent.currentSessionId && agent.currentSessionId !== sessionId
+        ? { sessionId: agent.currentSessionId, epoch: agent.sessionEpoch }
+        : undefined;
+    agent.sessionEpoch += 1;
+    agent.currentSessionId = sessionId;
+    agent.status = "online";
+    agent.lastSeenAt = now;
+    // ADR-017 liveness reset on claim (matches pre-T1 registerAgent
+    // displacement path).
+    agent.livenessState = "online";
+    agent.lastHeartbeatAt = now;
+    this.agents.set(agent.engineerId, agent);
+    this.sessionToEngineerId.set(sessionId, agent.engineerId);
+    this.lastTouchAt.set(agent.engineerId, Date.now());
+    if (displaced) {
+      console.log(
+        `[MemoryEngineerRegistry] Agent displaced: ${agent.engineerId} epoch=${agent.sessionEpoch} (trigger=${trigger}, prior sessionId=${displaced.sessionId} epoch=${displaced.epoch})`,
+      );
+    } else {
+      console.log(
+        `[MemoryEngineerRegistry] Agent session claimed: ${agent.engineerId} epoch=${agent.sessionEpoch} (trigger=${trigger})`,
+      );
+    }
+    return {
+      ok: true,
+      engineerId: agent.engineerId,
+      sessionEpoch: agent.sessionEpoch,
+      trigger,
+      ...(displaced ? { displacedPriorSession: displaced } : {}),
     };
   }
 
