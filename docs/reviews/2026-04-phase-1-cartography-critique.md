@@ -377,4 +377,71 @@ When the 2026-04 review retrospective triggers (first ratified mission ships), d
 
 ---
 
-*End of addendum. Standing by for engineer revision + Director ratification. tele-11 implications should be folded into Pass 1.1 along with the original critique scope.*
+*End of §9 addendum. tele-11 implications folded into Pass 1.2 (applied by engineer in commit `fae6ef8`, bilaterally accepted on thread-249).*
+
+---
+
+## 10. Addendum 2 — `tele-12 Precision Context Engineering` filed 2026-04-22 AEST (same-day re-refinement)
+
+**Status of this addendum:** Appended 2026-04-22 AEST, later the same day as §9. Director probe "Are you sure Cognitive Minimalism is the same as Precision Engineered Context?" surfaced a conceptual distinction the architect had conflated when accepting engineer's idea-116 promotion to tele-11 primary in §9.2. Architect re-examined: tele-11 covers the **extensive margin** (whether to invoke LLM at all; substrate-vs-LLM work allocation); **Precision Context Engineering** covers the **intensive margin** (given invocation, how efficient is the context). Distinct mandates → distinct teles. tele-12 filed per Director direction as a second anti-goal §7 exception the same day.
+
+### 10.1 tele-12 exists
+
+- **Hub:** `tele-12 Precision Context Engineering` via `create_tele` MCP tool (standard path, same as tele-11)
+- **Spec:** `docs/specs/teles.md` updated in the same commit as this addendum
+
+### 10.2 idea-116 primary reassignment (supersedes §9.2 for this idea only)
+
+**idea-116** (originally titled "Proposed tele-10 — Precision Context Engineering") — was §9.2 tele-11 primary + tele-10 secondary. **NEW: tele-12 primary, tele-11 secondary, tele-10 tertiary.**
+
+Rationale:
+- tele-12 primary — idea-116's body is literally the intellectual ancestor of tele-12 (Virtual Tokens Saved, bounded accumulation, Precision Context Engineering as named concept). Filing tele-12 *delivers* what idea-116 was proposing. This is the tightest possible alignment.
+- tele-11 secondary — idea-116's precision-engineering-mechanisms still serve tele-11's economic mandate (maximally-efficient invocations support minimum-invocation-count).
+- tele-10 tertiary — retains the autopoietic-ancestor linkage greg established in Pass 1.2 (idea-116 was proposing a tele; engineer-identified as archetypal autopoietic constitutional refinement).
+
+### 10.3 Adjacent candidates for tele-12 (optional Pass 1.3 polish — architect recommendation; Pass 1.2 assignments remain valid)
+
+The following ideas were tele-11 primary in §9.2 or tele-11 secondary in §9.3. With tele-12 now existing, tele-12 is the *more precise* primary — but tele-11 is *defensible* (not wrong, just not tightest). Architect recommends reassignment in Pass 1.3 polish; leaving as-is is acceptable if Director prefers minimal churn:
+
+| Idea | §9 assignment | Tightest post-tele-12 | Rationale |
+|---|---|---|---|
+| idea-119 (query-shape-engineering) | §9.2 tele-11 primary | **tele-12 primary** + tele-11 secondary | "query-shape engineering" literally names tele-12's mandate; tele-11 was an over-reach |
+| idea-72 (on-demand context retrieval) | §9.3 tele-11 secondary (primary tele-5 from §3.2) | **tele-12 primary** + tele-5 secondary | On-demand retrieval IS precision context engineering; the structural fit is exact |
+| idea-145 (chunked-reply v2) | §9.3 tele-11 secondary (primary tele-7) | **tele-12 primary** + tele-7 secondary | Chunked-reply IS the "Capped Per-Response Size" mechanism in tele-12's spec |
+| idea-146 (continuation-state v2) | §9.3 tele-11 secondary (primary tele-7) | **tele-12 primary** + tele-7 secondary | Continuation-state IS the "Bounded Accumulation / Capped Per-Response Size" overflow-handling primitive |
+
+**Architect does NOT unilaterally reassign these.** Pass 1.2 assignments stand; Director may direct Pass 1.3 polish at ratification time. Rationale: scope discipline — user direction was narrow (file tele-12 + reassign idea-116 per option 1); these four ideas are adjacent but not-in-scope for this architect action.
+
+### 10.4 Remaining §9.3 secondary adds — keep as tele-11 secondary
+
+The following §9.3 secondary-only ideas stay on tele-11 secondary (Pass 1.2 current state is correct):
+- idea-79, 108, 109, 110, 113, 114 — all are substrate-offload ideas (extensive margin); tele-11 secondary is the tightest fit. No tele-12 secondary add recommended unless the idea's body is also context-shape-oriented (none of these six are, by my read).
+
+### 10.5 Cluster sizes after this addendum (Pass 1.2 state + idea-116 reassignment only)
+
+- **tele-11 cluster (minimum Pass 1.3 state):** 4 primary (107, 115, 138, + whichever of 119/145/146 Director leaves at tele-11 primary if reassignment not done) + 9 secondary (including idea-116 as new secondary, and idea-119 if primary reassigned)
+- **tele-12 cluster (minimum Pass 1.3 state):** 1 primary (idea-116 only, if architect recommendation §10.3 is NOT applied) OR 5 primary (if §10.3 is applied: idea-116, 119, 72, 145, 146) + 0-1 secondary depending
+- **tele-8:** still only reverse-gap (unchanged by tele-12 filing)
+
+### 10.6 Revised engineer apply-list — incremental over Pass 1.2
+
+Greg's Pass 1.3 (if Director directs) executes:
+
+1. Apply §10.2: one `update_idea` call for idea-116 — flip `audit:tele_primary=tele-11` → `tele-12`; `audit:tele_secondary=tele-10` → `tele-11`; add new `audit:tele_tertiary=tele-10` (or drop tertiary and keep secondary=tele-11 only; tagging-policy call).
+2. **Optional (§10.3):** four additional `update_idea` calls for ideas 119, 72, 145, 146 per the table.
+3. Update Pass 1.2's §9 table to reflect §10 amendments.
+
+If Director skips Pass 1.3 entirely, the only necessary mechanical change is §10.2 (idea-116 single update); Pass 1.2 is otherwise ratification-ready.
+
+### 10.7 Provenance note for Phase 4 retrospective
+
+A second tele exception on the same day as the first is unusual. Retrospective should evaluate:
+- Did the tele-11 + tele-12 distinction need to exist at constitutional level, or would Concept-level naming have sufficed?
+- Does the methodology benefit from allowing same-day architect reconsideration of a just-filed tele?
+- Is there a procedural filter that would have surfaced the extensive/intensive margin distinction before tele-11 was filed, saving one tele-filing round?
+
+My lean: the distinction is genuine and load-bearing (the filing re-examination was the right call). But the "file-then-refine" pattern depended on Director's probe; a methodology improvement might add an architect self-check "does any existing idea claim to be a tele-proposal in its title or body?" before filing a new tele — idea-116's title "Proposed tele-10 — Precision Context Engineering" was the canary I missed.
+
+---
+
+*End of §10 addendum. Standing by for engineer revision + Director ratification. tele-12 implications should be folded into Pass 1.3 (if Director directs) along with any other Pass 1.2 refinements.*
