@@ -20,6 +20,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createDispatcher, makePendingActionItemHandler } from "./dispatcher.js";
 import { isEagerWarmupEnabled, parseClaimSessionResponse, formatSessionClaimedLogLine } from "./eager-claim.js";
+import { readCache, writeCache } from "./tool-catalog-cache.js";
 
 // ── Configuration ───────────────────────────────────────────────────
 
@@ -326,6 +327,41 @@ async function main(): Promise<void> {
   });
   syncReady.catch(() => { /* informational; not currently used to gate */ });
 
+  // ── M-Session-Claim-Separation (mission-40) T4 — tool-catalog cache wiring ──
+  //
+  // identityReady-resolved flag (sync-readable for the dispatcher's cache
+  // fallback to peek without awaiting). Set by a .then() chained off
+  // identityReady so the value becomes true on the same microtask as the
+  // promise resolves — no spinning, no race.
+  let identityReadyResolved = false;
+  identityReady.then(() => { identityReadyResolved = true; }).catch(() => { /* observed by gate */ });
+
+  // Hub version source for cache invalidation. Fetch /health once at
+  // startup in the background; cache the version in-memory. Probes that
+  // fire before the fetch completes get `null` and trust the cache
+  // (probe-friendly default per tool-catalog-cache.isCacheValid). Real
+  // sessions get the version within ~50ms (well before any tool call).
+  let cachedHubVersion: string | null = null;
+  const healthUrl = config.hubUrl.replace(/\/mcp(\/.*)?$/, "/health");
+  (async () => {
+    try {
+      const res = await fetch(healthUrl);
+      if (res.ok) {
+        const json = await res.json() as { version?: unknown };
+        if (typeof json.version === "string") {
+          cachedHubVersion = json.version;
+          log(`[Cache] Hub version resolved: ${cachedHubVersion}`);
+        } else {
+          log(`[Cache] /health returned no version field — cache invalidation will trust existing cache`);
+        }
+      } else {
+        log(`[Cache] /health fetch returned status ${res.status} — cache invalidation will trust existing cache`);
+      }
+    } catch (err) {
+      log(`[Cache] /health fetch failed (non-fatal): ${(err as Error).message ?? err}`);
+    }
+  })();
+
   const dispatcher = createDispatcher({
     agent,
     proxyVersion: PROXY_VERSION,
@@ -341,6 +377,21 @@ async function main(): Promise<void> {
     //   - dispatcher.agentReady       (gates CallTool)  ← shim's sessionReady
     handshakeComplete: identityReady,
     agentReady: sessionReady,
+    // T4 cache hooks (probe-safe ListTools).
+    getCachedCatalog: () => readCache(WORK_DIR, log),
+    getIsIdentityReady: () => identityReadyResolved,
+    getCurrentHubVersion: () => cachedHubVersion,
+    persistCatalog: (catalog) => {
+      // Best-effort persist. Skip if we don't yet have a Hub version to
+      // tag — better to let the next live-fetch (with version known)
+      // populate the cache than to write a hubVersion-less entry that
+      // would never invalidate cleanly.
+      if (cachedHubVersion === null) {
+        log("[Cache] Skipping persistCatalog — Hub version not yet resolved");
+        return;
+      }
+      writeCache(WORK_DIR, catalog, cachedHubVersion, log);
+    },
   });
   dispatcherRef = dispatcher;
 

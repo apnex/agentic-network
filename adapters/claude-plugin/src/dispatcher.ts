@@ -70,6 +70,27 @@ export interface DispatcherOptions {
    * gated-on-full-sync.md` for the full RCA.
    */
   handshakeComplete?: Promise<void>;
+  // ── M-Session-Claim-Separation (mission-40) T4 — tool-catalog cache ──
+  //
+  // Probe-safe ListTools support. When the host calls tools/list before
+  // identityReady has resolved (e.g. claude mcp list, which spawns the
+  // adapter, calls Initialize + ListTools, and exits), the dispatcher
+  // serves the catalog from a per-WORK_DIR cache without touching the
+  // Hub. Together with T3's lazy-claim path this makes probes fully
+  // Hub-free against a warm cache.
+  //
+  // All four callbacks are optional: when omitted, ListTools falls back
+  // to T3 behavior (await listToolsGate, fetch live, return). When the
+  // shim wires them in, T4 caching is active.
+  //
+  /** Returns the persisted catalog (or null if missing / invalid). */
+  getCachedCatalog?: () => import("./tool-catalog-cache.js").CachedCatalog | null;
+  /** Sync check: has identityReady resolved? Cache fallback only fires when this returns false. */
+  getIsIdentityReady?: () => boolean;
+  /** Returns the current Hub version (or null if not yet known — see isCacheValid for trust semantics). */
+  getCurrentHubVersion?: () => string | null;
+  /** Persists the live catalog to cache on success. Best-effort (errors are logged, not thrown). */
+  persistCatalog?: (catalog: unknown[]) => void;
 }
 
 export interface Dispatcher {
@@ -114,6 +135,19 @@ export function createDispatcher(opts: DispatcherOptions): Dispatcher {
   // Prefer handshakeComplete when supplied (fast, ~500ms); fall back to
   // agentReady for back-compat with callers that don't supply both.
   const listToolsGate = handshakeComplete ?? agentReady;
+  // T4 cache hooks (optional — when omitted, ListTools falls back to T3 behavior).
+  const { getCachedCatalog, getIsIdentityReady, getCurrentHubVersion, persistCatalog } = opts;
+  // Lazy-load the cache validity helper so dispatcher.ts doesn't pull
+  // in node:fs at import time (keeps the dispatcher pure for in-memory
+  // test rigs).
+  let isCacheValidFn: typeof import("./tool-catalog-cache.js").isCacheValid | null = null;
+  async function getIsCacheValid(): Promise<typeof import("./tool-catalog-cache.js").isCacheValid> {
+    if (!isCacheValidFn) {
+      const mod = await import("./tool-catalog-cache.js");
+      isCacheValidFn = mod.isCacheValid;
+    }
+    return isCacheValidFn;
+  }
 
   // ADR-017: local map from `${dispatchType}:${entityRef}` → queueItemId.
   // Populated by onPendingActionItem on every drain AND by Phase 1.1's
@@ -217,22 +251,32 @@ export function createDispatcher(opts: DispatcherOptions): Dispatcher {
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    // ── M-Session-Claim-Separation (mission-40) T4 hook point ──
+    // ── M-Session-Claim-Separation (mission-40) T4 — cache fallback ──
     //
-    // T4 will insert a cached-catalog fallback here, BEFORE awaiting the
-    // identityReady gate, so probe spawns (claude mcp list) can serve
-    // ListTools from a locally-persisted cache without waiting on (or
-    // triggering) any Hub interaction. Shape:
+    // Probe path (e.g. `claude mcp list`): identityReady is unresolved
+    // when this handler fires. If a valid cache exists, serve from it
+    // without touching the Hub. Probe completes in <50ms + zero Hub
+    // round-trips — extending bug-26's structural resolution from
+    // "no session-claim audits on probes" to "no Hub touch at all".
     //
-    //   const cached = await opts.getCachedCatalog?.();
-    //   if (cached && !await isIdentityReady()) {
-    //     return { tools: cached };
-    //   }
-    //   // ... fall through to live fetch + persist ...
-    //
-    // T3 leaves the structure obvious so T4's insertion is local — no
-    // re-refactor of the gate or the live-fetch path. Keep the live
-    // fetch + cache-write as the cache-miss / non-probe-path branch.
+    // All four T4 callbacks are optional. When omitted, this branch
+    // is skipped entirely (preserves T3 behavior for legacy / test
+    // wiring that doesn't pass the cache hooks).
+    if (getCachedCatalog && getIsIdentityReady && !getIsIdentityReady()) {
+      const cached = getCachedCatalog();
+      if (cached) {
+        const isValid = await getIsCacheValid();
+        const currentVersion = getCurrentHubVersion?.() ?? null;
+        if (isValid(cached, currentVersion)) {
+          log("[ListTools] served from cache");
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return { tools: cached.catalog as any[] };
+        }
+        log(`[ListTools] cache stale (cached.hubVersion=${cached.hubVersion}, current=${currentVersion ?? "unknown"}) — bootstrapping`);
+      } else {
+        log("[ListTools] no cache (bootstrapping cache from Hub)");
+      }
+    }
 
     // Wait only until handshake is done (transport connected + identity
     // asserted), NOT the full agent.start() sync phase. `agent.listTools`
@@ -246,7 +290,17 @@ export function createDispatcher(opts: DispatcherOptions): Dispatcher {
     // pipeline's onListTools hooks (e.g. ToolDescriptionEnricher)
     // observe + modify the surface presented to Claude Code.
     const tools = await agent.listTools();
-    // T4 will insert: opts.persistCatalog?.(tools); — cache-write hook.
+    // T4 cache-write: persist the live catalog for future probes.
+    // Best-effort — failures log + continue (the primary response is
+    // already being returned).
+    if (persistCatalog) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        persistCatalog(tools as any[]);
+      } catch (err) {
+        log(`[ListTools] persistCatalog hook threw (non-fatal): ${(err as Error).message ?? err}`);
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return { tools: tools as any[] };
   });
