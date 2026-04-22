@@ -244,7 +244,10 @@ describe("performHandshake", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("tool-call failed"));
   });
 
-  it("logs epoch displacement jump > 1", async () => {
+  it("logs epoch advancement when external claim displaced us between register_role calls (mission-40 T3)", async () => {
+    // Post-mission-40-T2: register_role no longer increments epoch on its own.
+    // ANY positive delta (epoch grew between our two register_role calls)
+    // means an external claim_session displaced our prior session in between.
     const body: HandshakeResponse = { engineerId: "eng-x", sessionEpoch: 5, wasCreated: false };
     const executeTool = vi.fn().mockResolvedValue(body);
     const log = vi.fn();
@@ -256,10 +259,13 @@ describe("performHandshake", () => {
       log,
     });
 
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("sessionEpoch jumped from 2 to 5"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("sessionEpoch advanced from 2 to 5"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("external claim_session has displaced"));
   });
 
-  it("does NOT log epoch displacement on monotonic +1 increment", async () => {
+  it("logs epoch advancement on +1 delta (any positive delta is external displacement post-T2)", async () => {
+    // Pre-mission-40-T2: +1 was a normal register_role-bump (no log).
+    // Post-T2: +1 means an external claim_session displaced us (DO log).
     const body: HandshakeResponse = { engineerId: "eng-x", sessionEpoch: 3, wasCreated: false };
     const executeTool = vi.fn().mockResolvedValue(body);
     const log = vi.fn();
@@ -272,7 +278,25 @@ describe("performHandshake", () => {
     });
 
     const calls = log.mock.calls.map((c) => c[0] as string);
-    expect(calls.some((c) => c.includes("sessionEpoch jumped"))).toBe(false);
+    expect(calls.some((c) => c.includes("sessionEpoch advanced from 2 to 3"))).toBe(true);
+  });
+
+  it("does NOT log epoch advancement when epoch unchanged (idempotent register_role under T2)", async () => {
+    // T2: register_role is pure identity assertion. Repeated calls leave
+    // the epoch unchanged unless an external claim happened.
+    const body: HandshakeResponse = { engineerId: "eng-x", sessionEpoch: 2, wasCreated: false };
+    const executeTool = vi.fn().mockResolvedValue(body);
+    const log = vi.fn();
+
+    await performHandshake({
+      executeTool,
+      config: baseConfig,
+      previousEpoch: 2,
+      log,
+    });
+
+    const calls = log.mock.calls.map((c) => c[0] as string);
+    expect(calls.some((c) => c.includes("sessionEpoch advanced") || c.includes("sessionEpoch jumped"))).toBe(false);
   });
 
   it("returns null response on malformed success body", async () => {

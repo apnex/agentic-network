@@ -19,6 +19,7 @@ import { CognitivePipeline } from "@ois/cognitive-layer";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createDispatcher, makePendingActionItemHandler } from "./dispatcher.js";
+import { isEagerWarmupEnabled, parseClaimSessionResponse, formatSessionClaimedLogLine } from "./eager-claim.js";
 
 // ── Configuration ───────────────────────────────────────────────────
 
@@ -165,10 +166,57 @@ async function main(): Promise<void> {
         llmModel: process.env.HUB_LLM_MODEL,
         onFatalHalt: fatalHalt,
         onHandshakeComplete: (r: HandshakeResponse) => {
-          log(`[Handshake] complete: ${r.engineerId} epoch=${r.sessionEpoch}`);
+          // M-Session-Claim-Separation (mission-40) T3: structured-parseable
+          // [Handshake] log lines for dashboard / diagnostic tooling
+          // consumption. Format pinned by brief §3 T3 HC #5.
+          log(`[Handshake] Identity asserted: ${r.engineerId}`);
           // Resolve early-phase gate so ListTools unblocks now (~500ms
           // post-spawn) instead of waiting for the full sync phase.
-          resolveHandshakeComplete();
+          resolveIdentityReady();
+          // T3 lazy-claim semantics:
+          //  - eager mode (OIS_EAGER_SESSION_CLAIM=1): kick off explicit
+          //    claim_session in the background; resolve sessionReady on
+          //    claim success (not before — CallTool gate blocks until
+          //    the Hub confirms the explicit claim).
+          //  - lazy mode (env unset, default): resolve sessionReady
+          //    immediately. Hub-side T2 auto-claim hooks (SSE-subscribe
+          //    + first-tools/call) handle the actual claim server-side
+          //    when the next observable event happens; the adapter does
+          //    not need to intervene. CallTool gate unblocks immediately.
+          //
+          // Probes (e.g. claude mcp list) inherit env from parent shell
+          // but do NOT set OIS_EAGER_SESSION_CLAIM, so they land on the
+          // lazy branch — they exit before any tool call or SSE subscribe
+          // fires, leaving session state untouched (bug-26 resolution
+          // at the adapter layer; Hub-side closure landed in T2).
+          if (eagerWarmup) {
+            const a = agent;
+            if (!a) {
+              log("[Handshake] Eager claim_session aborted — agent reference null (should be impossible)");
+              rejectSessionReady(new Error("eager claim_session: agent reference null"));
+              return;
+            }
+            a.call("claim_session", {})
+              .then((wrapper) => {
+                // Pure helpers in eager-claim.ts handle response unwrapping +
+                // log-line formatting (testable without spinning up shim main()).
+                // HC #1: takeover detection keys on sessionClaimed +
+                // displacedPriorSession surfaced through parseClaimSessionResponse,
+                // NOT on epoch delta against any prior register_role response.
+                const parsed = parseClaimSessionResponse(wrapper);
+                log(formatSessionClaimedLogLine(parsed));
+                resolveSessionReady();
+              })
+              .catch((err) => {
+                log(`[Handshake] Eager claim_session failed: ${err}`);
+                rejectSessionReady(err);
+              });
+          } else {
+            // Lazy mode: resolve sessionReady immediately. Hub auto-claims
+            // when first SSE-subscribe or first-tools/call happens (T2).
+            log("[Handshake] Session claim deferred (lazy mode; Hub auto-claim on first SSE-subscribe / first-tools/call)");
+            resolveSessionReady();
+          }
         },
         onPendingTask: (task) => {
           appendNotification(
@@ -213,44 +261,70 @@ async function main(): Promise<void> {
     },
   );
 
-  // Two-phase ready signal:
+  // M-Session-Claim-Separation (mission-40) T3: three-phase ready signal.
   //
-  //   handshakeComplete — resolves when register_role returns (transport
-  //     connected + identity asserted). ~500ms typical. Used by ListTools
-  //     so the host's catalog fetch unblocks fast.
+  //   identityReady (was handshakeComplete) — resolves when register_role
+  //     returns (transport connected + identity asserted). ~500ms typical.
+  //     Gates ListTools so the host's catalog fetch unblocks fast.
   //
-  //   agentReady — resolves when full agent.start() returns (handshake +
-  //     runSynchronizingPhase + initial drain). Multi-second for architects
-  //     with non-empty pending-action queues. Used by CallTool so the
-  //     cognitive pipeline runs against fully-synced state.
+  //   sessionReady (NEW) — resolves when:
+  //     (a) eager mode: claim_session MCP tool returns sessionClaimed=true
+  //     (b) lazy mode: identityReady resolves (Hub auto-claims server-side
+  //         when first SSE-subscribe or first-tools/call fires; the adapter
+  //         doesn't need to intervene).
+  //     Gates CallTool so tool dispatch waits until the session is
+  //     either explicitly claimed or known-to-be-claim-eligible.
   //
-  // Why split: a previous single-phase `agentReady` gate on ListTools
-  // produced empty tool surfaces for architects whose drain ran longer
-  // than the host's tools/list patience. greg's session loaded its
-  // catalog pre-fix-deploy and was unaffected; lily's session post-deploy
-  // hit the gate cold and saw no tools. Splitting the signal keeps
-  // ListTools fast while keeping CallTool safe.
+  //   syncReady (was agentReady) — resolves when full agent.start() returns
+  //     (handshake + runSynchronizingPhase + initial drain). Multi-second
+  //     for architects with non-empty pending-action queues. Tracked for
+  //     diagnostic logging only — CallTool gates on sessionReady (faster
+  //     and semantically correct) per T3 brief §3.
+  //
+  // Eager-warmup env hint: OIS_EAGER_SESSION_CLAIM=1 → adapter calls
+  // claim_session explicitly in parallel with agent.start(). Wrapper
+  // scripts (start-greg.sh, start-lily.sh) set this. Probes inherit env
+  // from parent shell but do NOT set the var, so they stay lazy and
+  // never trigger an explicit claim — the declarative boundary that
+  // preserves bug-26 resolution at the adapter layer (Hub-side closure
+  // landed in T2 commit a011fcd).
+  //
+  // Why split (originally bug from 3bf3bdd): single-phase agentReady gate
+  // on ListTools produced empty tool surfaces for architects whose drain
+  // ran longer than the host's tools/list patience. T3 generalizes the
+  // 3bf3bdd fix into the three-phase model.
   //
   // The MCP `initialize` handler is intentionally NOT gated — Claude
   // Code's initialize timeout is tighter than the 600–1200ms handshake,
   // and a missed initialize ACK is a deterministic startup failure
-  // (see docs/reviews/bug-candidate-adapter-startup-race.md).
+  // (see docs/reviews/bug-candidate-adapter-startup-race.md, HC #3).
 
-  let resolveAgentReady!: () => void;
-  let rejectAgentReady!: (err: unknown) => void;
-  const agentReady = new Promise<void>((resolve, reject) => {
-    resolveAgentReady = resolve;
-    rejectAgentReady = reject;
-  });
-  agentReady.catch(() => { /* observed by handlers; main() rethrows */ });
+  const eagerWarmup = isEagerWarmupEnabled(process.env);
+  log(`[Handshake] Eager-warmup: ${eagerWarmup ? "ON (OIS_EAGER_SESSION_CLAIM=1)" : "OFF (lazy mode; Hub will auto-claim on first SSE / first tools/call)"}`);
 
-  let resolveHandshakeComplete!: () => void;
-  let rejectHandshakeComplete!: (err: unknown) => void;
-  const handshakeComplete = new Promise<void>((resolve, reject) => {
-    resolveHandshakeComplete = resolve;
-    rejectHandshakeComplete = reject;
+  let resolveIdentityReady!: () => void;
+  let rejectIdentityReady!: (err: unknown) => void;
+  const identityReady = new Promise<void>((resolve, reject) => {
+    resolveIdentityReady = resolve;
+    rejectIdentityReady = reject;
   });
-  handshakeComplete.catch(() => { /* observed by ListTools; main()'s catch handles fatal */ });
+  identityReady.catch(() => { /* observed by ListTools; main()'s catch handles fatal */ });
+
+  let resolveSessionReady!: () => void;
+  let rejectSessionReady!: (err: unknown) => void;
+  const sessionReady = new Promise<void>((resolve, reject) => {
+    resolveSessionReady = resolve;
+    rejectSessionReady = reject;
+  });
+  sessionReady.catch(() => { /* observed by CallTool; main()'s catch handles fatal */ });
+
+  let resolveSyncReady!: () => void;
+  let rejectSyncReady!: (err: unknown) => void;
+  const syncReady = new Promise<void>((resolve, reject) => {
+    resolveSyncReady = resolve;
+    rejectSyncReady = reject;
+  });
+  syncReady.catch(() => { /* informational; not currently used to gate */ });
 
   const dispatcher = createDispatcher({
     agent,
@@ -260,8 +334,13 @@ async function main(): Promise<void> {
       logPath: LOG_FILE,
       mirror: (block) => process.stderr.write(block),
     },
-    agentReady,
-    handshakeComplete,
+    // T3 semantic remap (DispatcherOptions param names preserved for
+    // back-compat with existing tests + the optional/legacy back-compat
+    // path in dispatcher.ts):
+    //   - dispatcher.handshakeComplete (gates ListTools) ← shim's identityReady
+    //   - dispatcher.agentReady       (gates CallTool)  ← shim's sessionReady
+    handshakeComplete: identityReady,
+    agentReady: sessionReady,
   });
   dispatcherRef = dispatcher;
 
@@ -280,15 +359,16 @@ async function main(): Promise<void> {
 
   try {
     await agent.start();
-    resolveAgentReady();
+    resolveSyncReady();
     log("Hub connection established (full sync done)");
   } catch (err) {
-    // Reject both gates so any awaiting handler surfaces a real error
-    // rather than hanging. handshakeComplete may already be resolved
-    // (handshake succeeded, sync failed) — a redundant reject after
-    // resolve is a no-op on the Promise.
-    rejectHandshakeComplete(err);
-    rejectAgentReady(err);
+    // Reject all three gates so any awaiting handler surfaces a real
+    // error rather than hanging. Resolved deferreds are immutable
+    // (post-resolve reject is a no-op on the Promise) so this is safe
+    // regardless of which phase failed.
+    rejectIdentityReady(err);
+    rejectSessionReady(err);
+    rejectSyncReady(err);
     throw err;
   }
 

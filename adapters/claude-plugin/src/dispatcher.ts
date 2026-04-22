@@ -217,6 +217,23 @@ export function createDispatcher(opts: DispatcherOptions): Dispatcher {
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
+    // ── M-Session-Claim-Separation (mission-40) T4 hook point ──
+    //
+    // T4 will insert a cached-catalog fallback here, BEFORE awaiting the
+    // identityReady gate, so probe spawns (claude mcp list) can serve
+    // ListTools from a locally-persisted cache without waiting on (or
+    // triggering) any Hub interaction. Shape:
+    //
+    //   const cached = await opts.getCachedCatalog?.();
+    //   if (cached && !await isIdentityReady()) {
+    //     return { tools: cached };
+    //   }
+    //   // ... fall through to live fetch + persist ...
+    //
+    // T3 leaves the structure obvious so T4's insertion is local — no
+    // re-refactor of the gate or the live-fetch path. Keep the live
+    // fetch + cache-write as the cache-miss / non-probe-path branch.
+
     // Wait only until handshake is done (transport connected + identity
     // asserted), NOT the full agent.start() sync phase. `agent.listTools`
     // calls `transport.listToolsRaw` which only requires transport
@@ -229,6 +246,7 @@ export function createDispatcher(opts: DispatcherOptions): Dispatcher {
     // pipeline's onListTools hooks (e.g. ToolDescriptionEnricher)
     // observe + modify the surface presented to Claude Code.
     const tools = await agent.listTools();
+    // T4 will insert: opts.persistCatalog?.(tools); — cache-write hook.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return { tools: tools as any[] };
   });

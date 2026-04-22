@@ -267,11 +267,24 @@ export async function performHandshake(
     return { response: null, epoch: ctx.previousEpoch };
   }
 
-  if (ctx.previousEpoch > 0 && response.sessionEpoch - ctx.previousEpoch > 1) {
+  // M-Session-Claim-Separation (mission-40) T3 HC #1: post-T2 register_role
+  // is pure identity assertion — does NOT increment sessionEpoch. The
+  // previousEpoch vs response.sessionEpoch comparison no longer detects
+  // "I just took over" (that signal lives on claim_session's response
+  // shape: sessionClaimed + displacedPriorSession). It still detects
+  // "someone else claimed our identity between our last register_role
+  // and this one": any positive delta means an out-of-band claim happened.
+  // Pre-T2 the threshold was `> 1` (because register_role itself bumped
+  // by 1 on every call). Post-T2 the threshold is `> 0`.
+  //
+  // Takeover detection inside the adapter (claude-plugin shim.ts T3) keys
+  // on the claim_session response fields, NOT on this delta — see
+  // mission-40 brief §3 T3 + anti-goal §7.5.
+  if (ctx.previousEpoch > 0 && response.sessionEpoch - ctx.previousEpoch > 0) {
     log.log(
       "agent.handshake.epoch_jump",
       { from: ctx.previousEpoch, to: response.sessionEpoch },
-      `[Handshake] sessionEpoch jumped from ${ctx.previousEpoch} to ${response.sessionEpoch} — in-flight RPCs from prior epoch are abandoned`
+      `[Handshake] sessionEpoch advanced from ${ctx.previousEpoch} to ${response.sessionEpoch} between register_role calls — an external claim_session has displaced our prior session; in-flight RPCs from prior epoch may be abandoned`
     );
   }
   log.log(
