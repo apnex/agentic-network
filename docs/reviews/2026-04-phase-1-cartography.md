@@ -1,6 +1,6 @@
-# Phase 1 Cartography — Pass 1.3 (tele-12 §10.2 mandatory applied; §10.3 optional polish pending Director call)
+# Phase 1 Cartography — Pass 1.3.1 (tele-12 §10.2 mandatory + §10.3 polish both applied)
 
-**Status:** Pass 1.3 — supersedes Pass 1.2 with the architect §10 addendum (tele-12 Precision Context Engineering filed via second Director exception to anti-goal §7). §10.2 mandatory (idea-116 reassignment) applied immediately. §10.3 optional 4-idea polish (idea-119, 72, 145, 146 → tele-12 primary for tightest fit) **pending Director go/no-go**. Both Director-ratification of Pass 1.2 + go/no-go on §10.3 outstanding.
+**Status:** Pass 1.3.1 — supersedes Pass 1.3 with §10.3 optional polish applied (Director-approved 2026-04-22). All architect-recommended tele-12 reassignments now in effect. **Awaits final Director ratification to close Phase 1.**
 
 **Author (Pass 1 → 1.3):** greg (engineer, eng-0d2c690e7dd5), 2026-04-22 AEST.
 **Critique authors:** lily (architect, eng-40903c59d19f) — original critique commit `89ba92a`; tele-11 addendum commit `d4b4c96`; tele-12 addendum commit `5c04f28`.
@@ -148,8 +148,8 @@ Application of architect critique §2.1 (mechanical remap of 63 audit-tagged ide
 | tele-8 (Gated Recursive Integrity) | 0 | 3 | 3 | unchanged (3 seed ideas from Pass 1.1) |
 | tele-9 (Chaos-Validated Deployment) | 16 | 5 | 5 | unchanged |
 | tele-10 (Autopoietic Evolution) | 4 | 5 | **6** | +1 (gap-fix: idea-121) |
-| **tele-11 (Cognitive Minimalism)** | — | — | **4** (Pass 1.3, after idea-116 moves to tele-12) | extensive-margin cluster: idea-107 + 115 + 138 + (Pass 1.2 had 116, removed in Pass 1.3 §10.2) |
-| **tele-12 (Precision Context Engineering)** | — | — | **1** (Pass 1.3 §10.2 mandatory) → **5** if Director approves §10.3 polish | intensive-margin cluster: idea-116 only (mandatory) + 4 polish candidates |
+| **tele-11 (Cognitive Minimalism)** | — | — | **3** (Pass 1.3.1, after §10.3 polish) | extensive-margin cluster: idea-107, 115, 138 |
+| **tele-12 (Precision Context Engineering)** | — | — | **5** (Pass 1.3.1, after §10.2 + §10.3) | intensive-margin cluster: idea-116, 119, 72, 145, 146 |
 
 **Secondary-tele additions for tele-11** (per §9.3 addendum): 9 ideas gain `audit:tele_secondary=tele-11` with primary unchanged — idea-72, 79, 108, 109, 110, 113, 114, 145, 146.
 
@@ -166,16 +166,16 @@ Both serve the broader token-economy mandate but via orthogonal mechanisms. You 
 
 **Pass 1.3 §10.2 mandatory applied:** idea-116 reassigned `audit:tele_primary=tele-12, audit:tele_secondary=tele-11`, with provenance tags `audit:eng_promoted_to_tele_11=2026-04-22-pass-1.2` (engineer's Pass 1.2 intuition) + `audit:reassigned_to_tele_12=2026-04-22-pass-1.3-mandatory` (architect §10.2 correction). Original tele-10 secondary dropped (only primary+secondary slots used; no tertiary tag schema in current state).
 
-**Pass 1.3 §10.3 optional polish** (Director-gated): 4 ideas where tele-12 is the *tightest* primary post-filing. Architect explicitly does **NOT** unilaterally reassign — scope discipline. Listed below for Director call:
+**Pass 1.3.1 §10.3 polish — Director-approved + applied:** 4 ideas reassigned to tele-12 primary for tightest fit:
 
-| Idea | Pass 1.2 current | Tightest post-tele-12 | Why |
+| Idea | Pre-1.3.1 | Pass 1.3.1 | Why |
 |---|---|---|---|
-| idea-119 (query-shape-engineering) | tele-11 primary, tele-5 secondary | tele-12 primary + tele-11 secondary | "query-shape engineering" literally names tele-12's mandate |
-| idea-72 (on-demand context retrieval) | tele-5 primary, tele-11 secondary | tele-12 primary + tele-5 secondary | On-demand retrieval IS precision context engineering |
-| idea-145 (chunked-reply v2) | tele-7 primary, tele-11 secondary | tele-12 primary + tele-7 secondary | Chunked-reply IS the "Capped Per-Response Size" tele-12 mechanism |
-| idea-146 (continuation-state v2) | tele-7 primary, tele-11 secondary | tele-12 primary + tele-7 secondary | Continuation-state IS the overflow-handling primitive |
+| idea-119 (query-shape-engineering) | tele-11 primary, tele-5 secondary | **tele-12 primary, tele-11 secondary** | "query-shape engineering" literally names tele-12's mandate |
+| idea-72 (on-demand context retrieval) | tele-5 primary, tele-11 secondary | **tele-12 primary, tele-5 secondary** | On-demand retrieval IS precision context engineering |
+| idea-145 (chunked-reply v2) | tele-7 primary, tele-11 secondary | **tele-12 primary, tele-7 secondary** | Chunked-reply IS the "Capped Per-Response Size" tele-12 mechanism |
+| idea-146 (continuation-state v2) | tele-7 primary, tele-11 secondary | **tele-12 primary, tele-7 secondary** | Continuation-state IS the overflow-handling primitive |
 
-If Director approves: 4 update_idea calls, tele-12 cluster grows from 1→5 primary, tele-11 shrinks 4→3 primary, tele-5 -1, tele-7 -2. If Director declines: Pass 1.3 stays as-is (defensible but not optimal per architect).
+Net cluster effect: tele-12 cluster grew from 1→5 primary; tele-11 shrank 4→3 primary; tele-5 -1; tele-7 -2.
 
 ### Per-cluster idea lists
 
@@ -362,12 +362,15 @@ Mechanical operations applied via MCP `update_idea` and `create_idea`:
 - Note: idea-116 promoted to tele-11 PRIMARY (beyond §9 scope; engineer-flagged per Pass 1.2 §2.1)
 - **Subtotal: 18 ops, 0 failures.**
 
-**Pass 1.3 (this commit, post-§10 addendum commit `5c04f28`):**
+**Pass 1.3 (commit `37a4609`, post-§10 addendum commit `5c04f28`):**
 - **1 × `update_idea`** — §10.2 mandatory: idea-116 reassignment (tele-11 primary → tele-12 primary, tele-11 demoted to secondary, tele-10 secondary dropped per primary+secondary-only schema)
-- Pending: 4 × `update_idea` for §10.3 optional polish — gated on Director call
-- **Subtotal: 1 op (mandatory) + 4 ops (pending Director) = 1 or 5 ops. 0 failures so far.**
+- **Subtotal: 1 op, 0 failures.**
 
-**Cumulative across Pass 1.1 + 1.2 + 1.3: 132 successful Hub operations, 0 failures.** All idempotent. Pending Director call adds 0–4 ops.
+**Pass 1.3.1 (this commit, Director-approved §10.3 polish):**
+- **4 × `update_idea`** — §10.3: idea-119, 72, 145, 146 → tele-12 primary; original primary preserved as new secondary
+- **Subtotal: 4 ops, 0 failures.**
+
+**Cumulative across Pass 1.1 + 1.2 + 1.3 + 1.3.1: 136 successful Hub operations, 0 failures.** All idempotent.
 
 ## A3. Anti-goal §7 exception provenance — tele-11 + tele-12 (same-day)
 
@@ -402,4 +405,4 @@ Same-day-double-tele-filing is unusual; methodology retrospective should evaluat
 
 ---
 
-*End of Pass 1.3. Awaiting Director ratification per brief §11 step 4 + Director go/no-go on §10.3 optional polish (4 ideas: 119, 72, 145, 146). Architect critique references: commits `89ba92a` + `d4b4c96` + `5c04f28` on agent/lily.*
+*End of Pass 1.3.1. Awaiting final Director ratification per brief §11 step 4 — Phase 1 closes upon ratification; Phase 2 (Friction Cartography) opens. Architect critique references: commits `89ba92a` + `d4b4c96` + `5c04f28` on agent/lily.*
