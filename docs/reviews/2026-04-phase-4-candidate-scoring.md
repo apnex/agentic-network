@@ -542,9 +542,12 @@ Plan §Phase 4 cap: 3-5 winners. Three presented options:
 1. **Director reviews this unified artifact** — ranks candidates, picks 3-5 winners per Option A/B/C shape, validates or adjusts anti-goals
 2. **Agents revise briefs** per Director ranking — full mission-brief shape (Name / Tele served / Goal / Scope / Success criteria / Dependencies / Effort class / Related Concepts-Defects) for each winner; both sides co-author the winners
 3. **Director final ratifies** — explicitly names which Phase 4 candidates become missions
-4. **Architect files missions** via `create_mission` (authority pattern per mission-40; documentRef links to each mission's full brief under `docs/reviews/2026-04-phase-4-briefs/` or similar)
-5. **Phase 4 closes → review completes** (all 4 phases ratified) → retrospective trigger armed per plan §Retrospective Trigger
-6. Post-review: normal mission lifecycle takes over; architectural-review-next (~quarterly cadence per methodology)
+4. **Architect files missions** via `create_mission` (authority pattern per mission-40; documentRef links to each mission's full brief under `docs/reviews/2026-04-phase-4-briefs/` or similar). **Per Director direction: all Phase-4-authored missions file as `status: proposed` (Mission FSM default) and REMAIN proposed indefinitely — no architect-driven `update_mission(status="active")` flip without explicit Director "ready to release" signal per-mission.** Default filing is sufficient; no auto-activate code path.
+5. **Director per-mission release signals** — after missions are filed and Phase 4 closes, Director retains per-mission discretion over activation. Release signals may be one-at-a-time, all-at-once, or staggered per deploy cadence. On Director signal for mission X, architect flips via `update_mission(missionId=X, status="active")`.
+6. **Phase 4 closes → review completes** (all 4 phases ratified) → retrospective trigger armed per plan §Retrospective Trigger. Retrospective fires when first ratified-and-active mission ships OR blocks non-trivially.
+7. Post-review: normal mission lifecycle takes over; architectural-review-next (~quarterly cadence per methodology).
+
+**Anti-goal re-assertion while missions are proposed-but-not-active:** Review anti-goals §1-§9 remain in force. No opportunistic mission execution; no parallel non-winner work; Phase-3 concept register is frozen reference material.
 
 ### 10.7 Artifacts after amendment
 
