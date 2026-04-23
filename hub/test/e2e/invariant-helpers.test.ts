@@ -72,7 +72,8 @@ describe("invariant-helpers", () => {
     await expect(assertInvTH18(orch, "positive")).resolves.toBeUndefined();
   });
 
-  it("assertInvTH19 is stubbed (throws InvariantNotYetTestable)", async () => {
-    await expect(assertInvTH19(orch)).rejects.toThrow(InvariantNotYetTestable);
+  it("assertInvTH19 graduated (positive mode runs without throwing)", async () => {
+    // Graduated from stub by Mission-41 Wave 2 task-338.
+    await expect(assertInvTH19(orch, "positive")).resolves.toBeUndefined();
   });
 });

@@ -464,15 +464,83 @@ export async function assertInvTH18(o: TestOrchestrator, mode: InvariantMode = "
 // ── INV-TH19 — Cascade validate-then-execute atomicity (STUBBED) ─────
 
 /**
- * INV-TH19: Cascade atomicity via validate-then-execute at the gate —
- * every staged action's validator runs before `staged→committed`
- * promotion; any validator failure rejects the whole convergence;
- * execute-phase infra failures route to `cascade_failed`. workflow-registry
- * §7.2 (ratified thread-125).
+ * INV-TH19: Cascade atomicity via validate-then-execute at the gate.
  *
- * STUBBED: requires mock-harness to inject controlled validator/executor
- * failures. Graduates to full assertion in Wave 2 post-T3+T4.
+ * - Every staged action's validator runs before `staged→committed` promotion.
+ * - Any validator failure rejects the whole convergence; thread stays `active`; no partial commit.
+ * - Post-gate execute-phase infrastructure failures route the thread to
+ *   `cascade_failed` terminal (high-priority alert), never revert committed state.
+ *
+ * workflow-registry.md §7.2 (ratified thread-125). Graduated from T2
+ * stub by Mission-41 Wave 2 task-338. Mock*Client not consumed —
+ * TestOrchestrator surface exercises the ThreadPolicy convergence handler
+ * + `validateStagedActions` + cascade.ts execute path directly; cascade
+ * atomicity is policy-layer, not shim-layer.
  */
-export async function assertInvTH19(_o: TestOrchestrator, _mode: InvariantMode = "all"): Promise<void> {
-  throw new InvariantNotYetTestable("TH19", "pending Mission-41 Wave 1 T3+T4 mock-harness");
+export async function assertInvTH19(o: TestOrchestrator, mode: InvariantMode = "all"): Promise<void> {
+  const arch = o.asArchitect();
+  const eng = o.asEngineer();
+
+  if (shouldRun(mode, "positive")) {
+    // Bilateral convergence with valid staged action → atomically committed.
+    await eng.listTasks();
+    const { threadId } = (await arch.createThread("TH19 positive", "open", { routingMode: "broadcast" })) as { threadId: string };
+    await eng.replyToThread(threadId, "agreed", {
+      converged: true,
+      summary: "Atomic-commit positive scenario",
+      stagedActions: [{ kind: "stage", type: "close_no_action", payload: { reason: "positive test" } }],
+    });
+    o.events.clear();
+    await arch.replyToThread(threadId, "agreed", { converged: true });
+    const finalized = o.events.expectEvent("thread_convergence_finalized");
+    if (finalized.data.committedActionCount !== 1) {
+      fail("TH19", "positive", `expected committedActionCount=1; got ${finalized.data.committedActionCount}`);
+    }
+    if (finalized.data.threadTerminal !== "closed") {
+      fail("TH19", "positive", `expected threadTerminal='closed' on clean cascade; got '${finalized.data.threadTerminal}'`);
+    }
+  }
+
+  if (shouldRun(mode, "negativeReject")) {
+    // Stage an invalid-payload action → gate rejects; thread stays active.
+    o.reset();
+    const arch2 = o.asArchitect();
+    const eng2 = o.asEngineer();
+    await eng2.listTasks();
+    const { threadId } = (await arch2.createThread("TH19 invalid-payload", "open", { routingMode: "broadcast" })) as { threadId: string };
+    // create_task schema requires `title` + `description`. Omit description.
+    await eng2.replyToThread(threadId, "staging invalid", {
+      converged: true,
+      summary: "invalid staged action — should reject whole convergence",
+      stagedActions: [{ kind: "stage", type: "create_task", payload: { title: "missing description" } }],
+    });
+    // Architect converges — gate should reject because staged action is invalid.
+    const archResult = await arch2.call("create_thread_reply", {
+      threadId, message: "attempting to converge", converged: true,
+    });
+    if (!archResult.isError) {
+      fail("TH19", "negativeReject", "bilateral convergence with invalid staged-action payload should reject at the gate");
+    }
+
+    // Thread remains active (not converged, not closed).
+    const thread = await o.stores.thread.getThread(threadId);
+    if (thread?.status !== "active") {
+      fail("TH19", "negativeReject", `invalid-payload rejection should leave thread 'active'; got '${thread?.status}'`);
+    }
+    // No action promoted to committed — still staged (no partial commit).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const actions = (thread as any).convergenceActions as Array<{ status: string }>;
+    const anyCommitted = actions.some((a) => a.status === "committed");
+    if (anyCommitted) {
+      fail("TH19", "negativeReject", "no action should be committed when gate rejects; found a 'committed' entry");
+    }
+  }
+
+  // Edge mode: post-gate execute-phase failure → `cascade_failed`. Not
+  // directly forceable without cascade-handler fault injection (cascade
+  // handlers don't have a built-in test-only failure hook). Documented
+  // here + covered separately by cascade-specific tests (e2e-chaos.test.ts,
+  // thread-truncation.test.ts). INV-TH19's edge branch is a no-op at
+  // TestOrchestrator level; positive + negativeReject cover the
+  // validate-then-execute atomicity gate itself.
 }

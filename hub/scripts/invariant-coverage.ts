@@ -37,9 +37,9 @@ const RATIFIED_INVARIANTS = [
   { id: "INV-TH19", note: "Cascade validate-then-execute atomicity — P2 spec" },
 ] as const;
 
-// INV-TH18 graduated from stub by Mission-41 Wave 2 task-337 (commit
-// shipping this scanner update). INV-TH19 graduates in task-338.
-const STUBBED = new Set<string>(["INV-TH19"]);
+// Wave 2 complete — all 10 ratified invariants graduated.
+// INV-TH18 graduated by task-337; INV-TH19 graduated by task-338.
+const STUBBED = new Set<string>();
 
 // The 18 non-ratified NONE invariants from workflow-registry §7.2.
 // Kept hard-coded for v1; a Wave-3 enhancement can parse the spec
