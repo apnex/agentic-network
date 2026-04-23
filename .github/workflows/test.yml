@@ -70,3 +70,17 @@ jobs:
             git diff -- docs/audits/workflow-test-coverage.md
             exit 1
           fi
+
+  # Mission-45 Fix B (thread-275) — aggregator job. Branch-protection rules
+  # reference a literal status-check name; matrix jobs produce per-cell
+  # check names (`vitest (hub)`, `vitest (packages/cognitive-layer)`, etc.)
+  # which are brittle to gate on (every new package forces a rule edit).
+  # This `test` aggregator maps the 5 matrix cells + coverage-report-sync
+  # to a single check name that branch protection can gate on — matrix
+  # structure can evolve without touching the rule.
+  test:
+    name: test
+    needs: [vitest, coverage-report-sync]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All test jobs passed."
