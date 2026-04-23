@@ -18,7 +18,7 @@ If you're picking up cold:
 
 1. **Read this file first**, then the brief (`git show agent/lily:docs/reviews/2026-04-phase-4-briefs/m-workflow-test-harness.md`) and kickoff decisions (`git show agent/lily:docs/missions/mission-41-kickoff-decisions.md`). Briefs + kickoff live on agent/lily — do not merge; read via `git show`.
 2. **Hub mission id:** mission-41 (status=active, correlationId="mission-41").
-3. **Current in-flight:** nothing claimed. **Wave 2 Batch 1 COMPLETE** (engineer-side) 2026-04-23 AEST mid. All 8 entity-invariant tests shipped (tasks 329-336; commits `b21ae23` → `2b9518e`); 45 new hub tests; hub suite 694/699 pass (was 654+5 at Wave-1 close; +40 new across 8 test files + INV-P2's ratchet-closing policy fix). INV-P2 ratchet CLOSED via bundled proposal-policy status guard (`1019b4f`). Remaining: **Wave 2 Batch 2** — open new thread to file INV-TH18 + INV-TH19 graduation tasks with real `dependsOn` referencing completed entity-task IDs (task-329 is the canonical "entity test shipped" signal per thread-261 pre-ratified shape). Next engineer action: open architect thread for Batch 2 filing.
+3. **Current in-flight:** nothing claimed. **Wave 2 Batch 2 in flight** — INV-TH18 graduation shipped `e1a8ff2` (task-337, `in_review`); INV-TH19 graduation (task-338, not yet filed — awaits task-337 completion per thread-263 commitment so `dependsOn: [task-337]` demonstrates the DAG auto-unblock cascade). Hub suite 705/710 pass (was 694+5 at Batch-1 close; +11). Coverage: INV-TH18 flipped Stub→Tested; INV-TH19 remains Stub. Next engineer action: await architect review of task-337; after completion, open a new thread to file INV-TH19 with real `dependsOn: [task-337]`.
 4. **Ratified scope inputs (do NOT re-litigate):**
    - Wave 2 invariant subset (10 exactly): INV-TH18, INV-TH19, INV-T4, INV-P1, INV-P2, INV-P4, INV-TH6, INV-TH7, INV-I2, INV-M4
    - Wave 1 adapter scope: shim-side IN (absorbs idea-104 partial)
@@ -30,13 +30,13 @@ If you're picking up cold:
 
 ## In-flight
 
-_(nothing claimed — Wave 2 Batch 1 COMPLETE (8/8 entity tests in_review awaiting approvals). Batch 2 (TH18/TH19 graduations) to be filed via new thread.)_
+_(nothing claimed — task-337 INV-TH18 graduation `in_review` awaiting architect approval; task-338 INV-TH19 graduation filing deferred until task-337 completion so `dependsOn: [task-337]` exercises the DAG auto-unblock cascade per thread-263 commitment.)_
 
 ---
 
 ## Queued / filed
 
-- ○ **Wave 2 Batch 2 — INV-TH18 / INV-TH19 graduation tasks** — READY to file. Will open new architect thread with `create_thread`; staged actions will include `dependsOn: [task-329]` (TH18) + `dependsOn: [task-329, <TH18-future-task-id>]` (TH19) per thread-261 pre-ratified shape. Graduation work: strip `InvariantNotYetTestable` stubs from T2 helpers; wire Mock*Client harnesses into assertion bodies.
+- ○ **INV-TH19 graduation (Wave 2 Batch 2, task 2)** — to be filed post-task-337-completion. Architect's thread-263 refinement: `dependsOn: [task-337]` (forward-looking, demonstrates DAG cascade auto-unblock on the TH19→TH18 link). Scope: strip `InvariantNotYetTestable` stub from `assertInvTH19` helper + wire cascade-atomicity assertion body (validate-then-execute at gate; validator failure rejects whole convergence; post-gate execute failures route to `cascade_failed`).
 - ○ **Wave 3 scope** — `workflow-registry.md §7 Tested By` column updates + precise out-of-scope enumeration (resolve `INV-S*-unlisted` / `INV-XD*-unlisted` placeholders in coverage report) + remaining-gap follow-up-idea filings. Post-Wave-2.
 - ○ **Mission closing audit (post-Wave-3)** — 5 Wave 1 docs-drift clarifications to fold + Wave 2 findings: INV-T4 scope surfaced that `failed` is only reachable via cascade in prod (no router-FSM path — spec-level clarification candidate) + `read_completed`/`reported_completed` task-status enum values exist without FSM transitions (Wave-3 enumeration candidate).
 
@@ -53,6 +53,7 @@ _(nothing claimed — Wave 2 Batch 1 COMPLETE (8/8 entity tests in_review awaiti
 - ✅ **task-328 (T5 — Coverage-report tooling + CI merge-gate)** — shipped commit `1793a62`. **FINAL Wave 1 deliverable; Wave 1 closes on T5 approval.** Four sub-scopes delivered: (1) scanner `hub/scripts/invariant-coverage.ts` (~200 LOC) walks 5 test roots for `assertInv<ID>(` call-sites — tightened regex excludes description-string false-positives; (2) generated `docs/audits/workflow-test-coverage.md` with 8 Tested + 2 Stub + 10 Out-of-Scope rows; (3) `.github/workflows/test.yml` with 5-package vitest matrix (hub + cognitive-layer + network-adapter + claude-plugin + opencode-plugin) + separate `coverage-report-sync` drift-check job; (4) deliberate-fail gate verification reproduced locally — seeded `fail("T4", "positive", ...)` in `assertInvT4`, vitest exited with code 1 + failing INV line clearly named, reverted. **Design notes:** no prior `.github/workflows/` existed (this is the first CI workflow in the repo); no prior `hub/scripts/` directory. Ratified subset (10 INVs) hard-coded in scanner from kickoff-decisions §Decision 1; Wave-3 enhancement could parse workflow-registry §7.2 instead. Out-of-scope list includes placeholder entries (`INV-S*-unlisted`/`INV-XD*-unlisted`) for precise Wave-3 enumeration. **Real deliberate-fail PR deferred** to post-merge (worktree engineer lacks push authority). **Verification:** hub 649/649 pass; `npm run coverage:invariants` exits clean with 10 distinct INV ids found (2 sites each — test + definition); tsc clean. Report `reports/task-328-v1-report.md`; architect review at `reviews/task-328-v1-review.md`; task `completed`. Architect praised "first CI workflow in the repo" as the tele-8 Phase 1 reverse-gap mechanical closure.
 - ✅ **Wave 1 closing audit — `docs/audits/m-workflow-test-harness-closing-report.md`** — shipped commit `68843de` per architect's thread-260 Option-B recommendation. 322-line report aggregates: deliverable scorecard with effort-vs-budget (5 tasks / ~3 hours vs ~1-week estimate = ~12× faster), success-criteria status per brief §S-C, per-task architecture recap, observability surface inventory (8 new artifact classes), 5 docs-drift findings compiled (T3+T4 proxy.ts/hub-notifications.ts → shim.ts+dispatcher.ts corrections), 7 implementation findings handled inline, scope-deviation defense (all 7 deviations review-accepted), mission timeline, Wave 2 + Wave 3 prereqs cleared, tele-alignment retrospective (5/5 score maintained), key references, 5 Wave 2 recommendations. **Explicit scope note:** Wave 1 only; Wave 2/3 audits filed separately or amend on mission close. **Not a decision-making artifact — captures state-of-play for future-me / cold-engineer resumption.**
 - ✅ **thread-261 convergence (Wave 2 Batch 1 filing)** — Director greenlit Wave 2 via architect-initiated thread-261 "Mission-41 Wave 2 — file with DAG (dependsOn auto-unblock)" 2026-04-23 03:28Z. Architect direction: use DAG primitive properly this time (Wave 1 filed `dependsOn: []` which forced mini-thread-per-completion cadence; workflow gap acknowledged for future idea-108 Hub-as-Conductor mission). Engineer-authored 2-batch decomposition: **Batch 1** (this convergence) stages 8 entity-invariant test `create_task` actions with `dependsOn: []` — tests are genuinely independent (no inter-test coupling; each uses one T2 helper against fresh orchestrator state); **Batch 2** (deferred) will file TH18/TH19 graduations post-Batch-1-completion with real `dependsOn` referencing completed entity-task IDs (so DAG cascade auto-unblock actually fires — the stated workflow-gap mitigation). INV-P2 test bundles the proposal-policy status-guard fix as atomic scope (not split as prerequisite — the gap-surfacing ratchet closes in one commit). Engineer-convergence 2026-04-23 03:31Z; bilateral convergence 2026-04-23 03:32Z; cascade committed 9 actions (executed=9, failed=0) spawning tasks 329-336. Test-file layout decided: one file per INV under `hub/test/e2e/invariants/`.
+- ✅ **task-337 (Wave 2 T9/10 — INV-TH18 graduation)** — shipped commit `e1a8ff2`. First graduation task; proves stub-then-graduate pattern end-to-end. Strip `InvariantNotYetTestable` from `assertInvTH18`; real body covering positive (routingMode persistence across unicast/broadcast/multicast per ADR-016 vocabulary) + negativeReject (4 field-consistency rejection shapes from `validateRoutingModeArgs`) + edge (broadcast→unicast coercion on first reply — the single permitted INV-TH18 transition). New `hub/test/e2e/invariants/INV-TH18.test.ts` (11 tests). Self-test flipped from "throws InvariantNotYetTestable" to "resolves undefined". Scanner STUBBED set updated to remove INV-TH18. Mock*Client NOT consumed — TestOrchestrator surface sufficed (documented in helper JSDoc; policy-layer routing-mode enforcement is transport-agnostic). Hub suite: 705/710 pass (was 694+5; +11 new — 10 INV-TH18 tests + 1 self-test delta). Coverage: INV-TH18 flips Stub→Tested. **Finding (ergonomics):** ActorFacade lacks `engineerId` accessor — used inline `engineerIdFor(orch)` helper resolving via registry; worth considering for a future orchestrator refactor. Report filed `reports/task-337-v1-report.md`; status → `in_review`. **task-338 INV-TH19 filing waits for task-337 completion** per thread-263 commitment.
 - ✅ **Wave 2 Batch 1 — 8 entity-invariant tests shipped (tasks 329-336)** — 2026-04-23 AEST mid, all shipped + `in_review` within one batch-continue session per thread-262 cadence. Summary ship-commit table:
 
   | Task | INV | Commit | Tests | Notable |
@@ -88,8 +89,9 @@ Wave 2 Batch 1 COMPLETE — 8/8 entity-invariant tests shipped:
   task-333 ✅ INV-TH6 (11f0714)  task-334 ✅ INV-TH7 (015ec94)
   task-335 ✅ INV-I2  (a79de1d)  task-336 ✅ INV-M4  (2b9518e)
 
-Wave 2 Batch 2 (TH18/TH19 graduation) ○ — about to file via new thread;
-  dependsOn: [task-329] (TH18) + [task-329, <TH18-task-id>] (TH19)
+thread-263 (Wave 2 Batch 2 filing) ✅ → task-337 (TH18 graduation) cascade-created
+task-337 ✅ (INV-TH18; e1a8ff2; Stub→Tested; 11 tests) → task-338 ○ (INV-TH19 graduation,
+  to be filed post-task-337-completion with dependsOn: [task-337] — DAG exercise link)
 
 Wave 3: coverage-report fold into workflow-registry §7 + precise enumeration of
         INV-S*/INV-XD* placeholders + follow-up-idea filings for uncovered INVs.
@@ -127,7 +129,7 @@ Wave 3: coverage-report fold into workflow-registry §7 + precise enumeration of
 - **Wave 2 Batch 1 filing thread** — thread-261 (closed bilateral, 9 actions executed — 8 create_task + 1 close_thread).
 - **Wave 2 Batch 1 T1-approval / batch-continue thread** — thread-262 (closed bilateral, 2 actions executed).
 - **Architect review of Wave 2 T1 (INV-T4)** — `reviews/task-329-v1-review.md`.
-- **Wave 2 Batch 2 filing thread** — thread-263 (architect-initiated as of this entry).
+- **Wave 2 Batch 2 filing thread** — thread-263 (closed bilateral, 2 actions executed — 1 create_task + 1 close_thread).
 - **Architect review of T1** — `reviews/task-324-v1-review.md`.
 - **Architect review of T2** — `reviews/task-325-v1-review.md`.
 - **Architect review of T3** — `reviews/task-326-v1-review.md`.
@@ -143,6 +145,8 @@ Wave 3: coverage-report fold into workflow-registry §7 + precise enumeration of
 - **Wave 1 closing audit** — `docs/audits/m-workflow-test-harness-closing-report.md` (commit `68843de`; scope = Wave 1 only).
 - **Wave 2 Batch 1 ship commits** — `b21ae23` (T4) · `b41e8e0` (P1) · `1019b4f` (P2) · `e0cc8ec` (P4) · `11f0714` (TH6) · `015ec94` (TH7) · `a79de1d` (I2) · `2b9518e` (M4).
 - **Wave 2 Batch 1 engineer reports** — `reports/task-329-v1-report.md` through `reports/task-336-v1-report.md`.
+- **Wave 2 Batch 2 ship commits** — `e1a8ff2` (TH18 graduation). TH19 pending.
+- **Wave 2 Batch 2 engineer reports** — `reports/task-337-v1-report.md` (TH18).
 - **Bug closed-by T1** — bug-12 (`packages/network-adapter/test/helpers/policy-loopback.ts` ADR-017 store drift).
 - **Idea partially-absorbed** — idea-104 (Mock Harness; shim-side portion folded into Wave 1 per kickoff-decision #2).
 - **Trace management guide** — `docs/traces/trace-management.md`.
