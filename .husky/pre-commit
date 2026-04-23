@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Mission-45 Task 5 — pre-commit secret-scan (filename-pattern gate).
+#
+# Mirrors .github/workflows/secret-scan.yml (T4) so local + CI enforcement
+# stay consistent. Blocks commits that ADD files whose basenames match
+# dangerous filename patterns. Modifications of existing files are not
+# blocked (mission-41 historical debt was already cleaned in d4cb120).
+#
+# Install:  scripts/setup-hooks.sh    (one-time; sets core.hooksPath .husky)
+# Bypass:   git commit --no-verify    (emergency; audit-visible in reflog)
+
+set -euo pipefail
+
+# Dangerous basename patterns — brief §Scope Task 5, Director-flagged
+# decision #4 (engineer-recommendation: comprehensive v1.0). Kept in lockstep
+# with .github/workflows/secret-scan.yml — if one changes, both change.
+DANGEROUS_PATTERNS=(
+  '*.tfvars'
+  '*.tfstate*'
+  '*.env*'
+  '*.pem'
+  '*.key'
+  'credentials.*'
+  'secrets.*'
+  '*private*'
+)
+
+# Known-safe suffix allowlist — mission-41 anonymize convention
+# (committed *.example / *.sample / *.template placeholders are legit).
+# Kept in lockstep with T4.
+SAFE_SUFFIXES=(
+  '.example'
+  '.sample'
+  '.template'
+)
+
+# Newly-added files staged for this commit
+staged=$(git diff --cached --name-only --diff-filter=A)
+
+if [[ -z "$staged" ]]; then
+  exit 0
+fi
+
+violations=()
+shopt -s nocasematch
+
+while IFS= read -r path; do
+  [[ -z "$path" ]] && continue
+  base="${path##*/}"
+
+  safe=0
+  for suffix in "${SAFE_SUFFIXES[@]}"; do
+    if [[ "$base" == *"$suffix" ]]; then
+      safe=1
+      break
+    fi
+  done
+  if [[ "$safe" -eq 1 ]]; then
+    continue
+  fi
+
+  for pat in "${DANGEROUS_PATTERNS[@]}"; do
+    if [[ "$base" == $pat ]]; then
+      violations+=("$path (matched: $pat)")
+      break
+    fi
+  done
+done <<< "$staged"
+
+shopt -u nocasematch
+
+if [[ ${#violations[@]} -gt 0 ]]; then
+  {
+    printf '\n'
+    printf 'ERROR: pre-commit secret-scan blocked this commit.\n'
+    printf 'Mission-45 T5 filename-pattern gate detected dangerous file(s):\n\n'
+    for v in "${violations[@]}"; do
+      printf '  - %s\n' "$v"
+    done
+    printf '\n'
+    printf 'These filename patterns must not land on main per mission-45\n'
+    printf 'secret-scan policy (ADR-023 Phase 1, Director-flagged decision #4).\n\n'
+    printf 'If this is a known-safe placeholder, rename to use one of the\n'
+    printf 'allowlist suffixes: .example, .sample, .template\n'
+    printf "  (e.g.  'prod.tfvars'  ->  'prod.tfvars.example')\n\n"
+    printf 'Bypass (emergency only, audit-visible):   git commit --no-verify\n'
+    printf 'Raise false-positive:                      architect/engineer thread\n'
+  } >&2
+  exit 1
+fi
+
+exit 0
