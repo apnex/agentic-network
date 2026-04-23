@@ -4,8 +4,10 @@
 **Brief:** `docs/reviews/2026-04-phase-4-briefs/m-cascade-correctness-hardening.md`
 **Preflight author:** architect (lily)
 **Date:** 2026-04-23
-**Verdict:** **YELLOW** (passes A/B/C/E/F; Category D has 3 items, one of which requires substantive re-scoping due to new information since brief)
+**Verdict:** **GREEN** (all categories pass; Director ratified Category D decisions 2026-04-23 with substantive Task 4 re-scope)
 **Freshness:** current until 2026-05-23
+**Kickoff decisions:** `docs/missions/mission-42-kickoff-decisions.md` (ratified 2026-04-23)
+**Activation:** mission stays `proposed` pending Director release-gate signal — preflight pre-ratifies readiness
 
 ---
 
@@ -37,12 +39,12 @@
 
 ## Category D — Scope-decision gating
 
-- **D1.** Engineer-flagged scope decisions resolved: **FAIL — 3 items; #2 requires substantive re-scoping**
-  1. **Intra-mission sequencing** (engineer flag #1) — engineer proposes bug-27 → bug-28 → bug-22 → bug-23 with no intra-mission parallelization (investigation-risk isolation). Confirm-level decision; matches brief. **Proposed default: ratify as engineer-sequenced.**
-  2. ⚠️ **bug-23 Task 4 re-scoping** (engineer flag #2 + new info since brief) — bug-23 §Verification attempt ALREADY verified H1 (cascade-completes-before-engineer-seal) via thread-242 controlled comparison on 2026-04-21. Brief's Task 4 ("Investigate H1") is out-of-date. Engineer flag asks whether H1-fix requires a separate ADR if Hub FSM extension is needed. Given H1 is verified, Task 4 pivots from *investigate* to *fix*, and the real question becomes **fix shape**: either (a) add explicit `awaiting_bilateral_seal` FSM state between cascade-fire and close, OR (b) make engineer-seal idempotent post-cascade-close. Both are architect-decision-class (ADR candidate). **Proposed default: Task 4 scope updated; architect-led ADR sketch first, fix-implementation second. Requires Director ratification on ADR-vs-in-mission-decision boundary.**
-  3. **Cross-test integration** (engineer flag #3) — engineer recommends using #1 Workflow Test Harness for bug-22 + bug-28 specifically (FSM state + DAG dep-eval are high-value invariant coverage targets); bug-23 + bug-27 may use mission-internal tests. Confirm-level decision. **Proposed default: ratify as engineer-recommended.**
-- **D2.** Director + architect alignment: **PENDING** — Decision #2 needs Director ratification on new scope
-- **D3.** Out-of-scope boundaries confirmed: **PASS** — brief §Out of scope lists 4 explicit exclusions (idea-94 cascade audit replay-queue, CP4 retry_cascade, mission-cascade drift/numbering, bug-20 workflow-advancement); boundaries hold
+- **D1.** Engineer-flagged scope decisions resolved: **PASS** — all 3 items ratified by Director 2026-04-23; captured in `docs/missions/mission-42-kickoff-decisions.md`
+  1. **Intra-mission sequencing** — ratified: engineer-proposed serial bug-27 → bug-28 → bug-22 → bug-23; no intra-mission parallelization
+  2. **bug-23 Task 4 re-scope** — ratified (substantive): pivot from *investigate* → *fix*; ADR-first protocol (architect drafts fix-shape comparison in parallel with bug-27/28; Director ratifies ADR; engineer implements ratified shape); Task 4 effort ~1.5-2 weeks
+  3. **Cross-test integration** — ratified: harness for bug-22 + bug-28; mission-internal for bug-23 + bug-27; architect refinement — bug-23 discretionary-upgrade to harness if available at Task 4 time
+- **D2.** Director + architect alignment: **PASS** — Director ratified via chat signal 2026-04-23
+- **D3.** Out-of-scope boundaries confirmed: **PASS** — brief §Out of scope lists 4 explicit exclusions; kickoff decisions preserve boundary discipline
 
 ## Category E — Execution readiness
 
@@ -60,20 +62,19 @@
 
 ## Verdict summary
 
-**YELLOW** — Mission-42 is activation-ready pending Director ratification of 3 Category D decisions, one of which (Task 4 re-scoping for bug-23) is substantive. bug-23's H1 race-hypothesis was verified 2026-04-21 via thread-242 controlled comparison, making the brief's "investigate H1" framing obsolete — Task 4 should pivot to fix-implementation, with the fix-shape decision (new FSM state vs idempotent engineer-seal) elevated to an architect-led ADR. Remaining decisions (intra-mission sequencing, cross-test integration) are confirm-level. Timing-wise, mission-42 can activate immediately; its bug-27 (Task 1) starts before mission-41 Wave 1 lands; bug-28 (Task 2) onwards sequence naturally after Wave 1 to use the test-harness infrastructure.
+**GREEN** — Mission-42 is activation-ready. All 6 check categories pass; the 3 Category D scope decisions have been ratified by Director 2026-04-23 and captured in `docs/missions/mission-42-kickoff-decisions.md`. Substantive re-scoping on Task 4 (bug-23 fix rather than investigation; ADR-first protocol for fix-shape) is the load-bearing ratification — reflects H1 verification that post-dated brief authoring. Mission remains in `proposed` status pending Director release-gate signal (`update_mission(status="active")`); activation is a separate Director call on operational readiness.
 
-## Pre-kickoff decisions required (for YELLOW → GREEN)
+## Ratified kickoff decisions
 
-1. **Intra-mission sequencing — ratify.** Default: engineer-sequenced bug-27 → bug-28 → bug-22 → bug-23; no intra-mission parallelization.
+1. **Intra-mission sequencing:** serial bug-27 → bug-28 → bug-22 → bug-23; no intra-mission parallelization
+2. **bug-23 Task 4 scope:** pivot from *investigate* → *fix*; ADR-first protocol (architect drafts fix-shape comparison in parallel with bug-27/28 work; Director ratifies ADR; engineer implements ratified shape as Task 4)
+3. **Cross-test integration:** harness for bug-22 + bug-28; mission-internal for bug-23 + bug-27; bug-23 discretionary-upgrade to harness if available at Task 4 time
 
-2. **Task 4 scope re-definition (bug-23) — substantive decision.** H1 already verified. Two sub-decisions needed:
-   - **(2a)** Confirm Task 4 pivots from *investigate* to *fix*.
-   - **(2b)** Ratify fix-shape decision protocol: architect drafts ADR comparing (a) new `awaiting_bilateral_seal` FSM state vs (b) idempotent engineer-seal post-cascade-close; Director ratifies ADR; engineer implements ratified shape. Alternative: defer ADR, let engineer propose fix-shape as part of Task 4 design; architect reviews.
-   - **Proposed default:** (2a) yes, pivot to fix; (2b) architect-led ADR first (H1 fix-shape affects Threads 2.0 FSM surface — warrants architect design pass before implementation).
+Full rationale: `docs/missions/mission-42-kickoff-decisions.md`.
 
-3. **Cross-test integration — ratify.** Default: use #1 Workflow Test Harness for bug-22 + bug-28 (FSM + DAG are high-value INV coverage); mission-internal tests for bug-23 + bug-27.
+## Effort class impact
 
-**Estimated kickoff duration:** ~45-60 minutes (longer than mission-41 because of Decision #2's architectural substance).
+Original brief: M (~2 weeks). Task 4 re-scope (ADR + implementation) extends to ~1.5-2 weeks from ~1 week investigation-only. Total mission effort now ~2.5-3 weeks. Still M by a hair; borderline L. Informational flag; no re-classification triggered.
 
 ---
 
