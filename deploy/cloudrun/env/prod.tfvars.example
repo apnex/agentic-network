@@ -7,8 +7,8 @@
 # Copy to prod.tfvars and fill in values. Do NOT commit prod.tfvars
 # (excluded by deploy/.gitignore).
 
-project_id                   = "labops-389703"
-region                       = "australia-southeast1"
+project_id                   = "<your-gcp-project-id>"
+region                       = "<your-gcp-region>"
 
 # Secrets — DO NOT commit real values
 hub_api_token                = "<generate-with-openssl-rand-base64-32>"
