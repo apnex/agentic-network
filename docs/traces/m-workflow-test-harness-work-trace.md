@@ -18,7 +18,7 @@ If you're picking up cold:
 
 1. **Read this file first**, then the brief (`git show agent/lily:docs/reviews/2026-04-phase-4-briefs/m-workflow-test-harness.md`) and kickoff decisions (`git show agent/lily:docs/missions/mission-41-kickoff-decisions.md`). Briefs + kickoff live on agent/lily — do not merge; read via `git show`.
 2. **Hub mission id:** mission-41 (status=active, correlationId="mission-41").
-3. **Current in-flight:** task-324 (T1 — PolicyLoopbackHub parity + bug-12 fix) claimed at 2026-04-23 AEST mid. Next engineer action: fix `packages/network-adapter/test/helpers/policy-loopback.ts` (wire `MemoryPendingActionStore` + `MemoryDirectorNotificationStore`), restore `threads-2-smoke.test.ts` to GREEN, close bug-12.
+3. **Current in-flight:** nothing claimed. task-324 (T1) shipped as a verify + audit + status-flip closure (bug-12 was already code-fixed in commit `635a58e` pre-mission-41); filed `in_review` 2026-04-23 AEST mid; awaiting architect review. Next engineer action: claim task-325 (T2 — FSM-invariant assertion helpers) once architect converts task-324 to `completed`, OR proactively claim T2 if architect indicates parallelism is fine.
 4. **Ratified scope inputs (do NOT re-litigate):**
    - Wave 2 invariant subset (10 exactly): INV-TH18, INV-TH19, INV-T4, INV-P1, INV-P2, INV-P4, INV-TH6, INV-TH7, INV-I2, INV-M4
    - Wave 1 adapter scope: shim-side IN (absorbs idea-104 partial)
@@ -30,13 +30,13 @@ If you're picking up cold:
 
 ## In-flight
 
-- ▶ **task-324 (T1 — PolicyLoopbackHub parity + bug-12 fix)** — claimed 2026-04-23 AEST mid. Scope: wire ADR-017 stores into cross-package loopback helper; diff store-surface vs hub testbed; restore `threads-2-smoke.test.ts` 11/11 GREEN; close bug-12 with fixCommits. Est. ~0.5 day.
+_(nothing claimed — task-324 shipped; awaiting architect review. T2-T5 claim-eligible; T2 next-up by dependency order.)_
 
 ---
 
 ## Queued / filed
 
-- ○ **task-325 (T2 — Hub testbed FSM-invariant assertion helpers)** — pending. Extend `hub/test/e2e/orchestrator.ts` with 10 `assertInv*` helpers (one per ratified invariant). Unblocks Wave 2 parallel-start on 8 entity-invariant NONEs. Depends on T1 complete.
+- ▶ **task-325 (T2 — Hub testbed FSM-invariant assertion helpers)** — NEXT-UP. Extend `hub/test/e2e/orchestrator.ts` with 10 `assertInv*` helpers (one per ratified invariant). Unblocks Wave 2 parallel-start on 8 entity-invariant NONEs. T1 parity confirmed clean, so nothing gates T2 structurally — only awaiting architect review of task-324 before claim.
 - ○ **task-326 (T3 — MockClaudeClient scaffold)** — pending. Deterministic test driver over real `adapters/claude-plugin/src/proxy.ts` via loopback. Absorbs idea-104 partial. Depends on T1; weak-couples to T2.
 - ○ **task-327 (T4 — MockOpenCodeClient scaffold)** — pending. Mirror of T3 for `adapters/opencode-plugin/hub-notifications.ts`. Parallelizable with T3.
 - ○ **task-328 (T5 — Coverage-report tooling + CI merge-gate)** — pending. Machine-readable `docs/audits/workflow-test-coverage.md` + vitest→GitHub Actions merge-gate + deliberate-fail PR verification. Depends on T2; decouples from T3/T4.
@@ -49,7 +49,7 @@ If you're picking up cold:
 
 - ✅ **thread-255 convergence (mission-41 activation scaffolding)** — architect briefed activation 2026-04-23 01:36:23Z; engineer replied 2026-04-23 01:41:28Z with 5-task Wave 1 decomposition + 5 `create_task` staged actions + non-empty summary; bilateral convergence at 2026-04-23 01:48:26Z; cascade committed 6 actions (executed=6, failed=0) spawning tasks 324-328. Thread closed.
 - ✅ **Task filings — tasks 324 → 328 cascade-spawned under mission-41 correlationId** — 5 tasks with engineer-authored dependency ordering: T1 (bug-12 + parity) → T2 (FSM-invariant helpers) → {T3 MockClaude | T4 MockOpenCode parallel} → T5 (coverage-report + CI gate). All 5 carry sourceThreadId=thread-255 + sourceActionId=action-1..5 for back-link provenance.
-- ✅ **task-324 claimed** — `get_task` assigned T1 to eng-0d2c690e7dd5; status flipped pending → working at 2026-04-23 01:47:48Z.
+- ✅ **task-324 (T1 — PolicyLoopbackHub parity audit + bug-12 fix)** — shipped as verify + audit + status-flip closure. Report filed `reports/task-324-v1-report.md`; task flipped pending → working → `in_review` at 2026-04-23 AEST mid. **Discovery:** bug-12 was already code-fixed in commit `635a58e [bug-12] Wire ADR-017 stores into PolicyLoopbackHub` (pre-mission-41, pre-worktree). Verified fix is live: `threads-2-smoke.test.ts` 11/11 PASS in 890ms. **Parity audit verdict: CLEAN.** PolicyLoopbackHub vs TestOrchestrator at full structural parity on all three surfaces — 12 `AllStores` entries ✓, 13 policy registrations ✓, 9 `IPolicyContext` fields ✓. Two semantic differences in `dispatch`/`emit` noted but by design (TestOrchestrator does ADR-014 engineer→role resolution for assertion ergonomics; PolicyLoopbackHub broadcasts to LoopbackTransport sessions for L7 E2E tests). No drifts to file as new bugs. **Hub state hygiene:** bug-12 flipped `open → resolved` with `fixCommits=["635a58e"]`, `linkedTaskIds=["task-324"]`, `linkedMissionId="mission-41"`. **Architect review pending.**
 
 ---
 
@@ -57,12 +57,12 @@ If you're picking up cold:
 
 ```
 thread-255 (activation scaffolding) ✅ → mission-41 tasks 324-328 cascade-created
-task-324 ▶ (T1: bug-12 + parity) → task-325 ○ (T2: assertion helpers)
-task-325 ○ → task-326 ○ (T3: MockClaudeClient)  ┐
-task-325 ○ → task-327 ○ (T4: MockOpenCodeClient) ├ parallel
-task-325 ○ → task-328 ○ (T5: coverage + CI gate)
+task-324 ✅ (T1 in_review; bug-12 resolved; parity CLEAN) → task-325 ▶ (T2 next-up)
+task-325 ▶ → task-326 ○ (T3: MockClaudeClient)  ┐
+task-325 ▶ → task-327 ○ (T4: MockOpenCodeClient) ├ parallel
+task-325 ▶ → task-328 ○ (T5: coverage + CI gate)
 
-task-325 ○ (T2 merge) → Wave 2 partial-start unblock (8 entity-invariant tests claim-eligible)
+task-325 ▶ (T2 merge) → Wave 2 partial-start unblock (8 entity-invariant tests claim-eligible)
 {task-326, task-327} ○ (T3+T4 merge) → INV-TH18/TH19 test graduation (Wave 2 workflow tests)
 T5 ○ → Wave 3 coverage-report fold + §7 spec-column updates (post-Wave-2)
 ```
@@ -72,6 +72,7 @@ T5 ○ → Wave 3 coverage-report fold + §7 spec-column updates (post-Wave-2)
 ## Session log (append-only)
 
 - **2026-04-23 mid** — Mission-41 activated. Architect (eng-40903c59d19f) briefed scaffolding kickoff on thread-255 at 2026-04-23 01:36:23Z with pointers to brief + kickoff + preflight + methodology (all on agent/lily; read via `git show` — no merge per worktree-isolation discipline). Loaded all four docs; confirmed `get_mission(mission-41)` → status=active. Replied to thread with 5-task Wave 1 decomposition (T1 bug-12+parity → T2 assertion helpers → T3/T4 parallel mock clients → T5 coverage+CI) + 5 staged `create_task` actions + summary; converged=true. Architect converged back at 01:48:26Z; cascade executed 6 actions spawning tasks 324-328. Claimed T1 via `get_task` (task-324 pending → working). Bug-12 scope (RCA verified via `get_bug`): ~10 LOC wiring two ADR-017 stores into `packages/network-adapter/test/helpers/policy-loopback.ts`. All 3 ratified kickoff decisions held as non-negotiable inputs — not re-litigated. Trace file filed per user instruction (durable trace-maintenance obligation acknowledged).
+- **2026-04-23 mid (continuation)** — task-324 executed and shipped as verify + audit + status-flip closure rather than a code-change task. **Discovery:** the bug-12 fix was already landed in commit `635a58e [bug-12] Wire ADR-017 stores into PolicyLoopbackHub` (pre-mission-41, pre-agent/greg worktree head). Ran `vitest` against `threads-2-smoke.test.ts` → 11/11 PASS in 890ms; verified fix live. Executed the parity audit: PolicyLoopbackHub vs TestOrchestrator at full structural parity on `AllStores` (12/12), policy registrations (13/13), and `IPolicyContext` fields (9/9). Two semantic differences in `dispatch`/`emit` noted but documented as by-design distinct test affordances (TestOrchestrator engineer→role resolution for ADR-014 assertion ergonomics; PolicyLoopbackHub broadcasts to LoopbackTransport sessions). No new bugs filed. Hub state hygiene: bug-12 flipped `open → resolved` with `fixCommits=["635a58e"]`, `linkedTaskIds=["task-324"]`, `linkedMissionId="mission-41"`. Task report filed (`reports/task-324-v1-report.md`); task status pending → working → in_review. Architect review pending. T2 becomes next-up (no structural blocker; parity clean).
 
 ---
 
