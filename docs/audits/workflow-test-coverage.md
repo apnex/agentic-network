@@ -1,7 +1,7 @@
 # Workflow-Invariant Test Coverage
 
 **Mission:** mission-41 (M-Workflow-Test-Harness) Wave 1 T5.
-**Generated:** 2026-04-23T04:03:40.549Z (via `npm run coverage:invariants` from `hub/`).
+**Generated:** 2026-04-23T04:14:28.145Z (via `npm run coverage:invariants` from `hub/`).
 **Status source:** scanner output over `assertInv*` call-sites + kickoff-decisions §Decision 1 ratified subset.
 
 ## Summary
@@ -9,8 +9,8 @@
 | Dimension | Count |
 |---|---|
 | Ratified Wave-2 subset | 10 |
-| &nbsp;&nbsp;Tested (≥1 call-site, helper not stubbed) | 8 |
-| &nbsp;&nbsp;Stubbed (pending Wave 2 graduation) | 2 |
+| &nbsp;&nbsp;Tested (≥1 call-site, helper not stubbed) | 9 |
+| &nbsp;&nbsp;Stubbed (pending Wave 2 graduation) | 1 |
 | Out-of-Scope for v1 (§7.2 NONE, not in ratified subset) | 10 |
 
 ## Per-invariant status — ratified subset
@@ -25,8 +25,8 @@
 | `INV-TH7` | Tested | `hub/test/e2e/invariant-helpers.test.ts:59`, `hub/test/e2e/invariant-helpers.ts:249`, `hub/test/e2e/invariants/INV-TH7.test.ts:27` | close_thread architect-only stewardship |
 | `INV-I2` | Tested | `hub/test/e2e/invariant-helpers.test.ts:63`, `hub/test/e2e/invariant-helpers.ts:281`, `hub/test/e2e/invariants/INV-I2.test.ts:32` | Idea auto-linkage failure is non-fatal |
 | `INV-M4` | Tested | `hub/test/e2e/invariant-helpers.test.ts:67`, `hub/test/e2e/invariant-helpers.ts:303`, `hub/test/e2e/invariants/INV-M4.test.ts:30` | Mission completed/abandoned are terminal |
-| `INV-TH18` | Stub | `hub/test/e2e/invariant-helpers.test.ts:71`, `hub/test/e2e/invariant-helpers.ts:355` | Workflow turn-pinning (cascade guard) — P2 spec |
-| `INV-TH19` | Stub | `hub/test/e2e/invariant-helpers.test.ts:75`, `hub/test/e2e/invariant-helpers.ts:371` | Cascade validate-then-execute atomicity — P2 spec |
+| `INV-TH18` | Tested | `hub/test/e2e/invariant-helpers.test.ts:72`, `hub/test/e2e/invariant-helpers.ts:359`, `hub/test/e2e/invariants/INV-TH18.test.ts:41` | Workflow turn-pinning (cascade guard) — P2 spec |
+| `INV-TH19` | Stub | `hub/test/e2e/invariant-helpers.test.ts:76`, `hub/test/e2e/invariant-helpers.ts:476` | Cascade validate-then-execute atomicity — P2 spec |
 
 ## Out-of-scope for v1
 

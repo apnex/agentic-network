@@ -343,17 +343,122 @@ export async function assertInvM4(o: TestOrchestrator, mode: InvariantMode = "al
 // ── INV-TH18 — Routing mode semantics (STUBBED pending mock-harness) ─
 
 /**
- * INV-TH18: Routing mode (`targeted` | `broadcast` | `context_bound`) is
- * declared at open and immutable; broadcast coerces to targeted on first
- * reply; participants semantics constrained per mode. workflow-registry
- * §7.2 (ratified thread-125).
+ * INV-TH18: Routing mode is declared at `create_thread` and immutable
+ * for the thread's lifetime. Current vocabulary per ADR-016:
  *
- * STUBBED: full assertion requires Mission-41 Wave 1 T3 + T4 mock-harness
- * to drive multi-agent scenarios deterministically. Graduates to full
- * assertion in Wave 2 via follow-up PR.
+ *   - `unicast`   (was "targeted")   — one-to-one pinned; requires recipientAgentId
+ *   - `broadcast`                     — pool-discovery; coerces to unicast on first reply
+ *   - `multicast` (was "context_bound") — dynamic membership from bound-entity assignee; requires context
+ *
+ * Graduated from T2 stub by Mission-41 Wave 2 task-337. Tests exercise
+ * each mode's persistence + the broadcast→unicast coercion edge. Pure
+ * TestOrchestrator surface suffices — Mock*Client harnesses not required
+ * for the routing-mode semantics (multi-actor scenarios use
+ * `asArchitect()` + `asEngineer(id?)` facades).
  */
-export async function assertInvTH18(_o: TestOrchestrator, _mode: InvariantMode = "all"): Promise<void> {
-  throw new InvariantNotYetTestable("TH18", "pending Mission-41 Wave 1 T3+T4 mock-harness");
+export async function assertInvTH18(o: TestOrchestrator, mode: InvariantMode = "all"): Promise<void> {
+  const arch = o.asArchitect();
+  const eng = o.asEngineer();
+
+  // Resolve the engineer's agentId via the registry after first-tool-call
+  // registration. ActorFacade doesn't expose engineerId directly, but the
+  // derived sessionId is stable (`session-engineer-<name>`; default name).
+  async function engineerIdFor(orch: TestOrchestrator): Promise<string> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reg = orch.stores.engineerRegistry as any;
+    const agent = await reg.getAgentForSession("session-engineer-default");
+    if (!agent?.engineerId) throw new Error("INV-TH18 helper: engineer not registered — call eng.listTasks() or similar first");
+    return agent.engineerId as string;
+  }
+
+  if (shouldRun(mode, "positive")) {
+    // unicast: requires recipientAgentId; persists routingMode='unicast'.
+    await eng.listTasks();
+    const engId = await engineerIdFor(o);
+    await arch.createThread("TH18 unicast positive", "msg", {
+      routingMode: "unicast",
+      recipientAgentId: engId,
+    });
+    const unicastStored = await o.stores.thread.getThread("thread-1");
+    if (unicastStored?.routingMode !== "unicast") {
+      fail("TH18", "positive", `unicast thread routingMode should persist as 'unicast'; got '${unicastStored?.routingMode}'`);
+    }
+
+    // broadcast: no recipientAgentId; persists routingMode='broadcast'.
+    o.reset();
+    const arch2 = o.asArchitect();
+    await arch2.createThread("TH18 broadcast positive", "msg", { routingMode: "broadcast" });
+    const broadcastStored = await o.stores.thread.getThread("thread-1");
+    if (broadcastStored?.routingMode !== "broadcast") {
+      fail("TH18", "positive", `broadcast thread routingMode should persist as 'broadcast' at open; got '${broadcastStored?.routingMode}'`);
+    }
+  }
+
+  if (shouldRun(mode, "negativeReject")) {
+    // Invalid mode-field combinations rejected at create.
+    o.reset();
+    const arch3 = o.asArchitect();
+
+    // unicast without recipientAgentId → rejected.
+    const unicastBad = await arch3.call("create_thread", {
+      title: "TH18 unicast-missing-recipient",
+      message: "should fail",
+      routingMode: "unicast",
+    });
+    if (!unicastBad.isError) {
+      fail("TH18", "negativeReject", "unicast without recipientAgentId should be rejected");
+    }
+
+    // broadcast with recipientAgentId → rejected.
+    await (o.asEngineer()).listTasks();
+    const broadcastBad = await arch3.call("create_thread", {
+      title: "TH18 broadcast-with-recipient",
+      message: "should fail",
+      routingMode: "broadcast",
+      recipientAgentId: "eng-whatever",
+    });
+    if (!broadcastBad.isError) {
+      fail("TH18", "negativeReject", "broadcast with recipientAgentId should be rejected");
+    }
+
+    // multicast without context → rejected.
+    const multicastBad = await arch3.call("create_thread", {
+      title: "TH18 multicast-missing-context",
+      message: "should fail",
+      routingMode: "multicast",
+    });
+    if (!multicastBad.isError) {
+      fail("TH18", "negativeReject", "multicast without context should be rejected");
+    }
+  }
+
+  if (shouldRun(mode, "edge")) {
+    // Broadcast coerces to unicast on first reply (INV-TH18 spec).
+    o.reset();
+    const arch4 = o.asArchitect();
+    const eng4 = o.asEngineer();
+    await arch4.createThread("TH18 broadcast coerce", "open", { routingMode: "broadcast" });
+
+    // Pre-reply: routingMode is broadcast.
+    const preReply = await o.stores.thread.getThread("thread-1");
+    if (preReply?.routingMode !== "broadcast") {
+      fail("TH18", "edge", `pre-reply broadcast expected; got '${preReply?.routingMode}'`);
+    }
+
+    // Engineer replies — triggers the INV-TH18 coercion.
+    const replyResult = await eng4.call("create_thread_reply", {
+      threadId: "thread-1",
+      message: "first reply coerces mode",
+    });
+    if (replyResult.isError) {
+      fail("TH18", "edge", `reply on broadcast thread should succeed; got ${JSON.stringify(replyResult)}`);
+    }
+
+    const postReply = await o.stores.thread.getThread("thread-1");
+    if (postReply?.routingMode !== "unicast") {
+      fail("TH18", "edge", `broadcast should coerce to unicast on first reply; got '${postReply?.routingMode}'`);
+    }
+  }
 }
 
 // ── INV-TH19 — Cascade validate-then-execute atomicity (STUBBED) ─────
