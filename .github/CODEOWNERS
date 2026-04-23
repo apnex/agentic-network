@@ -1,0 +1,82 @@
+# .github/CODEOWNERS
+#
+# Mechanizes the directory ownership + veto authority table from
+# docs/methodology/multi-branch-merge.md §Roles.
+# Ratified by ADR-023 Phase 1 (mission-45).
+#
+# Handle convention: GitHub teams @apnex-org/architect + @apnex-org/engineer
+# (Option A per thread-272 2026-04-23). Teams are created by the Director
+# in the mission-45 admin window bundled with branch protection (T2) +
+# merge queue enablement (T3). This file is inert until that activation.
+#
+# Org-migration note (thread-274 2026-04-23): the repo was transferred from
+# the Director's individual account (apnex) to a new GitHub org (apnex-org)
+# during the T2/T3 admin window — individual accounts cannot host teams.
+# Handles prefix to @apnex-org/<role>; the 14-row ownership spec is unchanged.
+#
+# GitHub CODEOWNERS semantics: the LAST matching pattern wins.
+# Broadest patterns first; specificity increases downward.
+
+# ------------------------------------------------------------------
+# Catch-all fallback — surfaces not named below require co-author sign-off.
+# ------------------------------------------------------------------
+*                                     @apnex-org/architect @apnex-org/engineer
+
+# ------------------------------------------------------------------
+# Architect-owned (Primary owner + Veto authority: Architect)
+# ------------------------------------------------------------------
+/docs/methodology/                    @apnex-org/architect
+/docs/reviews/                        @apnex-org/architect
+/docs/planning/                       @apnex-org/architect
+/docs/decisions/                      @apnex-org/architect
+
+# ------------------------------------------------------------------
+# Engineer-owned (Primary owner + Veto authority: Engineer)
+# ------------------------------------------------------------------
+/docs/traces/                         @apnex-org/engineer
+
+# Code surface
+/hub/src/                             @apnex-org/engineer
+/adapters/*/src/                      @apnex-org/engineer
+/packages/*/src/                      @apnex-org/engineer
+
+# Test surface (includes invariant tests)
+/hub/test/                            @apnex-org/engineer
+/adapters/*/test/                     @apnex-org/engineer
+/packages/*/test/                     @apnex-org/engineer
+
+# Operational scripts
+/hub/scripts/                         @apnex-org/engineer
+/adapters/*/scripts/                  @apnex-org/engineer
+
+# ------------------------------------------------------------------
+# Shared (Co-author sign-off required — both approvals needed)
+# ------------------------------------------------------------------
+/docs/audits/                         @apnex-org/architect @apnex-org/engineer
+/docs/specs/                          @apnex-org/architect @apnex-org/engineer
+/.github/workflows/                   @apnex-org/architect @apnex-org/engineer
+
+# Root configs — cross-package effects
+/package.json                         @apnex-org/architect @apnex-org/engineer
+/package-lock.json                    @apnex-org/architect @apnex-org/engineer
+/tsconfig.json                        @apnex-org/architect @apnex-org/engineer
+/vitest.config.ts                     @apnex-org/architect @apnex-org/engineer
+
+# ------------------------------------------------------------------
+# docs/missions/ — mixed-by-file per §Directory ownership.
+# Ordered most-specific last per CODEOWNERS precedence rules.
+# ------------------------------------------------------------------
+/docs/missions/                       @apnex-org/architect @apnex-org/engineer
+/docs/missions/*-preflight.md         @apnex-org/architect
+/docs/missions/*-kickoff-decisions.md @apnex-org/architect
+/docs/missions/*-merge.md             @apnex-org/engineer
+
+# ------------------------------------------------------------------
+# Explicitly NOT covered here (by design):
+#
+# - start-*.sh, architect-chat.sh, scripts/local/ and other
+#   session-local files must not land on main at all. CODEOWNERS
+#   is review-routing; it does not prevent files from landing.
+#   That enforcement lives in secret-scan CI (T4) + pre-commit
+#   hook (T5), not here.
+# ------------------------------------------------------------------
