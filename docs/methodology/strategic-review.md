@@ -6,6 +6,8 @@
 **Pending v1.1 deltas** (captured in 2026-04 retrospective-lite at `docs/reviews/2026-04-retrospective-lite.md`; fold at formal retrospective when first 2026-04 mission ships):
 Convergence Bounds (80-90% healthy ceiling) · Phase 2 Filing-Point ≠ Fault-Domain sub-step · Amendment Protocol 3-condition fold heuristic · Phase 4 Co-authoring composition pattern · Parallel-Pass vs Sequential phase-capability · Mission Filing Protocol proposed-default release-gate · Review-Thread Cadence maxRounds:20 · Anti-Goal Growth ~2× execution pattern.
 
+**Companion methodology:** `docs/methodology/mission-preflight.md` — activation gate between review Phase 4 filing (`proposed`) and Director release-gate signal (`active`). Every Phase-4-filed mission requires a preflight artifact at `docs/missions/<mission-id>-preflight.md` before Director issues `update_mission(status="active")`.
+
 ## Purpose
 
 A strategic architectural review is a **deliberate, time-boxed pass over the system's current state to re-align trajectory with Tele**. It produces a prioritized investment plan, a ratified set of anti-goals, and a cleaned-up backlog — not code changes. It is the "run slow to run fast" counterweight to mission execution.
