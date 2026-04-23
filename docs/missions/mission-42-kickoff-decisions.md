@@ -64,6 +64,24 @@ H1 race-hypothesis (from bug-23 body): "task-316 issuance cascade completed BEFO
 - Engineer implementation per ratified shape: ~1 week
 - Total Task 4 effort: ~1.5-2 weeks (was ~1 week for investigation-only)
 
+### Decision 2b — Ratified outcome (2026-04-23)
+
+**ADR authored + ratified same day:** `docs/decisions/022-threads-2-bilateral-seal-race.md` (status: Accepted).
+
+**Ratified outcomes:**
+- **Primary:** **Option A (new `awaiting_bilateral_seal` FSM state)** selected over Option B. Rationale per ADR §Recommendation: Threads 2.0 forcing-function discipline + regression resistance + operational observability beat Option B's smaller implementation surface.
+- **Bilateral-seal window:** **60 seconds** default (env-configurable via `config.bilateralSealWindowMs`)
+- **Error-surface discrimination:** **bundled** with Option A in same Task 4 (not split into a separate follow-up)
+- **New invariant INV-TH24:** ratified as worded in ADR §Schema changes
+
+**Spec amendments pending Task 4 implementation** (engineer-owned; happen on mission-42 activation):
+- ADR-013 amendment (new state in Threads 2.0 FSM)
+- ADR-014 amendment (Phase 2 architecture)
+- workflow-registry §Thread FSM table (new state row + INV-TH24)
+- Thread schema (new status enum value + optional `bilateralSealDeadline` field)
+
+**Implementation gate:** mission-42 release-gate signal (separate Director call). ADR ratification does not activate mission-42.
+
 **Rationale for ADR-first (not engineer-proposes-fix-shape):**
 - FSM surface is architectural real-estate; falls under architect field-ownership per Phase 4 retrospective
 - ADR sits in parallel with bug-27/28 work — does not extend critical path

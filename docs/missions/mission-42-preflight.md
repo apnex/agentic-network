@@ -7,7 +7,8 @@
 **Verdict:** **GREEN** (all categories pass; Director ratified Category D decisions 2026-04-23 with substantive Task 4 re-scope)
 **Freshness:** current until 2026-05-23
 **Kickoff decisions:** `docs/missions/mission-42-kickoff-decisions.md` (ratified 2026-04-23)
-**Activation:** mission stays `proposed` pending Director release-gate signal — preflight pre-ratifies readiness
+**ADR-022:** `docs/decisions/022-threads-2-bilateral-seal-race.md` (Accepted 2026-04-23 — Option A + 60s window + bundled error-discrimination + INV-TH24)
+**Activation:** mission stays `proposed` — Director explicitly holding release-gate 2026-04-23; pre-activation artifacts now complete (preflight GREEN + kickoff decisions + ADR Accepted)
 
 ---
 

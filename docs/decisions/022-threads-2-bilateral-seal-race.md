@@ -1,7 +1,7 @@
 # ADR-022: Threads 2.0 — Bilateral Seal Race Resolution (bug-23 H1)
 
 **Date:** 2026-04-23
-**Status:** **Draft** — awaiting Director ratification
+**Status:** **Accepted** (ratified 2026-04-23 by Director; implementation gated on mission-42 release-gate signal)
 **Bug:** bug-23 (thread bilateral-seal race — `investigating`, H1 strongly supported)
 **Mission:** mission-42 (M-Cascade-Correctness-Hardening) Task 4
 **Kickoff-decisions authority:** `docs/missions/mission-42-kickoff-decisions.md` §Decision 2
@@ -13,9 +13,29 @@
 
 ## Decision
 
-**Pending ratification.** This ADR presents two fix-shape options for the bug-23 H1 race and recommends **Option A (new `awaiting_bilateral_seal` FSM state)** based on guarantee strength + semantic clarity. Director ratifies the chosen shape; engineer implements as mission-42 Task 4.
+**Ratified 2026-04-23 by Director.** This ADR ratifies two tightly-coupled fixes, both shipped as mission-42 Task 4:
 
-Additionally, this ADR ratifies a second, tightly-coupled decision: **error-surface discrimination** on the `"Thread X not found, not active, or not your turn"` error class (bug-23 §Inconsistencies #3). Both choices ship together in Task 4; neither is viable alone.
+### Primary: Option A — new `awaiting_bilateral_seal` FSM state
+
+Threads transition `active → awaiting_bilateral_seal` when one party converges with a cascade-spawning committed stagedAction. Terminal closure deferred until:
+- **Bilateral path:** counterparty seals with their own `converged=true` + stagedAction → `converged`
+- **Unilateral-fallback path:** bilateral-seal window (default **60 seconds**) elapses without counterparty seal → reaper transitions to `closed` with audit entry noting the unilateral fallback
+
+### Secondary: error-surface discrimination
+
+The undifferentiated `"Thread X not found, not active, or not your turn"` error class splits into three discriminated sub-errors, each with structured response shape for machine-parsability:
+- `"Thread X not found"` — thread ID does not exist
+- `"Thread X is {closed | converged | abandoned | cascade_failed}"` — terminal; surface the actual terminal state
+- `"Thread X turn belongs to {role}:{agentId}, not {role}:{agentId}"` — turn-pin mismatch; surface both expected and actual
+
+### Ratified parameters
+
+| Parameter | Value |
+|---|---|
+| Bilateral-seal window | **60 seconds** (default; env-configurable via `config.bilateralSealWindowMs`) |
+| Error-discrimination scope | Bundled with Option A in same Task 4 (not split) |
+| New invariant | **INV-TH24** — "Threads enter `awaiting_bilateral_seal` when one party converges with a cascade-spawning committed stagedAction; terminal transition deferred until the counterparty seals or the bilateral-seal window elapses." |
+| Mission-42 release-gate | On hold — ratification does not activate mission-42; Director release-gate signal remains a separate call |
 
 ---
 
@@ -202,22 +222,26 @@ Engineer scope under Option A ratification:
 
 ---
 
-## Director ratification questions
+## Director ratification questions (historical — answered 2026-04-23)
 
-1. **Primary decision:** Option A (new FSM state) or Option B (idempotent post-close seal)? Architect recommends A.
-2. **Bilateral-seal window length:** default proposal 60 seconds. Acceptable, or different threshold?
-3. **Error-surface discrimination:** ratified as part of this same Task 4, or split into a separate follow-up? Architect recommends same Task 4 (tight coupling; shipped together).
-4. **INV-TH24 naming + semantics:** wording suggested above; Director has override authority per architect-field-ownership on invariant naming.
+| # | Question | Ratified answer |
+|---|---|---|
+| 1 | Primary decision: Option A or B? | **Option A** (new FSM state) |
+| 2 | Bilateral-seal window length? | **60 seconds** default (env-configurable) |
+| 3 | Error-discrimination scope? | **Same Task 4** — bundled with Option A |
+| 4 | INV-TH24 naming + semantics? | **Proposed wording accepted** as-is |
+
+Preserved for historical record; canonical ratified decisions live in §Decision above.
 
 ---
 
 ## Filing metadata
 
-- **Status at file:** Draft — awaiting Director ratification
-- **Ratification protocol:** Director responds in a review thread or via chat; architect updates Status: Accepted + fills ratified fix-shape
-- **Post-ratification:** engineer claims mission-42 Task 4 (per mission-42 activation + engineer sequencing); implements ratified shape
-- **Pre-activation gate:** ADR ratification does NOT activate mission-42 — mission-42 release-gate is a separate Director call on operational readiness
+- **Status:** Accepted (ratified 2026-04-23 by Director)
+- **Implementation gate:** mission-42 release-gate signal (Director-issued, separate from this ratification; currently on hold per Director direction 2026-04-23)
+- **Implementation authority:** engineer claims mission-42 Task 4 per mission-42 kickoff-decisions §Decision 1 sequencing (bug-27 → bug-28 → bug-22 → bug-23)
+- **Spec amendments pending Task 4 implementation:** ADR-013 amendment, ADR-014 amendment, workflow-registry §Thread FSM table (new state + INV-TH24 row), Thread schema (new status enum + optional `bilateralSealDeadline` field)
 
 ---
 
-*ADR v1.0 draft authored 2026-04-23 per mission-42 kickoff-decisions §Decision 2b ADR-first protocol. In parallel with engineer mission-41 Wave 1 execution.*
+*ADR v1.0 drafted + ratified 2026-04-23 per mission-42 kickoff-decisions §Decision 2b ADR-first protocol. Drafted in parallel with engineer mission-41 Wave 1 execution; ratified same day. Implementation awaits mission-42 release-gate.*
