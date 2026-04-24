@@ -183,7 +183,7 @@ function formatSites(sites: readonly CallSite[]): string {
   return shown + extra;
 }
 
-function renderMarkdown(coverage: Coverage[], generatedAt: string): string {
+function renderMarkdown(coverage: Coverage[]): string {
   const ratified = coverage.filter((c) => c.status !== "Out-of-Scope");
   const outOfScope = coverage.filter((c) => c.status === "Out-of-Scope");
 
@@ -195,7 +195,7 @@ function renderMarkdown(coverage: Coverage[], generatedAt: string): string {
   lines.push("# Workflow-Invariant Test Coverage");
   lines.push("");
   lines.push("**Mission:** mission-41 (M-Workflow-Test-Harness) Wave 1 T5.");
-  lines.push(`**Generated:** ${generatedAt} (via \`npm run coverage:invariants\` from \`hub/\`).`);
+  lines.push("**Regenerate:** `cd hub && npm run coverage:invariants` (see git log of this file for most-recent regeneration date).");
   lines.push("**Status source:** scanner output over `assertInv*` call-sites + kickoff-decisions §Decision 1 ratified subset.");
   lines.push("");
   lines.push("## Summary");
@@ -249,8 +249,7 @@ function renderMarkdown(coverage: Coverage[], generatedAt: string): string {
 function main(): void {
   const callSitesById = scanForCallSites(REPO_ROOT);
   const coverage = composeCoverage(callSitesById);
-  const generatedAt = new Date().toISOString();
-  const markdown = renderMarkdown(coverage, generatedAt);
+  const markdown = renderMarkdown(coverage);
   const outPath = join(REPO_ROOT, "docs/audits/workflow-test-coverage.md");
   writeFileSync(outPath, markdown, "utf-8");
   // eslint-disable-next-line no-console
