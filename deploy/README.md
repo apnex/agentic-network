@@ -2,63 +2,130 @@
 
 Two-plan structure as of 2026-04-22. Pre-split monolith archived under `archive-pre-split-2026-04-22/` for reference.
 
+Mission-46 T1 (2026-04-24) added multi-environment support — see §Multi-environment layout below.
+
 ## Structure
 
 ```
 deploy/
-  base/        — Foundation tier: APIs, SA + IAM, GCS bucket, Artifact Registry
-               (long-lived; rarely destroyed; must apply first)
-  cloudrun/    — Application tier: Hub + Architect services + public IAM
-               (frequently redeployed; sometimes destroyed; reads base outputs)
+  base/                — Foundation tier: APIs, SA + IAM, GCS bucket, Artifact Registry
+                         (long-lived; rarely destroyed; must apply first)
+  cloudrun/            — Application tier: Hub + Architect services + public IAM
+                         (frequently redeployed; sometimes destroyed; reads base outputs)
+  build-hub.sh         — Cloud Build → Artifact Registry wrapper for the Hub container.
+  deploy-hub.sh        — Cloud Run roll wrapper for hub-<env>.
+  build-architect.sh   — Cloud Build → Artifact Registry wrapper for the Architect container.
+  deploy-architect.sh  — Cloud Run roll wrapper for architect-<env>.
   archive-pre-split-2026-04-22/ — Pre-split monolith (not active)
 ```
+
+## Multi-environment layout
+
+Mission-46 T1 established per-env tfvars files under a single canonical tree + `OIS_ENV` selection convention. Scripts (build/deploy + scripts/local/*) default to `prod` when `OIS_ENV` is unset — existing single-env callers are byte-identical. A new isolated tenant drops a new `<env>.tfvars` next to `prod.tfvars` and uses `OIS_ENV=<env-name>` in every command.
+
+```
+deploy/base/env/
+  prod.tfvars          — current env (gitignored; operator-populated)
+  <env-name>.tfvars    — new isolated tenant; same shape as prod.tfvars
+  prod.tfvars.example  — committed template
+deploy/cloudrun/env/
+  prod.tfvars          — current env (gitignored)
+  <env-name>.tfvars    — new tenant
+  prod.tfvars.example  — committed template
+```
+
+`OIS_ENV` name constraints: `^[a-z][a-z0-9-]*$`, max 20 chars — enforced by every script that reads it. Lowercase-DNS-safe to avoid mid-apply terraform failures on GCP resource-name validation.
+
+Per-env Cloud Run service naming: `hub-<env>` and `architect-<env>`. `deploy-hub.sh` reads `hub_service_name` from tfvars if set; falls back to `hub-${OIS_ENV}`. Symmetric for architect.
 
 ## Apply order
 
 **Base must be applied before cloudrun.** The cloudrun plan reads base outputs (service_account_email, state_bucket_name, registry_prefix) via `terraform_remote_state` pointing at `../base/terraform.tfstate`.
 
 ```bash
-# First-time setup (fresh project):
+# First-time setup (fresh project) — use OIS_ENV to select the tfvars file:
+ENV=prod   # or <your-env-name>
+
 cd deploy/base
 terraform init
-terraform apply -var-file=env/prod.tfvars
+terraform apply -var-file=env/${ENV}.tfvars
 
 cd ../cloudrun
 terraform init
-terraform apply -var-file=env/prod.tfvars
+terraform apply -var-file=env/${ENV}.tfvars
 
 # Routine: update services without touching foundation:
 cd deploy/cloudrun
-terraform apply -var-file=env/prod.tfvars
+terraform apply -var-file=env/${ENV}.tfvars
 
 # Teardown services only (leaves foundation intact):
 cd deploy/cloudrun
-terraform destroy -var-file=env/prod.tfvars
+terraform destroy -var-file=env/${ENV}.tfvars
 ```
+
+## Build + deploy scripts (OIS_ENV-aware)
+
+```bash
+# Typical mission-ship flow for the Hub container:
+OIS_ENV=<env> deploy/build-hub.sh --tag "mission-XX-$(date -u +%Y%m%d-%H%M%S)"
+# ... note the printed timestamped URI ...
+OIS_ENV=<env> deploy/deploy-hub.sh --image "<printed-uri>"
+
+# Same flow for the Architect container:
+OIS_ENV=<env> deploy/build-architect.sh --tag "mission-XX-$(date -u +%Y%m%d-%H%M%S)"
+OIS_ENV=<env> deploy/deploy-architect.sh --image "<printed-uri>"
+```
+
+All four scripts read only `project_id`, `region`, and service-name keys from the env's tfvars. They never read, print, or log secret material (hub_api_token / architect_global_instance_id).
+
+## Local Docker Hub (scripts/local/)
+
+`scripts/local/{build,start,stop}-hub.sh` are the local-dev equivalents — they build via Cloud Build + pull + tag `ois-hub:local`, launch a container named `ois-hub-local-<env>` on port 8080, and stop/remove on teardown.
+
+```bash
+OIS_ENV=<env> scripts/local/build-hub.sh
+OIS_ENV=<env> scripts/local/start-hub.sh     # one container at a time enforced
+scripts/local/stop-hub.sh                    # auto-detects the running env
+```
+
+Default `OIS_ENV` is `prod` — existing single-env operators see unchanged behavior.
 
 ## Backends
 
-Both plans use the **local backend** as of the split (state files kept in-dir). Migration to GCS remote backend is a planned future improvement — bucket exists (`gs://ois-relay-hub-state`), so bootstrap will be straightforward once we cut over. Until then: do not operate simultaneously from multiple machines.
+Both plans use the **local backend** as of the split (state files kept in-dir). Migration to GCS remote backend is a planned future improvement — bucket exists (per-env `gs://<env>-state` or `gs://ois-relay-hub-state` for prod), so bootstrap will be straightforward once we cut over. Until then: do not operate simultaneously from multiple machines.
 
 ## Environment files
 
-- `{base,cloudrun}/env/prod.tfvars` — live values (gitignored)
-- `{base,cloudrun}/env/prod.tfvars.example` — committed templates
+- `{base,cloudrun}/env/*.tfvars` — live values (gitignored via `env/*.tfvars`)
+- `{base,cloudrun}/env/prod.tfvars.example` — committed templates; copy to `<env>.tfvars` per env
 
-**Required secrets in `cloudrun/env/prod.tfvars`:**
+**Required secrets in `cloudrun/env/<env>.tfvars`:**
 - `hub_api_token` — bearer token for Hub `/mcp` endpoint
 - `architect_global_instance_id` — UUID identifying the Architect agent
 
+**Per-env fields recommended in `cloudrun/env/<env>.tfvars`:**
+- `hub_service_name = "hub-<env>"` (mission-46 T1 convention)
+- `architect_service_name = "architect-<env>"` (mission-46 T1 convention)
+
+**Per-env fields recommended in `base/env/<env>.tfvars`:**
+- `state_bucket_name = "<project-id>-hub-state"` or similar uniqueness-guaranteed name (GCS bucket names are global-namespaced — don't reuse `ois-relay-hub-state` across envs)
+
 ## Outstanding
 
-- **Hub deploy pipeline (build + roll)** now has two tracked scripts as of mission-43 (2026-04-24):
-  - `deploy/build-hub.sh` — Cloud Build → Artifact Registry + `:latest` re-tag.
-  - `deploy/deploy-hub.sh` — Cloud Run roll to a specified image (default `:latest`).
+- **Hub deploy pipeline (build + roll)** — COMPLETE as of mission-43 + mission-46 T1:
+  - `deploy/build-hub.sh` — Cloud Build → Artifact Registry + `:latest` re-tag (OIS_ENV-aware as of mission-46 T1).
+  - `deploy/deploy-hub.sh` — Cloud Run roll to a specified image (default `:latest`; OIS_ENV-aware service name as of mission-46 T1).
 
-  Typical flow: `deploy/build-hub.sh --tag <mission-tag>` → note the printed image URI → `deploy/deploy-hub.sh --image <printed-uri>`.
+- **Architect deploy pipeline (build + roll)** — COMPLETE as of mission-46 T1:
+  - `deploy/build-architect.sh` — mirror of build-hub for agents/vertex-cloudrun.
+  - `deploy/deploy-architect.sh` — mirror of deploy-hub for architect-<env>.
 
-- **Remaining deploy-tooling gaps:**
-  - Architect-image equivalents (`deploy/build-architect.sh` + `deploy/deploy-architect.sh`) still need tracked successors.
-  - End-to-end `build.sh` (previously `archive-pre-split-2026-04-22/build.sh`, assumed monolithic apply in `deploy/` root) — a wrapper that applies base + cloudrun in correct order and handles `deploy-ts` label bumps per service. Candidate script-rationalisation mission.
-- **Remote state migration to GCS.** Move both plans' state files from local to `backend "gcs"` pointing at `ois-relay-hub-state`. Chicken-and-egg mitigated by: base bucket already exists, so both can use GCS backend from the start (no bootstrap-on-local needed).
-- **Generic CloudRun lifecycle scripts.** Replace ad-hoc `start-architect.sh` / `stop-architect.sh` / `start-hub.sh` (the latter currently contains the wrong script body — it operates on architect-agent) with a generic `cloudrun/{start,stop,delete}.sh <service-name>` pattern.
+- **New-environment bootstrap wrapper (`deploy/new-environment-bootstrap.sh`)** — pending mission-46 T2. Single-command scaffold: takes `project_id` + `region` + `<env-name>`, generates per-env tfvars from templates + auto-gens secrets (openssl rand + uuidgen), runs `gcloud services enable`, applies base terraform, builds + deploys Hub + Architect, reports URLs.
+
+- **End-to-end `build.sh`** — historical successor (previously `archive-pre-split-2026-04-22/build.sh`, assumed monolithic apply in `deploy/` root) still needs a tracked wrapper that applies base + cloudrun in correct order and handles `deploy-ts` label bumps per service. Candidate script-rationalisation mission.
+
+- **Remote state migration to GCS.** Move both plans' state files from local to `backend "gcs"` pointing at the env's state bucket. Separate future mission (explicitly pulled out of mission-46 scope to preserve M effort class).
+
+- **Generic CloudRun lifecycle scripts.** Replace ad-hoc `start-architect.sh` / `stop-architect.sh` / `start-hub.sh` (historical names under `scripts/`) with a generic `cloudrun/{start,stop,delete}.sh <service-name>` pattern, OR delete them entirely now that the `deploy/deploy-*` wrappers cover the same ground.
+
+- **bug-30 / idea-186 narrow-gate re-require.** PR #4 (2026-04-24) installed `continue-on-error: true` on 4 non-hub matrix cells in `.github/workflows/test.yml` as an interim CI unblock. Once bug-30 (adapter tarball deps + cross-package imports) lands via idea-186 (npm workspaces migration), re-add those cells to the `test` aggregator's `needs: [...]` list + delete `continue-on-error`. Time-box: 4 weeks from 2026-04-24.

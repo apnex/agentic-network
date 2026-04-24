@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 #
-# deploy/build-hub.sh — Build the Hub container via Cloud Build and publish
-# to Artifact Registry with a timestamped tag + :latest alias.
+# deploy/build-architect.sh — Build the Architect container via Cloud
+# Build and publish to Artifact Registry with a timestamped tag + :latest
+# alias. Mirror of deploy/build-hub.sh for the agents/vertex-cloudrun
+# service.
 #
-# Scope: build + push only. Does NOT roll Cloud Run — that's a separate
-# concern (see deploy/deploy-hub.sh). Run this, confirm the new image,
-# then roll Cloud Run via `deploy/deploy-hub.sh` or `terraform apply`.
+# Scope: build + push only. Does NOT roll Cloud Run — that's
+# deploy/deploy-architect.sh. Run this, confirm the new image, then roll
+# via deploy/deploy-architect.sh or terraform apply.
 #
 # Usage:
-#   OIS_ENV=<env> deploy/build-hub.sh [--tag <tag-suffix>]
+#   OIS_ENV=<env> deploy/build-architect.sh [--tag <tag-suffix>]
 #
 # Default tag suffix: UTC ISO-compact timestamp (YYYYMMDD-HHMMSS).
 # Recommended for mission ships: pass --tag "mission-XX-YYYYMMDD-HHMMSS"
@@ -23,9 +25,9 @@
 # tfvars discovery order (first existing wins for OIS_ENV=<env>):
 #   1. deploy/cloudrun/env/<env>.tfvars   (split-structure target)
 #   2. deploy/env/<env>.tfvars            (local-bootstrap; transitional)
-# Both paths are gitignored via deploy/.gitignore (env/*.tfvars). This
-# script reads only `project_id` and `region` keys — it never reads,
-# prints, or logs secret material such as hub_api_token.
+# Both paths are gitignored via deploy/.gitignore. This script reads only
+# `project_id` and `region` keys — it never reads, prints, or logs secret
+# material such as hub_api_token or architect_global_instance_id.
 #
 # Requires: gcloud authenticated as a principal with Cloud Build + Artifact
 # Registry write permissions on the target project.
@@ -38,7 +40,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 OIS_ENV="${OIS_ENV:-prod}"
 if [[ ! "$OIS_ENV" =~ ^[a-z][a-z0-9-]*$ ]] || [[ ${#OIS_ENV} -gt 20 ]]; then
-  echo "[build-hub] ERROR: invalid OIS_ENV='$OIS_ENV' — must match ^[a-z][a-z0-9-]*$, max 20 chars." >&2
+  echo "[build-architect] ERROR: invalid OIS_ENV='$OIS_ENV' — must match ^[a-z][a-z0-9-]*$, max 20 chars." >&2
   exit 1
 fi
 
@@ -52,12 +54,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
-      echo "[build-hub] Unknown arg: $1" >&2
-      echo "[build-hub] Usage: OIS_ENV=<env> deploy/build-hub.sh [--tag <tag-suffix>]" >&2
+      echo "[build-architect] Unknown arg: $1" >&2
+      echo "[build-architect] Usage: OIS_ENV=<env> deploy/build-architect.sh [--tag <tag-suffix>]" >&2
       exit 1
       ;;
   esac
@@ -78,8 +80,6 @@ for candidate in \
 done
 
 read_tfvar() {
-  # Extract a single "key = \"value\"" line from a tfvars file. Prints
-  # nothing (returns empty) if the key is absent. Does not dump the file.
   [[ -z "$TFVARS" ]] && return 0
   awk -v key="$1" '
     $1 == key && $2 == "=" {
@@ -97,37 +97,37 @@ REGION="${GCP_REGION:-$(read_tfvar region)}"
 REGION="${REGION:-australia-southeast1}"
 
 if [[ -z "$PROJECT_ID" ]]; then
-  echo "[build-hub] ERROR: project_id not resolvable for OIS_ENV='$OIS_ENV'." >&2
+  echo "[build-architect] ERROR: project_id not resolvable for OIS_ENV='$OIS_ENV'." >&2
   echo "             Populate deploy/cloudrun/env/${OIS_ENV}.tfvars (see .example)," >&2
   echo "             or set GCP_PROJECT env var." >&2
   exit 1
 fi
 
 REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy"
-IMAGE_TIMESTAMPED="${REGISTRY}/hub:${TAG_SUFFIX}"
-IMAGE_LATEST="${REGISTRY}/hub:latest"
+IMAGE_TIMESTAMPED="${REGISTRY}/architect:${TAG_SUFFIX}"
+IMAGE_LATEST="${REGISTRY}/architect:latest"
 
 # ── Print plan (no secrets) ────────────────────────────────────────────
 
-echo "[build-hub] OIS_ENV:       $OIS_ENV"
-echo "[build-hub] Project:       $PROJECT_ID"
-echo "[build-hub] Region:        $REGION"
-echo "[build-hub] tfvars source: ${TFVARS:-<none; using env overrides>}"
-echo "[build-hub] Source:        $REPO_ROOT/hub"
-echo "[build-hub] Image tag:     $IMAGE_TIMESTAMPED"
-echo "[build-hub] Latest alias:  $IMAGE_LATEST"
-echo "[build-hub] ──────── Cloud Build submit ────────"
+echo "[build-architect] OIS_ENV:       $OIS_ENV"
+echo "[build-architect] Project:       $PROJECT_ID"
+echo "[build-architect] Region:        $REGION"
+echo "[build-architect] tfvars source: ${TFVARS:-<none; using env overrides>}"
+echo "[build-architect] Source:        $REPO_ROOT/agents/vertex-cloudrun"
+echo "[build-architect] Image tag:     $IMAGE_TIMESTAMPED"
+echo "[build-architect] Latest alias:  $IMAGE_LATEST"
+echo "[build-architect] ──────── Cloud Build submit ────────"
 
 # ── Build + push via Cloud Build ───────────────────────────────────────
 
-gcloud builds submit "$REPO_ROOT/hub" \
+gcloud builds submit "$REPO_ROOT/agents/vertex-cloudrun" \
   --project "$PROJECT_ID" \
   --tag "$IMAGE_TIMESTAMPED" \
   --quiet
 
 # ── Re-tag :latest to the fresh image ──────────────────────────────────
 
-echo "[build-hub] ──────── Re-tagging :latest ────────"
+echo "[build-architect] ──────── Re-tagging :latest ────────"
 gcloud artifacts docker tags add \
   "$IMAGE_TIMESTAMPED" \
   "$IMAGE_LATEST" \
@@ -136,9 +136,9 @@ gcloud artifacts docker tags add \
 # ── Summary + Cloud Run follow-up hint ─────────────────────────────────
 
 echo ""
-echo "[build-hub] Done."
-echo "[build-hub]   New image:   $IMAGE_TIMESTAMPED"
-echo "[build-hub]   :latest →    $IMAGE_TIMESTAMPED"
+echo "[build-architect] Done."
+echo "[build-architect]   New image:   $IMAGE_TIMESTAMPED"
+echo "[build-architect]   :latest →    $IMAGE_TIMESTAMPED"
 echo ""
-echo "[build-hub] Next — roll Cloud Run to the new image (not performed here):"
-echo "[build-hub]   OIS_ENV=$OIS_ENV deploy/deploy-hub.sh --image \"$IMAGE_TIMESTAMPED\""
+echo "[build-architect] Next — roll Cloud Run to the new image (not performed here):"
+echo "[build-architect]   OIS_ENV=$OIS_ENV deploy/deploy-architect.sh --image \"$IMAGE_TIMESTAMPED\""

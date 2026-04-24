@@ -414,7 +414,7 @@ export function createDirectorChatRouter(
       const msg = err?.message || String(err);
       let friendly: string;
       if (status === 429 || msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
-        friendly = `Gemini quota exhausted (429). Retry shortly or check Vertex AI quota for \`${process.env.GOOGLE_CLOUD_PROJECT || "labops-389703"}\`.`;
+        friendly = `Gemini quota exhausted (429). Retry shortly or check Vertex AI quota for \`${process.env.GOOGLE_CLOUD_PROJECT || "<unset>"}\`.`;
       } else if (status === 400 || msg.includes("400") || msg.includes("INVALID_ARGUMENT")) {
         friendly = `Gemini rejected the request (400 INVALID_ARGUMENT). See the \`[LLM] generateWithTools round … 400 INVALID_ARGUMENT\` diagnostics in Cloud Run logs. If it persists, start a new session.`;
       } else if (status === 404 || msg.includes("NOT_FOUND")) {

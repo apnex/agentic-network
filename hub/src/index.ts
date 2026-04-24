@@ -42,7 +42,17 @@ import { createMetricsCounter } from "./observability/metrics.js";
 
 // ── Global State ──────────────────────────────────────────────────────
 const STORAGE_BACKEND = process.env.STORAGE_BACKEND || "memory";
-const GCS_BUCKET = process.env.GCS_BUCKET || "ois-relay-hub-state";
+// Mission-46 T1: GCS_BUCKET hardcoded default stripped. Memory backend
+// (used by tests + PolicyLoopbackHub) ignores this; gcs backend
+// fail-fasts at top-level + inside the init block below if unset —
+// surfaces config drift before silent wrong-bucket writes.
+const GCS_BUCKET = process.env.GCS_BUCKET;
+if (STORAGE_BACKEND === "gcs" && !GCS_BUCKET) {
+  throw new Error(
+    "[hub] GCS_BUCKET env var is required when STORAGE_BACKEND=gcs. " +
+    "Set via deploy/cloudrun/env/<env>.tfvars or local env override.",
+  );
+}
 
 let taskStore: ITaskStore;
 let engineerRegistry: IEngineerRegistry;
@@ -63,21 +73,23 @@ let pendingActionStore: IPendingActionStore;
 let directorNotificationStore: IDirectorNotificationStore;
 
 if (STORAGE_BACKEND === "gcs") {
-  console.log(`[Hub] Using GCS storage backend: gs://${GCS_BUCKET}`);
-  taskStore = new GcsTaskStore(GCS_BUCKET);
-  engineerRegistry = new GcsEngineerRegistry(GCS_BUCKET);
-  proposalStore = new GcsProposalStore(GCS_BUCKET);
-  threadStore = new GcsThreadStore(GCS_BUCKET);
-  auditStore = new GcsAuditStore(GCS_BUCKET);
-  notificationStore = new GcsNotificationStore(GCS_BUCKET);
+  // Top-level guard above ensures GCS_BUCKET is defined here.
+  const bucket = GCS_BUCKET!;
+  console.log(`[Hub] Using GCS storage backend: gs://${bucket}`);
+  taskStore = new GcsTaskStore(bucket);
+  engineerRegistry = new GcsEngineerRegistry(bucket);
+  proposalStore = new GcsProposalStore(bucket);
+  threadStore = new GcsThreadStore(bucket);
+  auditStore = new GcsAuditStore(bucket);
+  notificationStore = new GcsNotificationStore(bucket);
   // New entities — GCS-backed for persistence across restarts
-  ideaStore = new GcsIdeaStore(GCS_BUCKET);
-  missionStore = new GcsMissionStore(GCS_BUCKET, taskStore, ideaStore);
-  turnStore = new GcsTurnStore(GCS_BUCKET, missionStore, taskStore);
-  teleStore = new GcsTeleStore(GCS_BUCKET);
-  bugStore = new GcsBugStore(GCS_BUCKET);
-  pendingActionStore = new GcsPendingActionStore(GCS_BUCKET);
-  directorNotificationStore = new GcsDirectorNotificationStore(GCS_BUCKET);
+  ideaStore = new GcsIdeaStore(bucket);
+  missionStore = new GcsMissionStore(bucket, taskStore, ideaStore);
+  turnStore = new GcsTurnStore(bucket, missionStore, taskStore);
+  teleStore = new GcsTeleStore(bucket);
+  bugStore = new GcsBugStore(bucket);
+  pendingActionStore = new GcsPendingActionStore(bucket);
+  directorNotificationStore = new GcsDirectorNotificationStore(bucket);
 } else {
   if (process.env.NODE_ENV === "production") {
     console.error("[Hub] FATAL: STORAGE_BACKEND is 'memory' in production. Set STORAGE_BACKEND=gcs to prevent silent state loss.");
@@ -202,7 +214,7 @@ function createMcpServer(
     clientIp: getClientIp(),
     role: "unknown", // resolved at handler level via engineerRegistry
     internalEvents: [],
-    config: { storageBackend: STORAGE_BACKEND, gcsBucket: GCS_BUCKET },
+    config: { storageBackend: STORAGE_BACKEND, gcsBucket: GCS_BUCKET ?? "" },
     metrics,
   });
 
@@ -259,9 +271,10 @@ const hub = new HubNetworking(
 
 async function startupSequence(): Promise<void> {
   if (STORAGE_BACKEND === "gcs") {
+    // Top-level guard ensures GCS_BUCKET defined here.
     console.log("[Hub] Running GCS startup maintenance...");
-    await cleanupOrphanedFiles(GCS_BUCKET);
-    await reconcileCounters(GCS_BUCKET);
+    await cleanupOrphanedFiles(GCS_BUCKET!);
+    await reconcileCounters(GCS_BUCKET!);
     console.log("[Hub] GCS startup maintenance complete");
   }
 }

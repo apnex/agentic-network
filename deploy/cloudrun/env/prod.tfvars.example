@@ -4,19 +4,42 @@
 # Reads service_account_email, state_bucket_name, registry_prefix
 # from deploy/base/terraform.tfstate via terraform_remote_state.
 #
-# Copy to prod.tfvars and fill in values. Do NOT commit prod.tfvars
-# (excluded by deploy/.gitignore).
+# Copy to `<env-name>.tfvars` and fill in values. Do NOT commit `<env>.tfvars`
+# (excluded by deploy/.gitignore: env/*.tfvars).
+#
+# Per-env tfvars convention (mission-46 T1):
+#   deploy/cloudrun/env/prod.tfvars        (the original env)
+#   deploy/cloudrun/env/<other-env>.tfvars (new isolated tenants)
+# Select which one `deploy/build-hub.sh` / `deploy/deploy-hub.sh` /
+# `deploy/build-architect.sh` / `deploy/deploy-architect.sh` use via:
+#   OIS_ENV=<env-name>   (default: prod if unset)
+
+# ── Required per-env ─────────────────────────────────────────────────
 
 project_id                   = "<your-gcp-project-id>"
 region                       = "<your-gcp-region>"
 
-# Secrets — DO NOT commit real values
+# ── Secrets (DO NOT commit real values) ──────────────────────────────
+
 hub_api_token                = "<generate-with-openssl-rand-base64-32>"
 
-# Stable agent identity (Mission-18)
-# Generate once: uuidgen
+# Stable agent identity (Mission-18).
+# Generate once per env: uuidgen
 # Changing this creates a new Agent entity and orphans the old queue.
 architect_global_instance_id = "<uuidgen-output>"
 
-# Most other vars use variables.tf defaults (min_instances=1 for both services,
-# event_loop_enabled=true, event_loop_interval=300, watchdog_enabled="true", etc.)
+# ── Per-env service names (mission-46 T1 convention) ─────────────────
+#
+# Cloud Run service names carry the env suffix so multiple envs can
+# coexist in the same GCP project (uncommon; most envs are isolated by
+# project, but the naming convention holds either way). Defaults are
+# "hub" / "architect" which collides across envs in a shared project.
+#
+# hub_service_name       = "hub-<env-name>"         # e.g. hub-prod, hub-tenant-b
+# architect_service_name = "architect-<env-name>"   # e.g. architect-prod, architect-tenant-b
+
+# ── Other knobs ──────────────────────────────────────────────────────
+#
+# Most other vars use variables.tf defaults (min_instances=1 for both
+# services, event_loop_enabled=true, event_loop_interval=300,
+# watchdog_enabled="true", etc.) — override here if env-specific.

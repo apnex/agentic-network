@@ -16,11 +16,25 @@ import { mcpToolsToFunctionDeclarations, validateToolDeclarations } from "./llm.
 // ── Configuration ────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
-const HUB_URL =
-  process.env.MCP_HUB_URL ||
-  "https://mcp-relay-hub-5muxctm3ta-ts.a.run.app/mcp";
+// Mission-46 T1: env-specific defaults stripped. Cloud Run terraform
+// injects these via deploy/cloudrun/main.tf; local dev must set them
+// explicitly. Fail-fast at startup surfaces missing config loudly
+// instead of silently binding to the wrong tenant.
+const HUB_URL = process.env.MCP_HUB_URL;
+if (!HUB_URL) {
+  throw new Error(
+    "[vertex-cloudrun] MCP_HUB_URL env var is required (points at the Hub's /mcp endpoint). " +
+    "Set via deploy/cloudrun/env/<env>.tfvars or local env override.",
+  );
+}
 const HUB_TOKEN = process.env.HUB_API_TOKEN || "";
-const GCS_BUCKET = process.env.GCS_BUCKET || "ois-relay-hub-state";
+const GCS_BUCKET = process.env.GCS_BUCKET;
+if (!GCS_BUCKET) {
+  throw new Error(
+    "[vertex-cloudrun] GCS_BUCKET env var is required. " +
+    "Set via deploy/cloudrun/env/<env>.tfvars or local env override.",
+  );
+}
 const CONTEXT_PREFIX = process.env.CONTEXT_PREFIX || "architect-context/";
 const EVENT_LOOP_ENABLED =
   (process.env.EVENT_LOOP_ENABLED || "true").toLowerCase() !== "false";

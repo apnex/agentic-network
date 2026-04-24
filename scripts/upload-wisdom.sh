@@ -2,7 +2,9 @@
 # Upload ARCHITECTURE.md and docs/decisions/ to GCS for the Architect's context store.
 # Run this after updating any wisdom documents.
 
-BUCKET="ois-relay-hub-state"
+# Mission-46 T1: env-override via GCS_BUCKET; legacy default preserved
+# for single-env operators (unchanged behavior when var is unset).
+BUCKET="${GCS_BUCKET:-ois-relay-hub-state}"
 PREFIX="architect-context/wisdom"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
