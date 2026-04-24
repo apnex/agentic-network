@@ -1,7 +1,7 @@
 # Workflow-Invariant Test Coverage
 
 **Mission:** mission-41 (M-Workflow-Test-Harness) Wave 1 T5.
-**Generated:** 2026-04-23T04:26:01.739Z (via `npm run coverage:invariants` from `hub/`).
+**Regenerate:** `cd hub && npm run coverage:invariants` (see git log of this file for most-recent regeneration date).
 **Status source:** scanner output over `assertInv*` call-sites + kickoff-decisions §Decision 1 ratified subset.
 
 ## Summary
