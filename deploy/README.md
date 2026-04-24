@@ -2,7 +2,7 @@
 
 Two-plan structure as of 2026-04-22. Pre-split monolith archived under `archive-pre-split-2026-04-22/` for reference.
 
-Mission-46 T1 (2026-04-24) added multi-environment support — see §Multi-environment layout below.
+Mission-46 T1 (2026-04-24) added multi-environment support — see §Multi-environment layout below. Mission-46 T2 added the `deploy/new-environment-bootstrap.sh` wrapper that stands up a new env end-to-end; see the step-by-step runbook at [`docs/onboarding/multi-env-operator-setup.md`](../docs/onboarding/multi-env-operator-setup.md) for cold-operator instructions.
 
 ## Structure
 
