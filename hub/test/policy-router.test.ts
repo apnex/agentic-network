@@ -6,6 +6,7 @@ import { registerSystemPolicy } from "../src/policy/system-policy.js";
 import { isValidTransition } from "../src/policy/types.js";
 import { createTestContext, type TestPolicyContext } from "../src/policy/test-utils.js";
 import type { PolicyResult, DomainEvent } from "../src/policy/types.js";
+import type { TaskRepository } from "../src/entities/task-repository.js";
 
 // Suppress console.log during tests
 const noop = () => {};
@@ -587,19 +588,13 @@ describe("TaskPolicy", () => {
       const ctx3 = createTestContext({ stores: ctx.stores });
       await router.handle("create_task", { title: "T3", description: "third" }, ctx3);
       // Backdate task-2 so createdAt-range + sort tests have a target.
-      // MemoryTaskStore.getTask returns a shallow clone, so we must mutate
-      // the internal Map directly.
-      const internal = (ctx.stores.task as any).tasks as Map<string, any>;
-      const t2 = internal.get("task-2");
-      if (t2) t2.createdAt = "2025-01-01T00:00:00Z";
+      await (ctx.stores.task as TaskRepository).__debugSetTask("task-2", { createdAt: "2025-01-01T00:00:00Z" });
     }
 
     it("filter: implicit equality on status", async () => {
       await seed();
       // Move task-1 to a non-pending status so the filter actually filters
-      const internal = (ctx.stores.task as any).tasks as Map<string, any>;
-      const t1 = internal.get("task-1");
-      if (t1) t1.status = "working";
+      await (ctx.stores.task as TaskRepository).__debugSetTask("task-1", { status: "working" });
       const result = await router.handle(
         "list_tasks",
         { filter: { status: "pending" } },
@@ -666,10 +661,8 @@ describe("TaskPolicy", () => {
     it("sort: stable tie-breaker via implicit id:asc", async () => {
       await seed();
       // Force all tasks to have identical createdAt so sort must tie-break by id
-      const internal = (ctx.stores.task as any).tasks as Map<string, any>;
       for (const id of ["task-1", "task-2", "task-3"]) {
-        const t = internal.get(id);
-        if (t) t.createdAt = "2026-04-20T00:00:00Z";
+        await (ctx.stores.task as TaskRepository).__debugSetTask(id, { createdAt: "2026-04-20T00:00:00Z" });
       }
       const result = await router.handle(
         "list_tasks",
@@ -763,13 +756,10 @@ describe("TaskPolicy", () => {
     // task-3 → architect:eng-gamma.
     async function seedWithCreatedBy(): Promise<void> {
       await seed();
-      const internal = (ctx.stores.task as any).tasks as Map<string, any>;
-      const t1 = internal.get("task-1");
-      if (t1) t1.createdBy = { role: "architect", agentId: "eng-alpha" };
-      const t2 = internal.get("task-2");
-      if (t2) t2.createdBy = { role: "engineer", agentId: "eng-beta" };
-      const t3 = internal.get("task-3");
-      if (t3) t3.createdBy = { role: "architect", agentId: "eng-gamma" };
+      const repo = ctx.stores.task as TaskRepository;
+      await repo.__debugSetTask("task-1", { createdBy: { role: "architect", agentId: "eng-alpha" } });
+      await repo.__debugSetTask("task-2", { createdBy: { role: "engineer", agentId: "eng-beta" } });
+      await repo.__debugSetTask("task-3", { createdBy: { role: "architect", agentId: "eng-gamma" } });
     }
 
     it("Phase C filter: createdBy.role selects architect-created tasks only", async () => {

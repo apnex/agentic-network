@@ -17,6 +17,7 @@ import { registerReviewPolicy } from "../../src/policy/review-policy.js";
 import { registerClarificationPolicy } from "../../src/policy/clarification-policy.js";
 import { registerSessionPolicy } from "../../src/policy/session-policy.js";
 import { createTestContext, type TestPolicyContext } from "../../src/policy/test-utils.js";
+import type { TaskRepository } from "../../src/entities/task-repository.js";
 
 const noop = () => {};
 
@@ -115,13 +116,8 @@ describe("Mission-19 P2P — Review routes to assignedEngineerId", () => {
 
   it("director_attention_required (escalation) targets architects in the task's label scope, NOT P2P", async () => {
     // Force the task into a state where revisionCount >= 3.
-    const task = await archCtx.stores.task.getTask(taskId);
-    if (task) {
-      (task as any).revisionCount = 3;
-    }
-    // Need to mutate the store directly since revisionCount isn't user-facing.
-    const store = archCtx.stores.task as any;
-    store.tasks.get(taskId).revisionCount = 3;
+    // revisionCount isn't user-facing, so mutate via the test-only escape hatch.
+    await (archCtx.stores.task as TaskRepository).__debugSetTask(taskId, { revisionCount: 3 });
 
     const reviewCtx = createTestContext({ stores: archCtx.stores, sessionId: "sess-arch-2", role: "architect" });
     await register(reviewCtx, "architect", { team: "platform" });
@@ -221,9 +217,7 @@ describe("Mission-19 P2P — Fallback when task has no assignedEngineerId", () =
       { team: "platform" },
     );
     // Move through the FSM manually: pending → working → in_review.
-    const store = archCtx.stores.task as any;
-    const t = store.tasks.get(taskId);
-    t.status = "in_review";
+    await (archCtx.stores.task as TaskRepository).__debugSetTask(taskId, { status: "in_review" });
     // assignedEngineerId remains null.
 
     const reviewCtx = createTestContext({ stores: archCtx.stores, sessionId: "sess-arch-2", role: "architect" });

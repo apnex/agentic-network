@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { IPolicyContext, AllStores, DomainEvent } from "./types.js";
-import { MemoryTaskStore, MemoryEngineerRegistry, MemoryProposalStore, MemoryThreadStore, MemoryAuditStore } from "../state.js";
+import { MemoryEngineerRegistry, MemoryThreadStore, MemoryAuditStore } from "../state.js";
 import type { Selector } from "../state.js";
+import { TaskRepository } from "../entities/task-repository.js";
+import { ProposalRepository } from "../entities/proposal-repository.js";
 import { IdeaRepository } from "../entities/idea-repository.js";
 import { MissionRepository } from "../entities/mission-repository.js";
 import { MemoryTurnStore } from "../entities/turn.js";
@@ -34,18 +36,19 @@ export function createTestContext(overrides?: Partial<TestPolicyContext>): TestP
   const emittedEvents: EmittedEvent[] = [];
   const dispatchedEvents: DispatchedEvent[] = [];
 
-  const task = new MemoryTaskStore();
-  // Mission-47 W1/W2: tele/idea/bug stores are *Repository classes over
-  // a fresh MemoryStorageProvider + StorageBackedCounter per test
-  // context — no state leakage between test cases.
+  // Mission-47 W1-W5: task/proposal/idea/mission/tele/bug/director-notification
+  // are all *Repository classes over a fresh MemoryStorageProvider +
+  // StorageBackedCounter per test context — no state leakage between
+  // test cases.
   const storageProvider = new MemoryStorageProvider();
   const storageCounter = new StorageBackedCounter(storageProvider);
+  const task = new TaskRepository(storageProvider, storageCounter);
   const idea = new IdeaRepository(storageProvider, storageCounter);
   const mission = new MissionRepository(storageProvider, storageCounter, task, idea);
   const stores: AllStores = {
     task,
     engineerRegistry: new MemoryEngineerRegistry(),
-    proposal: new MemoryProposalStore(),
+    proposal: new ProposalRepository(storageProvider, storageCounter),
     thread: new MemoryThreadStore(),
     audit: new MemoryAuditStore(),
     idea,
