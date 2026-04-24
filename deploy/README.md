@@ -51,6 +51,14 @@ Both plans use the **local backend** as of the split (state files kept in-dir). 
 
 ## Outstanding
 
-- **Cloud Run roll wrapper still unwritten.** `deploy/build-hub.sh` (added during mission-43, 2026-04-24) handles Cloud Build → Artifact Registry for the Hub image and re-points `:latest`, but stops short of rolling Cloud Run. The equivalent architect-image build wrapper + the base+cloudrun end-to-end `build.sh` (previously in `archive-pre-split-2026-04-22/build.sh`, assumed monolithic apply in `deploy/` root) still need tracked successors that understand the split structure and handle per-service `deploy-ts` label bumps. Candidate script-rationalisation mission.
+- **Hub deploy pipeline (build + roll)** now has two tracked scripts as of mission-43 (2026-04-24):
+  - `deploy/build-hub.sh` — Cloud Build → Artifact Registry + `:latest` re-tag.
+  - `deploy/deploy-hub.sh` — Cloud Run roll to a specified image (default `:latest`).
+
+  Typical flow: `deploy/build-hub.sh --tag <mission-tag>` → note the printed image URI → `deploy/deploy-hub.sh --image <printed-uri>`.
+
+- **Remaining deploy-tooling gaps:**
+  - Architect-image equivalents (`deploy/build-architect.sh` + `deploy/deploy-architect.sh`) still need tracked successors.
+  - End-to-end `build.sh` (previously `archive-pre-split-2026-04-22/build.sh`, assumed monolithic apply in `deploy/` root) — a wrapper that applies base + cloudrun in correct order and handles `deploy-ts` label bumps per service. Candidate script-rationalisation mission.
 - **Remote state migration to GCS.** Move both plans' state files from local to `backend "gcs"` pointing at `ois-relay-hub-state`. Chicken-and-egg mitigated by: base bucket already exists, so both can use GCS backend from the start (no bootstrap-on-local needed).
 - **Generic CloudRun lifecycle scripts.** Replace ad-hoc `start-architect.sh` / `stop-architect.sh` / `start-hub.sh` (the latter currently contains the wrong script body — it operates on architect-agent) with a generic `cloudrun/{start,stop,delete}.sh <service-name>` pattern.
