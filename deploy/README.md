@@ -51,6 +51,6 @@ Both plans use the **local backend** as of the split (state files kept in-dir). 
 
 ## Outstanding
 
-- **`build.sh` needs rewriting for split structure.** The pre-split version (now in `archive-pre-split-2026-04-22/build.sh`) assumed monolithic `terraform apply` in `deploy/` root. New build.sh should apply base + cloudrun in correct order and handle the `deploy-ts` label bump for each service independently. Candidate script-rationalisation mission.
+- **Cloud Run roll wrapper still unwritten.** `deploy/build-hub.sh` (added during mission-43, 2026-04-24) handles Cloud Build → Artifact Registry for the Hub image and re-points `:latest`, but stops short of rolling Cloud Run. The equivalent architect-image build wrapper + the base+cloudrun end-to-end `build.sh` (previously in `archive-pre-split-2026-04-22/build.sh`, assumed monolithic apply in `deploy/` root) still need tracked successors that understand the split structure and handle per-service `deploy-ts` label bumps. Candidate script-rationalisation mission.
 - **Remote state migration to GCS.** Move both plans' state files from local to `backend "gcs"` pointing at `ois-relay-hub-state`. Chicken-and-egg mitigated by: base bucket already exists, so both can use GCS backend from the start (no bootstrap-on-local needed).
 - **Generic CloudRun lifecycle scripts.** Replace ad-hoc `start-architect.sh` / `stop-architect.sh` / `start-hub.sh` (the latter currently contains the wrong script body — it operates on architect-agent) with a generic `cloudrun/{start,stop,delete}.sh <service-name>` pattern.
