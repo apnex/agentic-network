@@ -56,59 +56,7 @@ export interface IDirectorNotificationStore {
   acknowledge(id: string, acknowledgedBy: string): Promise<DirectorNotification | null>;
 }
 
-function clone(n: DirectorNotification): DirectorNotification {
-  return { ...n };
-}
-
-export class MemoryDirectorNotificationStore implements IDirectorNotificationStore {
-  private notifications = new Map<string, DirectorNotification>();
-  private counter = 0;
-
-  async create(opts: CreateNotificationOptions): Promise<DirectorNotification> {
-    this.counter++;
-    const now = new Date();
-    const id = `dn-${now.toISOString().slice(0, 10)}-${this.counter.toString().padStart(3, "0")}`;
-    const n: DirectorNotification = {
-      id,
-      severity: opts.severity,
-      source: opts.source,
-      sourceRef: opts.sourceRef ?? null,
-      title: opts.title,
-      details: opts.details,
-      createdAt: now.toISOString(),
-      acknowledgedAt: null,
-      acknowledgedBy: null,
-      createdBy: opts.createdBy,
-    };
-    this.notifications.set(id, n);
-    return clone(n);
-  }
-
-  async getById(id: string): Promise<DirectorNotification | null> {
-    const n = this.notifications.get(id);
-    return n ? clone(n) : null;
-  }
-
-  async list(filter?: {
-    severity?: NotificationSeverity;
-    source?: NotificationSource;
-    acknowledged?: boolean;
-  }): Promise<DirectorNotification[]> {
-    let out = Array.from(this.notifications.values());
-    if (filter?.severity) out = out.filter((n) => n.severity === filter.severity);
-    if (filter?.source) out = out.filter((n) => n.source === filter.source);
-    if (filter?.acknowledged !== undefined) {
-      out = out.filter((n) => (filter.acknowledged ? !!n.acknowledgedAt : !n.acknowledgedAt));
-    }
-    return out.map(clone);
-  }
-
-  async acknowledge(id: string, acknowledgedBy: string): Promise<DirectorNotification | null> {
-    const n = this.notifications.get(id);
-    if (!n) return null;
-    if (n.acknowledgedAt) return clone(n); // idempotent (INV-DN2)
-    n.acknowledgedAt = new Date().toISOString();
-    n.acknowledgedBy = acknowledgedBy;
-    return clone(n);
-  }
-}
+// Mission-47 W3: `MemoryDirectorNotificationStore` deleted.
+// `DirectorNotificationRepository` in `director-notification-repository.ts`
+// composes any `StorageProvider` (including `MemoryStorageProvider`
+// for tests) via the IDirectorNotificationStore interface.

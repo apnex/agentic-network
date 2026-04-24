@@ -46,7 +46,7 @@ import { StorageBackedCounter } from "../../src/entities/counter.js";
 import { MemoryStorageProvider } from "@ois/storage-provider";
 import { BugRepository } from "../../src/entities/bug-repository.js";
 import { MemoryPendingActionStore } from "../../src/entities/pending-action.js";
-import { MemoryDirectorNotificationStore } from "../../src/entities/director-notification.js";
+import { DirectorNotificationRepository } from "../../src/entities/director-notification-repository.js";
 import { createMetricsCounter, type MetricsCounter } from "../../src/observability/metrics.js";
 
 // ── Captured Event ──────────────────────────────────────────────────
@@ -505,7 +505,7 @@ export class TestOrchestrator {
       tele: new TeleRepository(storageProvider, storageCounter),
       bug: new BugRepository(storageProvider, storageCounter),
       pendingAction: new MemoryPendingActionStore(),
-      directorNotification: new MemoryDirectorNotificationStore(),
+      directorNotification: new DirectorNotificationRepository(storageProvider, storageCounter),
     };
   }
 
