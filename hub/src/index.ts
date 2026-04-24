@@ -14,9 +14,10 @@ import { GcsTaskStore, GcsEngineerRegistry, GcsProposalStore, GcsThreadStore, Gc
 import {
   MemoryMissionStore, MemoryTurnStore,
   GcsMissionStore, GcsTurnStore,
-  MemoryPendingActionStore, MemoryDirectorNotificationStore,
-  GcsPendingActionStore, GcsDirectorNotificationStore,
-  TeleRepository, IdeaRepository, BugRepository, StorageBackedCounter,
+  MemoryPendingActionStore,
+  GcsPendingActionStore,
+  TeleRepository, IdeaRepository, BugRepository, DirectorNotificationRepository,
+  StorageBackedCounter,
   type IIdeaStore, type IMissionStore, type ITurnStore, type ITeleStore, type IBugStore,
   type IPendingActionStore, type IDirectorNotificationStore,
 } from "./entities/index.js";
@@ -95,7 +96,6 @@ if (STORAGE_BACKEND === "gcs") {
   auditStore = new GcsAuditStore(bucket);
   notificationStore = new GcsNotificationStore(bucket);
   pendingActionStore = new GcsPendingActionStore(bucket);
-  directorNotificationStore = new GcsDirectorNotificationStore(bucket);
 } else {
   if (process.env.NODE_ENV === "production") {
     console.error("[Hub] FATAL: STORAGE_BACKEND is 'memory' in production. Set STORAGE_BACKEND=gcs to prevent silent state loss.");
@@ -110,17 +110,18 @@ if (STORAGE_BACKEND === "gcs") {
   auditStore = new MemoryAuditStore();
   notificationStore = new MemoryNotificationStore();
   pendingActionStore = new MemoryPendingActionStore();
-  directorNotificationStore = new MemoryDirectorNotificationStore();
 }
 
-// Mission-47 W1/W2: instantiate StorageProvider-backed repositories.
+// Mission-47 W1/W2/W3: instantiate StorageProvider-backed repositories.
 // Counter is shared-by-design across all repositories — issues a
 // monotonic ID sequence per entity-type field (teleCounter, ideaCounter,
-// bugCounter, ...) via a single meta/counter.json blob.
+// bugCounter, directorNotificationCounter, ...) via a single
+// meta/counter.json blob.
 const storageCounter = new StorageBackedCounter(storageProvider);
 ideaStore = new IdeaRepository(storageProvider, storageCounter);
 bugStore = new BugRepository(storageProvider, storageCounter);
 teleStore = new TeleRepository(storageProvider, storageCounter);
+directorNotificationStore = new DirectorNotificationRepository(storageProvider, storageCounter);
 
 // missionStore + turnStore depend on ideaStore (cascade back-links) and
 // taskStore, so construct them after the repository instantiation above.

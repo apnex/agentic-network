@@ -10,7 +10,7 @@ import { StorageBackedCounter } from "../entities/counter.js";
 import { MemoryStorageProvider } from "@ois/storage-provider";
 import { BugRepository } from "../entities/bug-repository.js";
 import { MemoryPendingActionStore } from "../entities/pending-action.js";
-import { MemoryDirectorNotificationStore } from "../entities/director-notification.js";
+import { DirectorNotificationRepository } from "../entities/director-notification-repository.js";
 import { createMetricsCounter } from "../observability/metrics.js";
 
 interface EmittedEvent {
@@ -54,7 +54,7 @@ export function createTestContext(overrides?: Partial<TestPolicyContext>): TestP
     tele: new TeleRepository(storageProvider, storageCounter),
     bug: new BugRepository(storageProvider, storageCounter),
     pendingAction: new MemoryPendingActionStore(),
-    directorNotification: new MemoryDirectorNotificationStore(),
+    directorNotification: new DirectorNotificationRepository(storageProvider, storageCounter),
   };
 
   return {

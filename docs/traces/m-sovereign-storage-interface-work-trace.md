@@ -27,11 +27,10 @@ If you're picking up cold on mission-47:
 
 ## In-flight
 
-- ▶ **T2-W2 — bug + idea repository migrations.** Shipped locally on `agent-greg/mission-47-t2-w2-bug-idea-repository` (T1 #10 + W1 #11 merged to main). Hub suite 723/728 pass (5 skipped; zero regressions). Next: push branch, open PR, single CI-check verify per thread-294 agreed pattern, hand off via standard PR-review to lily (W2 is routine — not a dedicated gate).
+- ▶ **T2-W2 — bug + idea repository migrations.** PR #12 open against main. Hub suite 723/728 pass (5 skipped; zero regressions). Awaiting architect routine-review + CI green.
+- ▶ **T2-W3 — director-notification repository migration.** Shipped locally on `agent-greg/mission-47-t2-w3-director-notification` (stacked on W2). Hub suite 723/728 pass (identical baseline). Next: push branch, open PR, hand off via standard PR-review to lily. Routine wave (not a checkpoint gate).
 
 ## Queued / filed
-
-- ○ **T2-W3 director-notification** — blocked on W2 merge.
 - ○ **T2-W4 mission** — blocked on W3.
 - ○ **T2-W5 task + proposal** — blocked on W4.
 - ○ **T2-W6 thread** — blocked on W5.
@@ -43,6 +42,14 @@ If you're picking up cold on mission-47:
 ---
 
 ## Done this session
+
+### T2-W3 (director-notification repository migration) — shipped 2026-04-24
+
+- ✅ **`hub/src/entities/director-notification-repository.ts` — `DirectorNotificationRepository implements IDirectorNotificationStore`.** Composes `StorageProvider` + shared `StorageBackedCounter` (field: `directorNotificationCounter`, already declared in `Counters` interface). Layout `director-notifications/<id>.json` matches historical GCS keyspace. ID shape preserved: `dn-${YYYY-MM-DD}-${NNN.padStart(3)}` — date prefix is cosmetic; counter is a single running integer (not per-day reset), matching legacy behavior. `acknowledge` has its own CAS loop (not a generic `casUpdate`) because idempotent-early-return (INV-DN2: already-ack'd notifications return unchanged without a write) is a cleaner shape than a transform predicate.
+- ✅ **Legacy classes deleted.** `MemoryDirectorNotificationStore` removed from `hub/src/entities/director-notification.ts`. `hub/src/entities/gcs/gcs-director-notification.ts` deleted entirely. `entities/index.ts` barrel now exports `DirectorNotificationRepository` in place of `{Memory,Gcs}DirectorNotificationStore`.
+- ✅ **`hub/src/index.ts` startup.** `directorNotificationStore = new DirectorNotificationRepository(storageProvider, storageCounter)` appended to the unified repository block.
+- ✅ **Test scaffolds updated.** `hub/src/policy/test-utils.ts` + `hub/test/e2e/orchestrator.ts` — both now build DirectorNotificationRepository via the shared `storageProvider` + `storageCounter`.
+- ✅ **Verification.** tsc strict-mode clean; hub suite 723/728 pass (5 skipped; baseline preserved).
 
 ### T2-W2 (bug + idea repository migrations) — shipped 2026-04-24
 
@@ -107,6 +114,8 @@ If you're picking up cold on mission-47:
 - **2026-04-24 ~09:15Z** — README + work trace (this file).
 - **2026-04-24 ~17:00Z** — T2-W1 (tele repository migration) merged to main via PR #11 (stacked on T1 PR #10). Architect post-W1 contract-validation thread closed; W2 unblocked.
 - **2026-04-24 ~19:00-19:15Z** — T2-W2 (bug + idea repository migrations) authored locally: IdeaRepository + BugRepository + idea.ts/bug.ts MemoryStore deletions + gcs-idea.ts/gcs-bug.ts deletion + index.ts barrel update + hub/src/index.ts startup restructure + test-utils.ts + orchestrator.ts migration + wave2 seedWithCreatedBy rewrite + gcs-p2-repro.test.ts obsolete GcsIdeaStore section removal. tsc clean; hub suite 723/728 pass (baseline preserved).
+- **2026-04-24 ~19:15Z** — W2 pushed + PR #12 opened against main (routine wave per Option C).
+- **2026-04-24 ~19:15-19:20Z** — T2-W3 (director-notification repository migration) authored locally on stacked branch `agent-greg/mission-47-t2-w3-director-notification`: DirectorNotificationRepository + MemoryDirectorNotificationStore deletion + gcs-director-notification.ts deletion + index.ts barrel update + hub/src/index.ts startup + test-utils.ts + orchestrator.ts migration. tsc clean; hub suite 723/728 pass (identical baseline).
 
 ## Canonical references
 

@@ -39,5 +39,4 @@ export type {
   IDirectorNotificationStore,
   CreateNotificationOptions,
 } from "./director-notification.js";
-export { MemoryDirectorNotificationStore } from "./director-notification.js";
-export { GcsDirectorNotificationStore } from "./gcs/gcs-director-notification.js";
+export { DirectorNotificationRepository } from "./director-notification-repository.js";
