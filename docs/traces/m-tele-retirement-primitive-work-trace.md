@@ -33,17 +33,17 @@ If you're picking up cold:
 
 ## In-flight
 
-- ▶ **T3 — Specs + verification audit + hygiene + local Docker rebuild.** Spec edits to `docs/specs/teles.md` (§Tele Lifecycle) + `docs/specs/entities.md` (audit matrix row) complete. `scripts/reset-teles.ts` + backup dir deleted. Code committed (`e75db98`). Deploy-tooling additions `deploy/build-hub.sh` + `deploy/deploy-hub.sh` committed (`47957eb`, `95a4ea6`) — useful tracked assets even though Cloud Run is not the normal target. Pending: architect-side verification-only zombie pass (per Decision 4 Option B); local Docker rebuild via `scripts/local/build-hub.sh` to materialize new tools for the running `ois-hub:local`; closing report; PR open; bug-24 flip.
+_(nothing claimed — **ENGINEER-SIDE MISSION-43 100% DELIVERED**. Code + specs + hygiene shipped in `e75db98`. Deploy tooling added as tracked assets: `deploy/build-hub.sh` (`47957eb`) + `deploy/deploy-hub.sh` (`95a4ea6`). Local dev scripts promoted to tracked: `scripts/local/{build,start,stop}-hub.sh` (`83b519c`). Local Docker rebuild live + smoke-verified via `list_tele()`. Closing audit filed (this commit). Mission-status flip + `agent-greg/mission-43-tele-lifecycle → main` PR merge pending architect + Director review gates.)_
 
-**Cloud Run status note (2026-04-24):** an exploratory Cloud Run push + roll completed successfully during this mission (build `2f95e631`, image `hub:mission-43-20260424-015414`, revision `hub-00001-8bt` at 100% traffic); Director then confirmed local Docker is the delivery target and the Cloud Run `hub` service was destroyed the same day. Artifact Registry image retained (cheap; not load-bearing).
+**Cloud Run status note (2026-04-24):** an exploratory Cloud Run push + roll completed successfully during this mission (build `2f95e631`, image `hub:mission-43-20260424-015414`, revision `hub-00001-8bt` at 100% traffic); Director then confirmed local Docker is the delivery target and the Cloud Run `hub` service was destroyed the same day. Artifact Registry image retained (cheap; not load-bearing). Memory updated (`project_local_docker_testing.md`) so future sessions inherit the delivery-target convention.
 
 ---
 
 ## Queued / filed
 
-- ○ **Mission closing audit** — `docs/audits/m-tele-retirement-primitive-closing-report.md` — to author after T3 ships. Single-artifact-per-mission per mission-41 Option-1 precedent. Cover: deliverable scorecard, success-criteria status, tele-alignment retrospective, zombie-verification finding (expected: no zombies, primitive shipped for future operations), bug-24 resolution, `reset-teles.ts` cleanup, spec updates, Hub-deploy verification.
-- ○ **bug-24 status flip** — `update_bug({bugId: "bug-24", status: "resolved", fixCommits: [...], linkedMissionId: "mission-43"})` — author post-deploy once tools are live in prod Hub. Filing will require at least one fixCommit on `agent/greg` containing the tele-policy + tele + gcs-tele changes.
-- ○ **Hub tasks (retroactive)** — architect mentioned "task decomposition is yours"; engineer opted for 3 local tasks rather than Hub-filed task entities for an S-class mission. Decision: keep local-only for now; file retroactive Hub task(s) at closing for archival if the architect wants the Hub-side task trail. Light scope; not load-bearing.
+- ○ **PR open on `agent-greg/mission-43-tele-lifecycle` → main** — push branch + `gh pr create` referencing brief, preflight, kickoff decisions, and closing audit. First worked example of `docs/methodology/multi-agent-pr-workflow.md` post-ADR-023.
+- ○ **Mission-status flip** — architect-gated RBAC; engineer cannot call `update_mission`. Architect performs `update_mission({missionId: "mission-43", status: "completed"})` on PR merge / closing-audit approval.
+- ○ **Hub tasks (retroactive)** — architect said "task decomposition is yours"; engineer opted for 3 local tasks rather than Hub-filed task entities for an S-class mission. Decision: keep local-only; file retroactive Hub task(s) only if architect requests archival trail.
 
 ---
 
@@ -77,6 +77,8 @@ If you're picking up cold:
 - **2026-04-24 01:50-02:00Z approx** — Code committed as `e75db98`. Branched `agent-greg/mission-43-tele-lifecycle` off main per ADR-023 trunk-based workflow.
 - **2026-04-24 02:05Z** — Director requested Cloud Build wrapper as tracked deploy tooling. Promoted local `scripts/local/build-hub.sh` pattern to tracked `deploy/build-hub.sh` (commit `47957eb`). Paired with `deploy/deploy-hub.sh` for Cloud Run roll (commit `95a4ea6`). Director approved build; `deploy/build-hub.sh --tag mission-43-20260424-015414` succeeded in 1m27s (build `2f95e631`). `deploy/deploy-hub.sh --image ...` rolled Cloud Run revision `hub-00001-8bt`.
 - **2026-04-24 02:10Z** — Director clarified: local Docker is the delivery target, not Cloud Run. Cloud Run `hub` service destroyed. Memory updated (`project_local_docker_testing.md`). Mission trace updated to reflect local-Docker-as-target.
+- **2026-04-24 02:30-02:45Z approx** — `scripts/local/{build,start,stop}-hub.sh` promoted to tracked (commit `83b519c`) after secret-safety audit (no hardcoded tokens; runtime reads via gitignored `deploy/env/prod.tfvars`; never logs secrets). `scripts/local/build-hub.sh` invoked → Cloud Build `fe55fbe0` SUCCESS in 1m20s → image digest `3d954fdb…` pulled + tagged `ois-hub:local`. `scripts/local/start-hub.sh` stopped existing container, launched fresh, health-checked OK. Live smoke via `list_tele()` confirmed new schema + normalizer — all 13 teles return `status: "active"` without any write occurring on the store.
+- **2026-04-24 ~03:00Z** — Closing audit filed at `docs/audits/m-tele-retirement-primitive-closing-report.md`. All 9 brief success criteria resolved (8 MET + 1 pending bug-24 flip at audit commit). Engineer-side mission ship complete.
 
 ---
 
