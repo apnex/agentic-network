@@ -137,9 +137,20 @@ let ai: GoogleGenAI | null = null;
 
 function getAI(): GoogleGenAI {
   if (!ai) {
+    // Mission-46 T1: GOOGLE_CLOUD_PROJECT hardcoded default stripped.
+    // Cloud Run terraform injects this via deploy/cloudrun/main.tf; local
+    // dev must set it explicitly. GOOGLE_CLOUD_LOCATION default stays
+    // "global" because Vertex AI's "global" location is not env-specific.
+    const project = process.env.GOOGLE_CLOUD_PROJECT;
+    if (!project) {
+      throw new Error(
+        "[vertex-cloudrun/llm] GOOGLE_CLOUD_PROJECT env var is required for Vertex AI client. " +
+        "Set via deploy/cloudrun/env/<env>.tfvars or local env override.",
+      );
+    }
     ai = new GoogleGenAI({
       vertexai: true,
-      project: process.env.GOOGLE_CLOUD_PROJECT || "labops-389703",
+      project,
       location: process.env.GOOGLE_CLOUD_LOCATION || "global",
     });
   }
