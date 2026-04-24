@@ -27,13 +27,12 @@ If you're picking up cold on mission-47:
 
 ## In-flight
 
-- ▶ **T2-W2 — bug + idea repository migrations.** PR #12 open against main. Hub suite 723/728 pass (5 skipped; zero regressions). Awaiting architect routine-review + CI green.
-- ▶ **T2-W3 — director-notification repository migration.** PR #13 open stacked on #12. Hub suite 723/728 pass. Awaiting review.
-- ▶ **T2-W4 — mission repository migration.** Shipped locally on `agent-greg/mission-47-t2-w4-mission-repository` (stacked on W3). Hub suite 722/727 pass (1 obsolete GcsMissionStore P2 reproduction removed). Virtual-view hydration preserved; plannedTasks cascade (task-316) preserved. Next: push + open PR stacked on W3.
+- ▶ **T2-W2 — bug + idea repository migrations.** PR #12 open against main. Hub CI green (`vitest (hub)` passing; continue-on-error cells as expected). Awaiting architect routine-review.
+- ▶ **T2-W3 — director-notification repository migration.** PR #13 stacked on #12. Awaiting review.
+- ▶ **T2-W4 — mission repository migration.** PR #14 stacked on #13. Virtual-view hydration + plannedTasks cascade preserved. Awaiting review.
+- ▶ **T2-W5 — task + proposal repository migrations.** Shipped locally on `agent-greg/mission-47-t2-w5-task-proposal` (stacked on W4). Hub suite 711/716 pass (baseline: 722→711 delta = 11 obsolete GcsTaskStore + GcsProposalStore P2 reproductions removed; zero functional regressions). FSM gates preserved via TransitionRejected sentinel → boolean/null mapping. Next: push + open PR stacked on W4.
 
 ## Queued / filed
-- ○ **T2-W4 mission** — blocked on W3.
-- ○ **T2-W5 task + proposal** — blocked on W4.
 - ○ **T2-W6 thread** — blocked on W5.
 - ○ **T2-W7 turn + pending-action + agent** — blocked on W6; L-escalation candidate.
 - ○ **T3 sync script + STORAGE_BACKEND=local-fs wiring** — blocked on W7.
@@ -43,6 +42,22 @@ If you're picking up cold on mission-47:
 ---
 
 ## Done this session
+
+### T2-W5 (task + proposal repository migrations) — shipped 2026-04-24
+
+- ✅ **`hub/src/entities/task-repository.ts` — `TaskRepository implements ITaskStore`.** Composes `StorageProvider` + shared `StorageBackedCounter`. Largest repository yet (~500 lines). Layout `tasks/<id>.json`; counter field `taskCounter`. Internal `tryCasUpdate` helper returns `boolean` — true on success, false when task missing OR transform throws `TransitionRejected`. This preserves the legacy `GcsTaskStore` pattern of "FSM gates inside transforms throw TransitionRejected; mutator maps to caller's boolean/null contract" — byte-for-byte.
+- ✅ **Report / review Markdown blobs preserved.** `submitReport` and `submitReview` still write separate Markdown files at `reports/<taskId>-v<N>-report.md` and `reviews/<taskId>-v<N>-review.md` — matches legacy GCS layout exactly so existing report/review files remain grep-compatible. Blob write routes through `provider.put()` (durable on GCS, in-memory for tests).
+- ✅ **In-process claim-serialization preserved.** `getNextDirective` + `getNextReport` both use a per-instance `Mutex` (`taskLock`) to serialize claim-polls — matches the historical `AsyncLock` in `gcs-state.ts`. Without this, two concurrent-in-process claim cycles would both walk the list before either CAS'd its claim.
+- ✅ **Dependency cascade preserved.** `unblockDependents` + `cancelDependents` both first-pass scan tasks into an in-memory `Map<string, Task>` snapshot for the blocked-set identification, then CAS-update each candidate through `tryCasUpdate` with transforms that re-verify the gate against fresh state. Stale-snapshot prefilter → authoritative transform pattern preserved.
+- ✅ **`hub/src/entities/proposal-repository.ts` — `ProposalRepository implements IProposalStore`.** Composes `StorageProvider` + shared `StorageBackedCounter`. Layout `proposals/<id>.json` + `proposals/<id>.md` (proposal body as separate Markdown blob — matches legacy layout). FSM gate on `closeProposal` preserved: submitted → {approved, rejected, changes_requested} → implemented (rejected states aren't direct-closeable).
+- ✅ **Legacy classes deleted.** `MemoryTaskStore` + `MemoryProposalStore` deleted from `state.ts`. `GcsTaskStore` + `GcsProposalStore` removed from `gcs-state.ts` (replaced by redirect comments). `entities/index.ts` barrel now exports `TaskRepository` + `ProposalRepository`.
+- ✅ **`hub/src/index.ts` startup.** `taskStore` + `proposalStore` now constructed via repositories in the shared block, BEFORE `missionStore` (mission hydration depends on taskStore). Backend-specific block shrinks further — only engineerRegistry, threadStore, auditStore, notificationStore, pendingActionStore + storageProvider remain backend-branched.
+- ✅ **Test scaffolds updated.** `test-utils.ts` + `orchestrator.ts` now build TaskRepository + ProposalRepository via the shared provider/counter.
+- ✅ **`__debugSetTask` test-only escape hatch.** Added to TaskRepository. Lets tests directly patch a task's on-disk state (bypassing FSM gates) for setup-only scenarios that can't be reached through the public API — e.g., directly setting `status: "failed"` or `revisionCount: 3`. Replaces the legacy pattern of poking `(store as any).tasks.get(id).field = value` against MemoryTaskStore's private Map.
+- ✅ **Test sweep (delegated to Agent).** 16 direct-mutation test sites across 4 files rewritten to use `__debugSetTask`: `task-316-mission-advancement.test.ts` (9), `policy-router.test.ts` (4 blocks), `e2e/invariants/INV-T4.test.ts` (1), `mission-19/p2p.test.ts` (2 blocks).
+- ✅ **`mission-19/claim.test.ts`.** Direct user of `MemoryTaskStore` rewritten to construct a `TaskRepository` over a fresh `MemoryStorageProvider` + `StorageBackedCounter`.
+- ✅ **Obsolete P2 reproductions removed.** `gcs-p2-repro.test.ts` — GcsTaskStore's 9 P2 reproduction blocks + GcsProposalStore's 2 blocks removed (equivalent coverage in storage-provider conformance suite + Repository casUpdate). GcsTurnStore + GcsThreadStore reproductions retained for W6.
+- ✅ **Verification.** tsc strict-mode clean; hub suite 711/716 pass (5 skipped; 722→711 delta = 11 obsolete GcsTaskStore + GcsProposalStore P2 reproductions removed; zero functional regressions).
 
 ### T2-W4 (mission repository migration) — shipped 2026-04-24
 
@@ -130,6 +145,8 @@ If you're picking up cold on mission-47:
 - **2026-04-24 ~19:15-19:20Z** — T2-W3 (director-notification repository migration) authored locally on stacked branch `agent-greg/mission-47-t2-w3-director-notification`: DirectorNotificationRepository + MemoryDirectorNotificationStore deletion + gcs-director-notification.ts deletion + index.ts barrel update + hub/src/index.ts startup + test-utils.ts + orchestrator.ts migration. tsc clean; hub suite 723/728 pass (identical baseline).
 - **2026-04-24 ~19:20Z** — W3 pushed + PR #13 opened stacked on W2 #12.
 - **2026-04-24 ~19:20-19:30Z** — T2-W4 (mission repository migration) authored locally on stacked branch `agent-greg/mission-47-t2-w4-mission-repository`: MissionRepository (virtual-view hydration preserved; plannedTasks cascade preserved) + MemoryMissionStore deletion + gcs-mission.ts deletion + index.ts barrel update + hub/src/index.ts startup + test-utils + orchestrator migration + wave2 seedMissionsWithCreatedBy rewrite + gcs-p2-repro.test.ts obsolete GcsMissionStore section removal. tsc clean; hub suite 722/727 pass.
+- **2026-04-24 ~19:30Z** — W4 pushed + PR #14 opened stacked on W3 #13.
+- **2026-04-24 ~19:30-19:50Z** — T2-W5 (task + proposal repository migrations) authored locally on stacked branch `agent-greg/mission-47-t2-w5-task-proposal`. TaskRepository (~500 lines, largest yet) + ProposalRepository; FSM gates preserved via TransitionRejected sentinel pattern; report/review Markdown blobs preserved; claim-serialization Mutex preserved; dependency cascade preserved. Legacy MemoryTaskStore + MemoryProposalStore + GcsTaskStore + GcsProposalStore removed. `__debugSetTask` test-only escape hatch added. Test sweep delegated to Agent — 16 direct-mutation sites rewritten across 4 test files. `mission-19/claim.test.ts` rewritten to use TaskRepository. Obsolete P2 reproductions removed. tsc clean; hub suite 711/716 pass.
 
 ## Canonical references
 

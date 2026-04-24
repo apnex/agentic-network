@@ -9,10 +9,10 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  MemoryTaskStore,
-  taskClaimableBy,
-} from "../../src/state.js";
+import { taskClaimableBy } from "../../src/state.js";
+import { TaskRepository } from "../../src/entities/task-repository.js";
+import { StorageBackedCounter } from "../../src/entities/counter.js";
+import { MemoryStorageProvider } from "@ois/storage-provider";
 
 describe("Mission-19 Claim — taskClaimableBy helper", () => {
   it("unlabeled task is claimable by anyone (even unlabeled claimant)", () => {
@@ -40,10 +40,12 @@ describe("Mission-19 Claim — taskClaimableBy helper", () => {
 });
 
 describe("Mission-19 Claim — getNextDirective enforces labels", () => {
-  let store: MemoryTaskStore;
+  let store: TaskRepository;
 
   beforeEach(() => {
-    store = new MemoryTaskStore();
+    const provider = new MemoryStorageProvider();
+    const counter = new StorageBackedCounter(provider);
+    store = new TaskRepository(provider, counter);
   });
 
   it("claim records assignedEngineerId (INV-T15)", async () => {

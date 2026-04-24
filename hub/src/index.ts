@@ -8,16 +8,16 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { MemoryTaskStore, MemoryEngineerRegistry, MemoryProposalStore, MemoryThreadStore, MemoryAuditStore, MemoryNotificationStore } from "./state.js";
+import { MemoryEngineerRegistry, MemoryThreadStore, MemoryAuditStore, MemoryNotificationStore } from "./state.js";
 import type { ITaskStore, IEngineerRegistry, IProposalStore, IThreadStore, IAuditStore, INotificationStore } from "./state.js";
-import { GcsTaskStore, GcsEngineerRegistry, GcsProposalStore, GcsThreadStore, GcsAuditStore, GcsNotificationStore, reconcileCounters, cleanupOrphanedFiles } from "./gcs-state.js";
+import { GcsEngineerRegistry, GcsThreadStore, GcsAuditStore, GcsNotificationStore, reconcileCounters, cleanupOrphanedFiles } from "./gcs-state.js";
 import {
   MemoryTurnStore,
   GcsTurnStore,
   MemoryPendingActionStore,
   GcsPendingActionStore,
   TeleRepository, IdeaRepository, BugRepository, DirectorNotificationRepository,
-  MissionRepository,
+  MissionRepository, TaskRepository, ProposalRepository,
   StorageBackedCounter,
   type IIdeaStore, type IMissionStore, type ITurnStore, type ITeleStore, type IBugStore,
   type IPendingActionStore, type IDirectorNotificationStore,
@@ -90,9 +90,7 @@ if (STORAGE_BACKEND === "gcs") {
   const bucket = GCS_BUCKET!;
   console.log(`[Hub] Using GCS storage backend: gs://${bucket}`);
   storageProvider = new GcsStorageProvider(bucket);
-  taskStore = new GcsTaskStore(bucket);
   engineerRegistry = new GcsEngineerRegistry(bucket);
-  proposalStore = new GcsProposalStore(bucket);
   threadStore = new GcsThreadStore(bucket);
   auditStore = new GcsAuditStore(bucket);
   notificationStore = new GcsNotificationStore(bucket);
@@ -104,21 +102,21 @@ if (STORAGE_BACKEND === "gcs") {
   }
   console.log("[Hub] Using in-memory storage backend");
   storageProvider = new MemoryStorageProvider();
-  taskStore = new MemoryTaskStore();
   engineerRegistry = new MemoryEngineerRegistry();
-  proposalStore = new MemoryProposalStore();
   threadStore = new MemoryThreadStore();
   auditStore = new MemoryAuditStore();
   notificationStore = new MemoryNotificationStore();
   pendingActionStore = new MemoryPendingActionStore();
 }
 
-// Mission-47 W1/W2/W3/W4: instantiate StorageProvider-backed repositories.
-// Counter is shared-by-design across all repositories — issues a
-// monotonic ID sequence per entity-type field (teleCounter, ideaCounter,
-// bugCounter, directorNotificationCounter, missionCounter, ...) via a
-// single meta/counter.json blob.
+// Mission-47 W1/W2/W3/W4/W5: instantiate StorageProvider-backed
+// repositories. Counter is shared-by-design across all repositories —
+// issues a monotonic ID sequence per entity-type field (teleCounter,
+// ideaCounter, bugCounter, directorNotificationCounter, missionCounter,
+// taskCounter, proposalCounter, ...) via a single meta/counter.json blob.
 const storageCounter = new StorageBackedCounter(storageProvider);
+taskStore = new TaskRepository(storageProvider, storageCounter);
+proposalStore = new ProposalRepository(storageProvider, storageCounter);
 ideaStore = new IdeaRepository(storageProvider, storageCounter);
 bugStore = new BugRepository(storageProvider, storageCounter);
 teleStore = new TeleRepository(storageProvider, storageCounter);

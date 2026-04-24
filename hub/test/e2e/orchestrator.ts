@@ -32,12 +32,12 @@ import {
 } from "../../src/policy/index.js";
 import type { AllStores, IPolicyContext, PolicyResult } from "../../src/policy/types.js";
 import {
-  MemoryTaskStore,
   MemoryEngineerRegistry,
-  MemoryProposalStore,
   MemoryThreadStore,
   MemoryAuditStore,
 } from "../../src/state.js";
+import { TaskRepository } from "../../src/entities/task-repository.js";
+import { ProposalRepository } from "../../src/entities/proposal-repository.js";
 import { IdeaRepository } from "../../src/entities/idea-repository.js";
 import { MissionRepository } from "../../src/entities/mission-repository.js";
 import { MemoryTurnStore } from "../../src/entities/turn.js";
@@ -487,16 +487,17 @@ export class TestOrchestrator {
   // ── Private ─────────────────────────────────────────────────────
 
   private createStores(): AllStores {
-    const task = new MemoryTaskStore();
-    // Mission-47 W1/W2: tele/idea/bug via *Repository + MemoryStorageProvider.
+    // Mission-47 W1-W5: task/proposal/idea/mission/tele/bug/director-notification
+    // via *Repository classes over a fresh MemoryStorageProvider.
     const storageProvider = new MemoryStorageProvider();
     const storageCounter = new StorageBackedCounter(storageProvider);
+    const task = new TaskRepository(storageProvider, storageCounter);
     const idea = new IdeaRepository(storageProvider, storageCounter);
     const mission = new MissionRepository(storageProvider, storageCounter, task, idea);
     return {
       task,
       engineerRegistry: new MemoryEngineerRegistry(),
-      proposal: new MemoryProposalStore(),
+      proposal: new ProposalRepository(storageProvider, storageCounter),
       thread: new MemoryThreadStore(),
       audit: new MemoryAuditStore(),
       idea,

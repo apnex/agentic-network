@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { TestOrchestrator } from "../orchestrator.js";
 import { assertInvT4 } from "../invariant-helpers.js";
+import type { TaskRepository } from "../../../src/entities/task-repository.js";
 
 describe("INV-T4 — task terminal states have no outbound transitions", () => {
   let orch: TestOrchestrator;
@@ -98,12 +99,10 @@ describe("INV-T4 — task terminal states have no outbound transitions", () => {
     // transition path exists, so test-only direct store mutation is the
     // pragmatic way to reach this terminal state for invariant coverage.
     await arch.createTask("T4 failed-terminal", "force failed state");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const storeInternals = (orch.stores.task as any).tasks as Map<string, { status: string; updatedAt: string }>;
-    const taskRec = storeInternals.get("task-1");
-    expect(taskRec).toBeDefined();
-    taskRec!.status = "failed";
-    taskRec!.updatedAt = new Date().toISOString();
+    await (orch.stores.task as TaskRepository).__debugSetTask("task-1", {
+      status: "failed",
+      updatedAt: new Date().toISOString(),
+    });
 
     // Verify terminal.
     const task = await orch.stores.task.getTask("task-1");
