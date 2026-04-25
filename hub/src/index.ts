@@ -10,6 +10,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { cutoverSentinelPath, isCutoverComplete } from "./lib/cutover-sentinel.js";
 import type { ITaskStore, IEngineerRegistry, IProposalStore, IThreadStore, IAuditStore, INotificationStore } from "./state.js";
 import { reconcileCounters, cleanupOrphanedFiles } from "./gcs-state.js";
 import {
@@ -140,6 +141,24 @@ if (STORAGE_BACKEND === "gcs") {
       process.exit(1);
     }
     throw err;
+  }
+
+  // Mission-48 T2b: bootstrap-required guard. The .cutover-complete
+  // sentinel is written by scripts/state-sync.sh ONLY after the GCS→
+  // local-fs post-copy set-equality invariant passes. Refuse to start
+  // on a half-bootstrapped (or never-bootstrapped) state directory —
+  // fail-fast keeps an unprepared cutover from silently running with
+  // no entity state.
+  if (!isCutoverComplete(root)) {
+    console.error(
+      `[Hub] FATAL: STORAGE_BACKEND='local-fs' but cutover sentinel missing at ${cutoverSentinelPath(root)}. ` +
+      `The local-fs state directory has not been bootstrapped from GCS — Hub refuses to ` +
+      `start without a validated cutover.\n` +
+      `Fix: run scripts/state-sync.sh first (it writes the sentinel after the post-copy ` +
+      `invariant passes). For an explicit fresh-start with no GCS data, run state-sync.sh ` +
+      `against an empty bucket — the invariant trivially passes and the sentinel is written.`
+    );
+    process.exit(1);
   }
 
   console.log(`[Hub] Using local-fs storage backend at: ${root}`);

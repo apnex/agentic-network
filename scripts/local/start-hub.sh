@@ -86,11 +86,15 @@ CONTAINER_PORT="8080"
 # Hub-side env defaults (non-secret)
 GCS_BUCKET="$(read_tfvar state_bucket_name)"
 GCS_BUCKET="${GCS_BUCKET:-ois-relay-hub-state}"
-# Mission-48 T1: STORAGE_BACKEND is now caller-overridable. Default `gcs`
-# preserves prior behavior (single-env operators see no change). Set
-# `STORAGE_BACKEND=local-fs` + `OIS_LOCAL_FS_ROOT=<path>` to run the
-# laptop-Hub against a host-mounted state directory.
-STORAGE_BACKEND="${STORAGE_BACKEND:-gcs}"
+# Mission-48 T2b: laptop-Hub default flipped from `gcs` to `local-fs`.
+# Operator runs state-sync.sh once to bootstrap GCS→local-fs (writes
+# the .cutover-complete sentinel), then start-hub.sh boots into the
+# local-fs profile by default — laptop-Hub deployment is the prod
+# pattern (per ADR-024 amendment §6.1, mission-48).
+# Set `STORAGE_BACKEND=gcs` explicitly to roll back to the GCS profile
+# (e.g., for operator-driven comparison testing or explicit cutover
+# rollback per the T4 runbook).
+STORAGE_BACKEND="${STORAGE_BACKEND:-local-fs}"
 # Mission-48 T1: default state-dir host path matches mission-47 T3's
 # state-sync.sh layout. `${REPO_ROOT}/local-state/` is gitignored.
 OIS_LOCAL_FS_ROOT="${OIS_LOCAL_FS_ROOT:-${REPO_ROOT}/local-state}"
