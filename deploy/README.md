@@ -110,43 +110,139 @@ Both plans use the **local backend** as of the split (state files kept in-dir). 
 **Per-env fields recommended in `base/env/<env>.tfvars`:**
 - `state_bucket_name = "<project-id>-hub-state"` or similar uniqueness-guaranteed name (GCS bucket names are global-namespaced — don't reuse `ois-relay-hub-state` across envs)
 
-## Local-fs Hub state directory (post-mission-48 T2b)
+## Local-fs Hub profile
 
-Mission-48 T1 (2026-04-25) wired the `local-fs` Hub profile into `scripts/local/start-hub.sh` for single-writer-laptop-prod use. T2a added a cutover-bootstrap script with a post-copy set-equality invariant + `.cutover-complete` sentinel. T2b flipped the laptop-Hub default from `gcs` to `local-fs` and added a bootstrap-required guard at Hub startup. ADR-024 §6.1 captures the profile reclassification.
+Mission-48 (closed 2026-04-25) made `local-fs` the laptop-Hub prod default — bind-mounted host directory, single-writer, durable across container restart. ADR-024 §6.1 captures the profile reclassification (dev-only → also single-writer-laptop-prod-eligible).
 
-- **Default backend:** `local-fs` (mission-48 T2b — was `gcs` through T2a). Operators must run `scripts/state-sync.sh` once before first launch to bootstrap from GCS + write the sentinel; Hub fail-fasts otherwise.
+**Properties:**
+
+- **Default backend:** `local-fs` (mission-48 T2b). Override to `gcs` via `STORAGE_BACKEND=gcs`.
 - **Default host path:** `${REPO_ROOT}/local-state/` (gitignored). Override via `OIS_LOCAL_FS_ROOT=<path>`.
-- **Rollback to GCS:** set `STORAGE_BACKEND=gcs` explicitly before `scripts/local/start-hub.sh`. Full rollback runbook (including manual reverse-sync via T2c when post-cutover writes need to land in GCS first) lands under T4.
-- **Bind mount:** start-hub.sh bind-mounts the host path into the container at the same path; the container `OIS_LOCAL_FS_ROOT` env resolves identically inside.
-- **uid/gid:** the container runs as host uid/gid (`docker run -u $(id -u):$(id -g)`) to keep bind-mount writes host-owned and operator-inspectable.
-- **Single-writer enforcement:** `scripts/local/start-hub.sh:148-161` enforces one `ois-hub-local-*` container at a time per host. Concurrent hubs against the same state directory will corrupt state — the enforcement script makes this hard to do accidentally.
-- **Defense-in-depth writability check:** the start-hub.sh shell-layer pre-flights writability before `docker run`; the Hub container also runs an internal writability assertion in `hub/src/index.ts` and fail-fasts on `EACCES`/`EPERM` with a uid/gid-diagnostic message.
-- **Bootstrap-required guard (T2b):** Hub startup under `STORAGE_BACKEND=local-fs` checks for `${OIS_LOCAL_FS_ROOT}/.cutover-complete`; refuses to start without it. The sentinel is written by `scripts/state-sync.sh` only after the post-copy set-equality invariant passes — guarantees Hub never operates on a half-bootstrapped or never-bootstrapped state directory. Fresh-start scenarios: `state-sync.sh` against an empty bucket trivially passes the invariant and writes the sentinel.
-- **Reverse-sync (T2c):** `scripts/state-sync.sh --reverse --yes` pushes local-fs state UP to GCS — the rollback path. `--yes` is required because the reverse direction can overwrite the canonical GCS state; accidental invocation is the most expensive mistake. The reverse path uses the same set-equality invariant as forward; tmp-file artifacts (`.tmp.*`) and the local-fs-only sentinel (`.cutover-complete`) are excluded from the upload by construction. Reverse direction does NOT touch the local sentinel — it reflects the LAST FORWARD bootstrap, not the last reverse upload.
+- **Bind mount + uid/gid:** start-hub.sh bind-mounts the host path into the container at the same path and runs the container as host uid/gid (`docker run -u $(id -u):$(id -g)`). Bind-mount writes are host-owned and operator-inspectable; uid mismatch can't surface as a generic `EACCES` mid-mission.
+- **Single-writer enforcement:** start-hub.sh permits only one `ois-hub-local-*` container at a time per host. Concurrent hubs against the same state dir will corrupt state — the enforcement script makes this hard to do accidentally. Cloud Run / multi-instance deployments must continue to use `STORAGE_BACKEND=gcs` (`concurrent:false` capability flag still rules out multi-writer profiles by contract).
+- **Defense-in-depth writability check:** start-hub.sh shell-layer probes writability before `docker run`; Hub container also asserts writability internally and fail-fasts on `EACCES`/`EPERM` with a uid/gid-diagnostic message.
+- **Bootstrap-required guard:** Hub startup under `STORAGE_BACKEND=local-fs` checks for `${OIS_LOCAL_FS_ROOT}/.cutover-complete`; refuses to start without it. The sentinel is written by `scripts/state-sync.sh` only after the post-copy set-equality invariant passes — Hub never operates on a half-bootstrapped state.
+- **Reverse-sync:** `scripts/state-sync.sh --reverse --yes` pushes local-fs state UP to GCS — the rollback feeder. `--yes` required (canonical GCS state can be overwritten). Tmp-file artifacts (`.tmp.*`) and the local-fs-only sentinel are excluded from the upload by construction. Reverse direction does NOT touch the local sentinel.
 
-Operator first-launch flow:
+## Cutover runbook (operator-facing)
+
+Move a Hub from GCS-backed operation to local-fs-backed operation. Idempotent at every step. Required before first launch on the local-fs default.
+
+### Pre-flight
+
+| Check | Command | Expected |
+|---|---|---|
+| `gcloud` SDK installed + authenticated | `gcloud auth list` | active account listed |
+| GCP project + region resolved | `cat deploy/env/prod.tfvars` | `project_id` + `region` populated |
+| Docker daemon running | `docker ps` | exits 0 |
+| `gsutil` accessible | `gsutil version -l` | gsutil + python paths printed |
+| GCS bucket reachable | `gsutil ls gs://ois-relay-hub-state/` | object listing |
+| Repo at current main HEAD | `git fetch && git status` | "up to date with origin/main" |
+
+### Step 1 — Build the Hub image from current main
+
 ```bash
-# One-time: bootstrap the local-fs state directory from GCS
-scripts/state-sync.sh
-# (.cutover-complete sentinel written; invariant verified)
-
-# Subsequent launches: default backend is local-fs
-scripts/local/start-hub.sh
+OIS_ENV=prod scripts/local/build-hub.sh
 ```
 
-Operator rollback flow (when post-cutover writes need to land in GCS first):
-```bash
-# 1. Stop the local-fs Hub so reverse-sync sees a stable local-state.
-scripts/local/stop-hub.sh
+Cloud Build runs the build over the local `hub/` directory; pushes `:latest` to the env's Artifact Registry; pulls back to the host; tags locally as `ois-hub:local`. Re-runnable; idempotent.
 
-# 2. Push local-fs state UP to GCS (--yes required — overwrites canonical state).
+Verify post-build:
+```bash
+docker image inspect ois-hub:local --format '{{.Created}} {{.Id}}'
+# Expect: timestamp == current build minute; new SHA
+```
+
+### Step 2 — Bootstrap local-fs from GCS
+
+```bash
+scripts/state-sync.sh
+```
+
+Forward direction (GCS → local-fs); idempotent (re-run is a no-op). Output trail:
+- gsutil rsync mirrors `gs://${BUCKET}/` → `${REPO_ROOT}/local-state/` (parallel; tmp-file exclusion via regex)
+- Post-copy set-equality invariant verifies keyspace match between GCS + local
+- `.cutover-complete` sentinel written ONLY after invariant green (timestamp + bucket + script commit + invocation epoch)
+
+If the invariant fails, the script exits 1 with explicit `< / >` path-diff output; sentinel NOT written. Re-run after resolving (interrupted rsync, mid-flight GCS modification, or local writes during sync).
+
+### Step 3 — Stop the prior container (if present)
+
+```bash
+docker ps --filter 'name=^/ois-hub-local' -q | xargs -r docker stop
+docker ps -a --filter 'name=^/ois-hub-local' -q | xargs -r docker rm
+```
+
+(start-hub.sh's one-hub-at-a-time enforcement also handles this on launch — Step 3 is for explicit-cleanup operators who want a known-clean slate.)
+
+### Step 4 — Start Hub against local-fs default
+
+```bash
+OIS_ENV=prod scripts/local/start-hub.sh
+```
+
+start-hub.sh's defaults pick up local-fs automatically (T2b flip). Output trail:
+- Pre-flight: `mkdir -p` + writability probe on `${REPO_ROOT}/local-state/`
+- `docker run -u $(id -u):$(id -g)` with bind mount of state dir
+- Hub-side writability assertion + bootstrap-required guard pass
+- `/health` returns 200 within ~5s
+
+### Step 5 — Verify
+
+```bash
+curl -sf http://localhost:8080/health   # → {"status":"ok",...}
+docker logs --tail 30 ois-hub-local-prod   # no FATAL/ERROR; "Using local-fs storage backend at: ..." line present
+```
+
+Optional Hub-restart verification (the load-bearing readback assertion captured in `docs/runbooks/m-local-fs-cutover-drills.md` §2): stop + start the container; re-enumerate entities; assert ID-set equality pre/post.
+
+## Rollback runbook (operator-facing)
+
+Roll back from local-fs to GCS-backed operation. Two scenarios; pick the one that matches.
+
+### Scenario A — pure time-travel (no post-cutover writes to preserve)
+
+If no entity creation / state mutation happened on local-fs since the cutover, the GCS-as-of-cutover snapshot is still authoritative. Just flip and restart:
+
+```bash
+docker stop ois-hub-local-prod && docker rm ois-hub-local-prod
+STORAGE_BACKEND=gcs OIS_ENV=prod scripts/local/start-hub.sh
+```
+
+### Scenario B — preserve post-cutover writes (most common case)
+
+If Hub has written entities to local-fs since cutover, those writes are NOT in GCS. Rolling back without first pushing them to GCS = silent data loss. Always do this:
+
+```bash
+# 1. Stop the local-fs Hub (stable local-state for reverse-sync).
+docker stop ois-hub-local-prod
+
+# 2. Push local-fs state UP to GCS — REQUIRES --yes (canonical GCS will be overwritten).
 scripts/state-sync.sh --reverse --yes
 
-# 3. Restart Hub explicitly under the GCS backend.
-STORAGE_BACKEND=gcs scripts/local/start-hub.sh
+# 3. Verify the post-cutover write landed in GCS.
+gsutil ls gs://${BUCKET}/<entity-path>/
+# (Spot-check whichever entity type you wrote during the local-fs window.)
+
+# 4. Restart Hub on GCS backend.
+docker rm ois-hub-local-prod
+STORAGE_BACKEND=gcs OIS_ENV=prod scripts/local/start-hub.sh
+
+# 5. Verify Hub returns the post-cutover entities via Hub-API.
+curl -sf http://localhost:8080/health   # /health: ok
+# (Use list_* / get_* MCP tools to spot-check the post-cutover writes.)
 ```
 
-Full cutover + rollback runbook lands under mission-48 T4.
+### Why `--yes` on reverse-sync
+
+The reverse direction can clobber the canonical GCS state. Forgetting `--yes` was deliberately blocked: accidental invocation is the most expensive mistake (overwriting GCS with a partial / broken local-state). The flag forces explicit operator intent.
+
+### Sentinel handling on rollback
+
+The local `.cutover-complete` sentinel is NOT touched by reverse-sync — it reflects the LAST FORWARD bootstrap, not the last reverse upload. After a rollback:
+- The local-state directory still has a sentinel from the original forward bootstrap.
+- If an operator later forwards-bootstraps again (e.g., after upstream GCS state moved on), the new sentinel overwrites the old.
+- Fresh-start scenarios: delete `local-state/` entirely, then run `scripts/state-sync.sh` to rebuild from GCS.
 
 ## Hub GCS state layout (post-mission-49)
 

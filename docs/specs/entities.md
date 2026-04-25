@@ -107,6 +107,10 @@ fields:
 
 ## 3. Entity Catalog
 
+**Storage backend (post-mission-49 close 2026-04-25):** All 12 first-class entity stores compose any `StorageProvider` (`@ois/storage-provider`) via the `*Repository` pattern — single class per entity, no `Memory*Store` / `Gcs*Store` divergence. Mission-47 W1-W7 migrated tele / bug+idea / director-notification / mission / task+proposal / thread / turn+pending-action+agent (10 stores); mission-49 W8-W9 migrated audit + notification (final 2). The 6-primitive contract (`get` / `getWithToken` / `list` / `delete` / `put` / `createOnly` / `putIfMatch`) held throughout — see ADR-024 §6 Amendments for the local-fs reclassification (mission-48). Legacy `hub/src/entities/gcs/` directory + `Memory*Store` / `Gcs*Store` class pairs deleted across the wave sequence; tombstone comments at the original file locations carry the mission-N-W reference.
+
+
+
 ### 3.1 Task
 
 ```yaml
@@ -114,11 +118,10 @@ entity: Task
 kind: first-class
 owner_policy: hub/src/policy/task-policy.ts
 owner_store:
-  memory: hub/src/state.ts (MemoryTaskStore)
-  gcs: hub/src/gcs-state.ts (GcsTaskStore)
+  repository: hub/src/entities/task-repository.ts (TaskRepository over StorageProvider — mission-47 W5)
 storage_key_pattern: tasks/{taskId}.json
 fsm_link: docs/specs/workflow-registry.md §1.1
-id_strategy: human-readable counter (task-{N}) — hub-issued via getAndIncrementCounter
+id_strategy: human-readable counter (task-{N}) — repository-layer issued via StorageBackedCounter ("taskCounter" field on meta/counter.json)
 
 fields:
   id:
@@ -250,14 +253,13 @@ entity: Agent
 kind: first-class
 owner_policy: hub/src/hub-networking.ts (handshake flow)
 owner_store:
-  memory: hub/src/state.ts (MemoryEngineerRegistry)
-  gcs: hub/src/gcs-state.ts (GcsEngineerRegistry, line 832)
+  repository: hub/src/entities/agent-repository.ts (AgentRepository over StorageProvider — mission-47 W7b; implements IEngineerRegistry)
 storage_key_pattern:
   primary: agents/{engineerId}.json
   index:   agents/by-fingerprint/{fp}.json
 fsm_link: "no FSM — Agent is append-only; transitions are archived=true and sessionEpoch++"
-id_strategy: "hub-issued prefixed random (eng-{random}) on first handshake"
-persistence_model: "persistent record in GCS; epoch increments on each handshake that displaces a prior session"
+id_strategy: "fingerprint-derived prefixed (eng-{shortHash(fingerprint)}) on first handshake — no counter; engineerIds are deterministic from M18 enriched-handshake fingerprint"
+persistence_model: "persistent record via StorageProvider (GCS / local-fs / memory per STORAGE_BACKEND); epoch increments on each handshake that displaces a prior session. In-memory bookkeeping (sessionRoles, displacementHistory, lastTouchAt) preserved as repo-instance Maps — same as pre-mission-47-W7b behavior; wiped on Hub restart, repopulated on next session-claim."
 
 fields:
   engineerId:
@@ -434,7 +436,7 @@ Every entity section in §3 MUST include a YAML frontmatter block (demarcated by
 - `entity` — the entity name (matches `entityType` discriminator)
 - `kind` — `first-class` | `interface` | `derived`
 - `owner_policy` — path to the policy file that governs it
-- `owner_store` — memory and gcs store paths
+- `owner_store` — repository file path (post-mission-49 close 2026-04-25: all 12 entity stores migrated to `*Repository` over `StorageProvider`; ADR-024 + §6.1 amendment). Legacy form (pre-mission-47): `memory` + `gcs` store paths — superseded.
 - `storage_key_pattern` — GCS key template
 - `fsm_link` — pointer to workflow-registry.md section, or "— (no FSM)"
 - `id_strategy` — one of `counter`, `ulid`, `random-prefixed`, `path-based`
