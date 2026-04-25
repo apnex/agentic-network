@@ -168,6 +168,47 @@ Both plans use the **local backend** as of the split (state files kept in-dir). 
 **Per-env fields recommended in `base/env/<env>.tfvars`:**
 - `state_bucket_name = "<project-id>-hub-state"` or similar uniqueness-guaranteed name (GCS bucket names are global-namespaced — don't reuse `ois-relay-hub-state` across envs)
 
+## Repo-event-bridge env-vars (mission-52 T3)
+
+The Hub's optional repo-event-bridge component (M-Repo-Event-Bridge) ingests GitHub repository events (PR open/close/merge, review submissions, push events) by polling the GH API on a constant cadence and dispatching them through the Hub's `create_message` MCP verb.
+
+**The component is OFF by default** — without `OIS_GH_API_TOKEN` set, the Hub starts cleanly with the bridge skipped. Enable it by setting all of:
+
+| Env-var | Required | Default | Description |
+|---|---|---|---|
+| `OIS_GH_API_TOKEN` | yes | (unset) | GitHub Personal Access Token with `repo`, `read:org`, `read:user` scopes. Token absent → bridge skipped. |
+| `OIS_REPO_EVENT_BRIDGE_REPOS` | yes | (empty) | Comma-separated `owner/name` list. Empty + token-set → bridge skipped (warning logged). |
+| `OIS_REPO_EVENT_BRIDGE_CADENCE_S` | no | `30` | Seconds between polls per repo. |
+| `OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT` | no | `0.8` | Fraction of GH PAT 5000-req/hr limit to budget. Soft-limit (warns on overrun; not enforcing). |
+
+**Operator setup (laptop Hub):**
+
+```bash
+# 1. Provision a PAT at https://github.com/settings/tokens with scopes:
+#    repo, read:org, read:user
+export OIS_GH_API_TOKEN="ghp_…"
+
+# 2. List repos to poll
+export OIS_REPO_EVENT_BRIDGE_REPOS="apnex-org/agentic-network,apnex-org/other-repo"
+
+# 3. (Optional) override cadence + budget
+export OIS_REPO_EVENT_BRIDGE_CADENCE_S=60
+export OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT=0.5
+
+# 4. Boot the Hub — start-hub.sh forwards these env-vars into the container.
+OIS_ENV=prod scripts/local/start-hub.sh
+```
+
+The container Hub logs `[repo-event-bridge] Polling N repos × Ks cadence = M req/hr (budget cap: K req/hr; X% headroom)` at startup when active, or `[Hub] OIS_GH_API_TOKEN not set — repo-event-bridge skipped` when the token is absent.
+
+**Failure modes (Hub stays up):**
+- PAT lacks required scopes → bridge state `failed`; error logs include `PAT under-scoped: missing X`. Hub continues.
+- PAT auth-failure (401) → bridge state `failed`. Hub continues.
+- 429 / rate-limit → bridge auto-pauses for `Retry-After` or `X-RateLimit-Reset` window; resumes automatically. `health()` reports `paused: true, pausedReason: 'rate-limit'`.
+- Network transient → bridge exp-backoffs (1 → 2 → 5 → 10 → 30s cap); `pausedReason: 'network'` set when backoff > 30s.
+
+**State persistence:** per-repo cursor + bounded LRU dedupe set persist via the Hub's StorageProvider (same backend as other entities — GCS / local-fs / memory). Hub restart resumes polling from the persisted cursor; events seen pre-restart don't re-emit.
+
 ## Local-fs Hub profile
 
 Mission-48 (closed 2026-04-25) made `local-fs` the laptop-Hub prod default — bind-mounted host directory, single-writer, durable across container restart. ADR-024 §6.1 captures the profile reclassification (dev-only → also single-writer-laptop-prod-eligible).
