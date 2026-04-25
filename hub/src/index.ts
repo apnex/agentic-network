@@ -48,6 +48,11 @@ import { Watchdog } from "./policy/watchdog.js";
 import { MessageProjectionSweeper } from "./policy/message-projection-sweeper.js";
 import { ScheduledMessageSweeper } from "./policy/scheduled-message-sweeper.js";
 import { CascadeReplaySweeper } from "./policy/cascade-replay-sweeper.js";
+import {
+  RepoEventBridge,
+  createPolicyRouterInvoker,
+  parseReposEnvVar,
+} from "./policy/repo-event-handler.js";
 import { bindRouterToMcp } from "./policy/mcp-binding.js";
 import type { AllStores } from "./policy/index.js";
 import { createMetricsCounter } from "./observability/metrics.js";
@@ -695,6 +700,55 @@ const cascadeReplaySweeper = new CascadeReplaySweeper(
   },
 );
 
+// Mission-52 T3: repo-event-bridge composition. Conditional on
+// OIS_GH_API_TOKEN — absent → bridge skipped, Hub starts cleanly.
+// PAT scope/auth failures are caught inside RepoEventBridge.start()
+// (logged + bridge halts; Hub continues per directive).
+const OIS_GH_API_TOKEN = process.env.OIS_GH_API_TOKEN;
+const OIS_REPO_EVENT_BRIDGE_REPOS = parseReposEnvVar(
+  process.env.OIS_REPO_EVENT_BRIDGE_REPOS,
+);
+const OIS_REPO_EVENT_BRIDGE_CADENCE_S = parseInt(
+  process.env.OIS_REPO_EVENT_BRIDGE_CADENCE_S ?? "30",
+  10,
+);
+const OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT = parseFloat(
+  process.env.OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT ?? "0.8",
+);
+
+let repoEventBridge: RepoEventBridge | undefined;
+if (OIS_GH_API_TOKEN && OIS_REPO_EVENT_BRIDGE_REPOS.length > 0) {
+  repoEventBridge = new RepoEventBridge({
+    storage: storageProvider,
+    token: OIS_GH_API_TOKEN,
+    repos: OIS_REPO_EVENT_BRIDGE_REPOS,
+    cadenceSeconds: OIS_REPO_EVENT_BRIDGE_CADENCE_S,
+    budgetFraction: OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT,
+    createMessageInvoke: createPolicyRouterInvoker(policyRouter, () => ({
+      stores: allStores,
+      metrics: createMetricsCounter(),
+      emit: async () => {},
+      dispatch: async () => {},
+      sessionId: "repo-event-bridge",
+      clientIp: "127.0.0.1",
+      role: "system",
+      internalEvents: [],
+      config: {
+        storageBackend: STORAGE_BACKEND,
+        gcsBucket: GCS_BUCKET ?? "",
+      },
+    } as unknown as import("./policy/types.js").IPolicyContext)),
+  });
+} else if (OIS_GH_API_TOKEN && OIS_REPO_EVENT_BRIDGE_REPOS.length === 0) {
+  console.warn(
+    "[Hub] OIS_GH_API_TOKEN set but OIS_REPO_EVENT_BRIDGE_REPOS empty/unset — repo-event-bridge skipped (configure repos to enable).",
+  );
+} else {
+  console.log(
+    "[Hub] OIS_GH_API_TOKEN not set — repo-event-bridge skipped (set token + OIS_REPO_EVENT_BRIDGE_REPOS to enable).",
+  );
+}
+
 startupSequence().then(async () => {
   await hub.start();
   startThreadReaper();
@@ -742,6 +796,12 @@ startupSequence().then(async () => {
   } catch (err) {
     console.warn("[Hub] Startup cascade-replay sweep failed; Hub still starts:", err);
   }
+  // Mission-52 T3: start repo-event-bridge if configured. PAT failures
+  // are caught inside .start() — Hub continues with bridge in `failed`
+  // state per directive (no Hub-crash on under-scoped tokens).
+  if (repoEventBridge) {
+    await repoEventBridge.start();
+  }
   console.log(`[Hub] MCP Relay Hub listening on port ${PORT}`);
   console.log(`[Hub] MCP endpoint: POST/GET/DELETE /mcp`);
   console.log(`[Hub] Health check: GET /health`);
@@ -765,6 +825,11 @@ process.on("SIGINT", async () => {
   stopContinuationSweep();
   messageProjectionSweeper.stop();
   scheduledMessageSweeper.stop();
+  // Mission-52 T3: stop the bridge before the Hub network so any
+  // in-flight create_message dispatches land cleanly.
+  if (repoEventBridge) {
+    await repoEventBridge.stop();
+  }
   await hub.stop();
   process.exit(0);
 });

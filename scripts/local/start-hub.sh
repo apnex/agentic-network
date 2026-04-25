@@ -102,6 +102,15 @@ WATCHDOG_ENABLED="false"   # ADR-017 watchdog paused locally; queue still operat
 NODE_ENV="production"
 PROJECT_ID="$(read_tfvar project_id)"
 
+# Mission-52 T3: repo-event-bridge env-var defaults. Token absent →
+# bridge no-ops at Hub startup (no-op + log line). Repos are comma-
+# separated owner/name. Cadence + budget have sensible defaults
+# (matching package defaults).
+OIS_GH_API_TOKEN="${OIS_GH_API_TOKEN:-}"
+OIS_REPO_EVENT_BRIDGE_REPOS="${OIS_REPO_EVENT_BRIDGE_REPOS:-}"
+OIS_REPO_EVENT_BRIDGE_CADENCE_S="${OIS_REPO_EVENT_BRIDGE_CADENCE_S:-30}"
+OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT="${OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT:-0.8}"
+
 # ── Read tfvars for the secret ─────────────────────────────────────────
 
 HUB_API_TOKEN="$(read_tfvar hub_api_token)"
@@ -243,6 +252,20 @@ DOCKER_ARGS=(
 if [[ "$STORAGE_BACKEND" == "local-fs" ]]; then
   DOCKER_ARGS+=( -v "$OIS_LOCAL_FS_ROOT:$OIS_LOCAL_FS_ROOT" )
   DOCKER_ARGS+=( -e "OIS_LOCAL_FS_ROOT=$OIS_LOCAL_FS_ROOT" )
+fi
+
+# Mission-52 T3: repo-event-bridge env-var pass-through. Token-absent
+# → no env-vars passed (Hub-side conditional skips bridge); token-set
+# → all four pass through. Container Hub then logs whether bridge is
+# enabled at startup.
+if [[ -n "$OIS_GH_API_TOKEN" ]]; then
+  DOCKER_ARGS+=( -e "OIS_GH_API_TOKEN=$OIS_GH_API_TOKEN" )
+  DOCKER_ARGS+=( -e "OIS_REPO_EVENT_BRIDGE_REPOS=$OIS_REPO_EVENT_BRIDGE_REPOS" )
+  DOCKER_ARGS+=( -e "OIS_REPO_EVENT_BRIDGE_CADENCE_S=$OIS_REPO_EVENT_BRIDGE_CADENCE_S" )
+  DOCKER_ARGS+=( -e "OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT=$OIS_REPO_EVENT_BRIDGE_RATE_BUDGET_PCT" )
+  echo "[start-hub] repo-bridge:   enabled (repos=$OIS_REPO_EVENT_BRIDGE_REPOS, cadence=${OIS_REPO_EVENT_BRIDGE_CADENCE_S}s)"
+else
+  echo "[start-hub] repo-bridge:   disabled (OIS_GH_API_TOKEN not set)"
 fi
 
 docker run "${DOCKER_ARGS[@]}" "$IMAGE" >/dev/null
