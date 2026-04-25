@@ -90,6 +90,64 @@ scripts/local/stop-hub.sh                    # auto-detects the running env
 
 Default `OIS_ENV` is `prod` — existing single-env operators see unchanged behavior.
 
+## Cloud Build tarball staging (mission-50)
+
+Mission-50 (closed 2026-04-25) codified the storage-provider tarball staging that `scripts/local/build-hub.sh` performs as a pre-build hook before `gcloud builds submit`. This section documents the rationale, mechanics, sunset condition, CI parity expectation, and ADR-024 boundary.
+
+### Why
+
+Hub depends on `@ois/storage-provider` (a sovereign package living at `packages/storage-provider/`) via `"file:../packages/storage-provider"` in `hub/package.json`. That ref works for local dev (`cd hub && npm install` walks up one level), but it breaks under Cloud Build: `gcloud builds submit hub/` uploads only the contents of `hub/`, so the `..` escape leaves the storage-provider source unreachable inside the build container. That's the failure mode bug-33 hit on the post-mission-49 redeploy attempt.
+
+### How (transient swap)
+
+`scripts/local/build-hub.sh` runs a pre-build hook before `gcloud builds submit`:
+
+1. `npm pack --pack-destination "$HUB_DIR"` against `packages/storage-provider/` — produces `ois-storage-provider-<version>.tgz` inside `hub/` (filename auto-detected from `npm pack` stdout, so storage-provider version bumps require zero manual coordination).
+2. `sed` substitutes the `file:../packages/storage-provider` ref → `file:./<tarball>` in a transient `hub/package.json` swap.
+3. `gcloud builds submit "$REPO_ROOT/hub"` uploads the prepared `hub/` directory. The container then resolves its own dep tree at build time (Dockerfile uses `npm install`, not `npm ci` — see "Why no host-side lockfile regen" below).
+4. A trap on `EXIT INT TERM HUP` restores `package.json` to its committed state and removes the staged tarball — committed git state stays clean even on signal interrupt. The script does NOT touch `package-lock.json` (T5 fix; see below). Backup of `package.json` lands in a `mktemp -d` outside `hub/` so the gcloud build context isn't polluted.
+
+`hub/Dockerfile` permanently includes `COPY ois-storage-provider-*.tgz ./` before each `RUN npm install` line in BOTH builder + production stages. The wildcard match keeps the line stable across storage-provider version bumps. `hub/.gitignore` permanently excludes `ois-storage-provider-*.tgz` so a staged tarball can never be accidentally committed.
+
+### Why no host-side lockfile regen (bug-38)
+
+Earlier mission-50 iterations regenerated `hub/package-lock.json` on the host before `gcloud builds submit` (T1 used `npm install --package-lock-only`; T4 used full `npm install`). Both produced lockfiles that turned out structurally fragile against three distinct sources of drift:
+
+1. **Host-vs-container npm/node version drift.** The architect's host runs `npm 11.6.2` on `node v24`; the production container is `node:22-slim` with `npm 10.9.x`. Different npm versions resolve platform-conditional / optional deps differently — host-regenerated lockfiles missed `@emnapi/*` entries that the container's npm strictly demanded.
+2. **Registry state at regen time.** Different runs of `npm install` against the same `package.json` produced lockfiles with different `@emnapi/*` version pinnings (e.g., 1.9.2 vs 1.10.0). Director's original ground-truth manual workaround had `1.10.0`; later regens produced `1.9.2`. The container demanded BOTH versions simultaneously after T4's regen.
+3. **Operator-environment fragility.** Different operator hosts (different OS / kernel / npm version) produce different lockfiles for identical inputs. In-docker host-side regen would normalize this but is blocked on operators running older host kernels (architect's Fedora 31 / Linux 5.8 kernel aborts the `node:22` thread layer).
+
+The only durable fix is to NOT regenerate the lockfile on the host. T5 (closed by mission-50 T5, 2026-04-25) drops the host-side `npm install` step entirely. The container then resolves its own dep tree at build time using its own toolchain, against the swap-modified `package.json` (which now points to the local tarball). The `hub/Dockerfile` uses `npm install --ignore-scripts --no-audit --no-fund` (builder) and `npm install --omit=dev --ignore-scripts --no-audit --no-fund` (production), NOT `npm ci`, because the swap-modified `package.json` no longer matches the committed lockfile and `npm ci` strict-validation would fail.
+
+**Tradeoff.** Switching to `npm install` in the Cloud Build path removes strict lockfile-validation FOR THAT PATH. This is acceptable for THIS codification arc because (a) the lockfile was already transient (regenerated each build by build-hub.sh in T1-T4; never reaching commit-state-strictness in the build path); (b) `cd hub && npm install` local dev keeps using the committed lockfile via the unchanged `file:../packages/storage-provider` ref; (c) the sunset condition reverts the Dockerfile to `npm ci` once idea-186 (npm workspaces) lands and the file: ref resolves natively against the committed lockfile.
+
+`hub/.gcloudignore` permanently re-includes the staged tarball into the Cloud Build upload context. This file is load-bearing: `gcloud builds submit` falls back to `.gitignore` when no `.gcloudignore` is present, which means the tarball-exclusion in `hub/.gitignore` (intentional, to prevent accidental commits) silently propagates to the gcloud upload context too — the tarball gets staged locally, then dropped from the upload, and the Dockerfile's `COPY ois-storage-provider-*.tgz` step fails with `no source files were specified` inside the build container. That's the failure mode bug-36 hit at architect-side dogfood post-mission-50 T2 merge. `hub/.gcloudignore` is self-contained (does NOT use `#!include:.gitignore`); it mirrors the meaningful excludes (currently `node_modules/`) and explicitly re-includes the staged tarball via `!ois-storage-provider-*.tgz`. With this file present, gcloud uses it instead of `.gitignore` for upload-context filtering, and the staged tarball lands in the build container as expected.
+
+### Stays clean in git
+
+`hub/package.json` keeps `"file:../packages/storage-provider"` as the dev-mode source-of-truth; `hub/package-lock.json` stays at the file: resolution and is no longer touched by `build-hub.sh` at all (T5 dropped the host-side lockfile-regen step). Local dev (`cd hub && npm install`) is unchanged. The transient swap is invisible to anything outside the `build-hub.sh` process lifetime; the swap now affects only `hub/package.json` (restored by trap on every exit path) and the staged tarball (removed by trap).
+
+### CI parity note (forward-look)
+
+`scripts/local/build-hub.sh` is the canonical Hub-build entry-point until idea-186 (npm workspaces adoption) lands and supersedes it. Future auto-redeploy mechanisms — including idea-197 / M-Auto-Redeploy-on-Merge when that ships — MUST invoke this script (or a workspaces-aware successor that inherits equivalent behavior) rather than calling `gcloud builds submit hub/` directly. Bypassing the script would re-introduce bug-33 (cross-package context trap on Cloud Build) and silently regress.
+
+### Sunset condition
+
+The tarball staging is a workaround. The sunset trigger: idea-186 (npm workspaces adoption) ratified + Hub migrated to workspace resolution. At that point, npm workspaces resolve the cross-package dependency natively; the tarball staging becomes dead weight. Cleanup at sunset:
+
+- Delete the §"Storage-provider tarball staging (mission-50 T1+T5)" section from `scripts/local/build-hub.sh`.
+- Delete the `COPY ois-storage-provider-*.tgz ./` lines from `hub/Dockerfile` (both stages).
+- Revert `hub/Dockerfile`'s `RUN npm install ...` lines back to `RUN npm ci` (builder stage) and `RUN npm ci --omit=dev` (production stage). With workspaces resolution, the committed lockfile matches the workspace-resolved package tree and `npm ci` strict-validation passes natively. (The bug-38 motivation for `npm install` is gone: there's no swap-modified `package.json` to mismatch the lockfile.)
+- Delete the `ois-storage-provider-*.tgz` line from `hub/.gitignore`.
+- Delete `hub/.gcloudignore` entirely (the file becomes obsolete once the underlying tarball-staging mechanic is gone — there is nothing to re-include).
+- Delete this `Cloud Build tarball staging` section from `deploy/README.md`.
+
+`scripts/local/build-hub.sh` carries an inline `TODO(idea-186)` comment naming the sunset condition + cleanup steps so the trigger is discoverable from the workaround itself.
+
+### ADR-024 boundary statement
+
+Mission-50 does NOT amend [`ADR-024`](../docs/decisions/024-sovereign-storage-provider.md) (StorageProvider sovereign-package contract). The `@ois/storage-provider` 6-primitive contract surface is unchanged; the `capabilities.concurrent` flag is unchanged; both `LocalFsStorageProvider` and `GcsStorageProvider` implementations are untouched. The tarball staging is a build-pipeline pattern adapting AROUND the contract, not a contract change. Per methodology v1.0 §ADR-amendment-scope-discipline, ADR amendments are reserved for contract changes; deployment-pattern adaptations live in build-pipeline + runbook docs — i.e., here.
+
 ## Backends
 
 Both plans use the **local backend** as of the split (state files kept in-dir). Migration to GCS remote backend is a planned future improvement — bucket exists (per-env `gs://<env>-state` or `gs://ois-relay-hub-state` for prod), so bootstrap will be straightforward once we cut over. Until then: do not operate simultaneously from multiple machines.
