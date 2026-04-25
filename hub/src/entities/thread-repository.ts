@@ -446,6 +446,73 @@ export class ThreadRepository implements IThreadStore {
     }
   }
 
+  /**
+   * Mission-51 W5: write the cascade-pending marker. Refuses to set
+   * if marker is already pending (returns false; existing marker
+   * preserved). Idempotent on missing thread (returns false).
+   */
+  async markCascadePending(threadId: string, actionCount: number): Promise<boolean> {
+    try {
+      let setNow = false;
+      await this.casUpdateOrThrow(threadId, (thread) => {
+        if (thread.cascadePending === true) {
+          throw new TransitionRejected(
+            `cascade marker already pending for thread ${threadId}`,
+          );
+        }
+        thread.cascadePending = true;
+        thread.cascadePendingActionCount = actionCount;
+        thread.cascadePendingStartedAt = new Date().toISOString();
+        setNow = true;
+        return thread;
+      });
+      return setNow;
+    } catch (err) {
+      if (err instanceof TransitionRejected) return false;
+      if (err instanceof Error && err.message === `Thread not found: ${threadId}`) return false;
+      throw err;
+    }
+  }
+
+  /**
+   * Mission-51 W5: clear the cascade-pending marker (sets
+   * cascadeCompletedAt for telemetry). Idempotent on already-cleared
+   * (no-op success) and missing thread (returns false).
+   */
+  async markCascadeCompleted(threadId: string): Promise<boolean> {
+    try {
+      await this.casUpdateOrThrow(threadId, (thread) => {
+        thread.cascadePending = false;
+        thread.cascadePendingActionCount = undefined;
+        thread.cascadePendingStartedAt = undefined;
+        thread.cascadeCompletedAt = new Date().toISOString();
+        return thread;
+      });
+      return true;
+    } catch (err) {
+      if (err instanceof Error && err.message === `Thread not found: ${threadId}`) return false;
+      throw err;
+    }
+  }
+
+  /**
+   * Mission-51 W5: list threads with cascadePending=true. Called by
+   * the Hub-startup CascadeReplaySweeper. Returns hydrated threads
+   * (messages + convergenceActions) so the sweeper can re-run
+   * runCascade against the committed actions without an extra
+   * round-trip.
+   */
+  async listCascadePending(): Promise<Thread[]> {
+    const threadScalars = await this.listThreads();
+    const out: Thread[] = [];
+    for (const scalar of threadScalars) {
+      if (scalar.cascadePending !== true) continue;
+      const hydrated = await this.getThread(scalar.id);
+      if (hydrated) out.push(hydrated);
+    }
+    return out;
+  }
+
   async leaveThread(threadId: string, leaverAgentId: string): Promise<Thread | null> {
     let updated: Thread;
     try {

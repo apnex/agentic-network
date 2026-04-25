@@ -46,6 +46,7 @@ import { registerPendingActionPolicy } from "./policy/pending-action-policy.js";
 import { Watchdog } from "./policy/watchdog.js";
 import { MessageProjectionSweeper } from "./policy/message-projection-sweeper.js";
 import { ScheduledMessageSweeper } from "./policy/scheduled-message-sweeper.js";
+import { CascadeReplaySweeper } from "./policy/cascade-replay-sweeper.js";
 import { bindRouterToMcp } from "./policy/mcp-binding.js";
 import type { AllStores } from "./policy/index.js";
 import { createMetricsCounter } from "./observability/metrics.js";
@@ -664,6 +665,33 @@ const scheduledMessageSweeper = new ScheduledMessageSweeper(
   { intervalMs: parseInt(process.env.OIS_SCHEDULED_MESSAGE_SWEEPER_INTERVAL_MS ?? "1000", 10) },
 );
 
+// Mission-51 W5: cascade-replay sweeper (closes bug-31). Runs once
+// on Hub startup (before serving traffic). Lists threads with
+// cascadePending=true; re-runs runCascade for each. Per-action
+// idempotency (existing findByCascadeKey short-circuit) prevents
+// duplication on replay. No periodic ticking — process death is the
+// only way the marker stays set, and Hub-startup is the natural
+// retry boundary.
+const cascadeReplaySweeper = new CascadeReplaySweeper(
+  threadStore,
+  {
+    forSweeper: () => ({
+      stores: allStores,
+      metrics: createMetricsCounter(),
+      emit: async () => {},
+      dispatch: async () => {},
+      sessionId: "cascade-replay-sweeper",
+      clientIp: "127.0.0.1",
+      role: "system",
+      internalEvents: [],
+      config: {
+        storageBackend: STORAGE_BACKEND,
+        gcsBucket: GCS_BUCKET ?? "",
+      },
+    } as unknown as import("./policy/types.js").IPolicyContext),
+  },
+);
+
 startupSequence().then(async () => {
   await hub.start();
   startThreadReaper();
@@ -697,6 +725,20 @@ startupSequence().then(async () => {
     console.warn("[Hub] Startup scheduled-message sweep failed; sweeper still starts:", err);
   }
   scheduledMessageSweeper.start();
+  // Mission-51 W5: cascade-replay sweeper. Hub-startup full-sweep
+  // catches threads orphaned mid-cascade by previous Hub instance
+  // dying. Idempotent on already-completed actions (cascade-key
+  // short-circuit). Hub-startup-only (no periodic ticking).
+  try {
+    const replayed = await cascadeReplaySweeper.fullSweep();
+    if (replayed.scanned > 0 || replayed.errors > 0) {
+      console.log(
+        `[Hub] Startup cascade-replay sweep: scanned=${replayed.scanned} replayed=${replayed.replayed} errors=${replayed.errors}`,
+      );
+    }
+  } catch (err) {
+    console.warn("[Hub] Startup cascade-replay sweep failed; Hub still starts:", err);
+  }
   console.log(`[Hub] MCP Relay Hub listening on port ${PORT}`);
   console.log(`[Hub] MCP endpoint: POST/GET/DELETE /mcp`);
   console.log(`[Hub] Health check: GET /health`);
