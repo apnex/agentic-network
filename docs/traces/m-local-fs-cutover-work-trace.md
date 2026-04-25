@@ -20,7 +20,7 @@ If you're picking up cold on mission-48:
 1. **Read this file first**, then thread-303 for design-round context, then `docs/decisions/024-sovereign-storage-provider.md` §6.1 for the ADR-024 amendment.
 2. **DAG:** T1 → T2a → T2b → T2c → T3 → T4. Strictly sequential per ship-green discipline + thread-306 PR cadence.
 3. **Issuance pattern (architect-side):** mission-48 runs **without `plannedTasks`** as an explicit bypass of bug-31 (variant-1 cascade-auto-duplicate + variant-2 cascade-stall, both observed twice on mission-49). Architect manually `create_task`s each subsequent task on prior approval. Saves ~10-15 min of duplicate-detection cycles per mission.
-4. **Current state:** T1 PR open (PR # TBD on push); awaiting CI + architect merge per thread-306 cadence. After T1 merges, architect issues T2a manually.
+4. **Current state:** T1 ✅ merged at `1e61226` (PR #24, 2026-04-25); T2a shipped locally (task code at `b8c2257`); awaiting trace-commit + push + PR open. After T2a merges, architect issues T2b manually per the bug-31-bypass cadence.
 5. **Pre-authorized scope discipline:** uid/gid mitigation = `docker run -u $(id -u):$(id -g)` (architect-confirmed thread-306); `local-state/` is gitignored; ADR-024 amendment is single-writer-laptop-prod-eligible only — multi-writer / Cloud Run continue to require `STORAGE_BACKEND=gcs` per the still-intact `concurrent:false` capability flag.
 6. **Bug carry-forward:** bug-32 (cross-package CI debt — `network-adapter` + `claude-plugin` + `opencode-plugin` test cells red on every PR) — pre-existing pattern. Verify hub scope green; ignore the 3 known-noisy cells.
 7. **Mission-49 dependency:** ✅ resolved. AuditStore + NotificationStore now migrated to Repository pattern; durable on local-fs. mission-48's success-criterion 5 (no audit/notification regression post-cutover) is now structurally provable.
@@ -29,12 +29,11 @@ If you're picking up cold on mission-48:
 
 ## In-flight
 
-- ▶ **T1 — Docker state-mount + wiring + uid/gid handshake + ADR-024 gate relaxation.** Shipped on `agent-greg/mission-48-t1` (fresh off `origin/main` at `3fcb19a`). Task commit `6c1f486`. 5 files modified, +146/-18 LOC. Hub tests green at 51/748/5 (unchanged from mission-49 close baseline; T1 is non-regressive). Awaiting trace-commit (this file) + push + PR open. Will reply on thread-306 with PR URL.
+- ▶ **T2a — Cutover bootstrap.** Shipped on `agent-greg/mission-48-t2a` (fresh off `origin/main` at `1e61226`). Task commit `b8c2257`. 1 file modified (`scripts/state-sync.sh`), +120/-18 LOC. Hub tests untouched at 51/748/5 (shell-only change). Smoke validation passed on a fake-gsutil harness across all four scenarios (bootstrap green / divergence red / restore green / idempotent rerun). Awaiting trace-commit (this file) + push + PR open. Will reply on thread-306 with PR URL.
 
 ## Queued / filed
 
-- ○ **T2a — Cutover bootstrap.** Extend `scripts/state-sync.sh` with post-copy set-equality invariant (`gsutil ls -r` vs `find` output, not just byte-totals); `.cutover-complete` sentinel written only after invariant check passes; tmp-file filter for reverse-sync. Architect issues task once T1 PR merges.
-- ○ **T2b — Flip default + Hub-restart smoke.** `STORAGE_BACKEND=local-fs` becomes laptop-Hub default in `scripts/local/start-hub.sh`. One `docker stop && docker start` to prove state readable + uncorrupted post-flip.
+- ○ **T2b — Flip default + Hub-restart smoke.** `STORAGE_BACKEND=local-fs` becomes laptop-Hub default in `scripts/local/start-hub.sh`. One `docker stop && docker start` to prove state readable + uncorrupted post-flip. Architect issues task once T2a PR merges.
 - ○ **T2c — Reverse-direction sync (local→GCS manual backup).** `state-sync.sh --reverse` capability + tmp-file filter (`.tmp.*` files never cross the wire); runbook entry for on-demand backup; feeds rollback procedure directly.
 - ○ **T3 — Dogfood continuous validation + explicit Hub-restart-mid-mission readback assertion.** Every state change from mission activation onward lands on local-fs; after T2b lands, explicit `docker stop && docker start` with pre/post entity set-equality readback across all entity types; then proceed with remaining mission work. Restart is the load-bearing check for mission success criterion #1 — happy-path dogfood alone doesn't prove durability.
 - ○ **T4 — Closing hygiene.** `deploy/README` cutover-runbook + rollback-runbook (rollback pre-step: `state-sync.sh --reverse` when post-cutover writes exist, then env-var flip back to gcs, then Hub restart); fold idea-193 (mission-47 T5 engineer-side docs hygiene); retrospective captures.
@@ -44,7 +43,18 @@ If you're picking up cold on mission-48:
 
 ## Done this session
 
-### T1 (Docker state-mount + uid/gid + ADR-024 gate relaxation) — shipped locally 2026-04-25
+### T2a (Cutover bootstrap: invariant + sentinel + tmp-file exclusion) — shipped locally 2026-04-25
+
+- ✅ **`scripts/state-sync.sh` — extended with mission-48 T2a discipline.** Adds `TMP_FILE_EXCLUDE_REGEX='.*\.tmp\..*'` constant for both forward direction (this T2a, defensive against future reverse-sync leaks) and T2c reverse-sync (which will reuse the same constant). `gsutil rsync` invocation gains `-x` to exclude tmp files at copy time. Post-rsync invariant: `gsutil ls -r` vs `find -type f` keyspace comparison with normalization (sed-strip-bucket-prefix, drop `:`-suffix directory markers, drop blanks, drop tmp files via regex, drop script artifacts via `SCRIPT_ARTIFACT_REGEX`). Diff-on-failure surfaces explicit `<` GCS-only / `>` local-only paths so operators can re-run in narrow scope. `.cutover-complete` sentinel is written ONLY after invariant green; contains timestamp_utc + gcs_source + local_root + script_commit (HEAD SHA) + script_invocation epoch.
+- ✅ **Bootstrap idempotence verified.** Re-running after a successful bootstrap is a no-op: rsync detects matching files and skips; invariant re-passes; sentinel is rewritten with a fresh timestamp + epoch (provenance refresh).
+- ✅ **Defensive normalizations.** `BUCKET="${BUCKET%/}"` strips trailing slash at top so the sed-prefix-strip is unambiguous regardless of caller formatting. `gsutil ls -r ... || true` survives empty-bucket non-zero exit. `SCRIPT_ARTIFACT_REGEX` drops `.cutover-complete` + `.hub-writability-*` + `.start-hub-writability-*` probes from both sides of the diff so they don't re-fail subsequent runs.
+- ✅ **Header doc refresh.** Stale mission-47 caveat about AuditStore + NotificationStore in-memory on local-fs replaced with a mission-49-close-references-it-now-durable note. Mission-48 T2a context block added at the top.
+- ✅ **Best-effort smoke against fake-gsutil harness.** No live GCS bucket in the engineer worktree, so direct operator smoke deferred to T2b/T3 per task-356 explicit scope. Logic-correctness verified across four scenarios via a stub gsutil that simulates `ls` + `rsync` against a local mock bucket: (1) RUN 1 bootstrap with matching keyspace → invariant green, sentinel written, exit 0; (2) RUN 2 divergence injection (no-op rsync stub + GCS-only file added + local file removed) → invariant red, diff output cleanly named both deltas, sentinel timestamp PRESERVED, exit 1; (3) RUN 3 real rsync restored, rerun → invariant green, sentinel timestamp UPDATED, exit 0; (4) RUN 4 idempotent immediate rerun → invariant green, exit 0.
+- ✅ **Verification.** `bash -n scripts/state-sync.sh`: clean. `npm test` (hub): 51/748/5 unchanged (shell-only change, no Hub source touched). `chmod +x` preserved on the script.
+
+### T1 (Docker state-mount + uid/gid + ADR-024 gate relaxation) — shipped + merged 2026-04-25
+
+- ✅ **PR #24 merged at `1e61226`** (architect-merged 2026-04-25 per thread-306; bug-32 CI pattern matched, no surprises).
 
 - ✅ **`scripts/local/start-hub.sh` — env-var fallthrough + bind mount + uid/gid + pre-flight writability probe.** `STORAGE_BACKEND` and `OIS_LOCAL_FS_ROOT` are now caller-overridable (defaults `gcs` and `${REPO_ROOT}/local-state` respectively). When `STORAGE_BACKEND=local-fs`, the script `mkdir -p`s the host state dir, runs a shell-layer writability probe with explicit uid/gid diagnostic on failure, then bind-mounts the dir into the container at the same path and propagates `OIS_LOCAL_FS_ROOT` as an env var. `docker run` always runs as host uid/gid (`-u $(id -u):$(id -g)`) — operators can inspect `local-state/` directly without container-uid mismatch surprises. Argv built as a bash array for clean conditional injection.
 - ✅ **`hub/src/index.ts` — gate relaxation + Hub-side writability assertion.** The previous fatal-exit at `hub/src/index.ts:106-109` (`STORAGE_BACKEND=local-fs` + `NODE_ENV=production` ⇒ `process.exit(1)`) is now `console.warn` + proceed, per ADR-024 amendment §6.1. Warning text surfaces the single-writer constraint + the start-hub.sh enforcement at startup. Defense-in-depth writability assertion: try `mkdir + writeFile + unlink` on a sentinel under `OIS_LOCAL_FS_ROOT`; fail-fast with `EACCES`/`EPERM`-specific diagnostic naming uid/gid mismatch as the #1 cause + `docker run -u $(id -u):$(id -g)` as the fix.
@@ -62,11 +72,11 @@ If you're picking up cold on mission-48:
 mission-49 ✅────────────[Audit + Notification Repository migration shipped on main; durable on local-fs]
                                                                     │
                                                                     ▼
-T1 ▶ ──→ T2a ○ ──→ T2b ○ ──→ T2c ○ ──→ T3 ○ ──→ T4 ○ ──→ mission-48 close
-[gate relaxation                                            │
- + bind mount                                               └─[unblocks]─→ idea-191 / idea-192
- + uid/gid]                                                                (workflow-primitive design rounds —
-                                                                            blocked on mission-48 per thread-303)
+T1 ✅ ──→ T2a ▶ ──→ T2b ○ ──→ T2c ○ ──→ T3 ○ ──→ T4 ○ ──→ mission-48 close
+[merged                                                       │
+ 1e61226]                                                     └─[unblocks]─→ idea-191 / idea-192
+                                                                              (workflow-primitive design rounds —
+                                                                               blocked on mission-48 per thread-303)
 
 Architect-owned: mission-48 plannedTasks deliberately unset (bug-31 bypass);
                  each subsequent task issued manually post prior PR merge.
@@ -77,6 +87,8 @@ Outside-mission downstream: idea-191 (GH event bridge) + idea-192 (Hub triggers 
 ---
 
 ## Session log (append-only)
+
+- **2026-04-25 late (continuation)** — T1 PR #24 merged at `1e61226` (architect-merged 2026-04-25; bug-32 CI pattern matched, no surprises). Architect issued task-356 (T2a) manually per bug-31 bypass. Engineer shipped T2a locally on `agent-greg/mission-48-t2a` (fresh off `1e61226`): scripts/state-sync.sh extended with TMP_FILE_EXCLUDE_REGEX (-x exclusion at rsync time + T2c-shared constant), post-copy set-equality invariant (gsutil ls -r vs find -type f, normalized + sorted + diffed), `.cutover-complete` sentinel (timestamp + bucket + commit + epoch, written only on invariant green), diagnostic-rich failure output with per-path GCS-only / local-only annotation. Verified across four smoke scenarios via a fake-gsutil harness (bootstrap green / divergence red / restore green / idempotent rerun); operator-side smoke against a real GCS bucket deferred to T2b/T3 per task-356 explicit scope. Hub tests untouched at 51/748/5. Task commit `b8c2257`. Trace + push + PR open next.
 
 - **2026-04-25 late** — Mission-48 activation. Director approval received on the back of mission-49 close (thread-305 confirmed `3fcb19a` as the new main HEAD; engineer-scope mission-49 fully closed). Architect opened thread-306 for PR coordination + issued task-355 manually (without `plannedTasks` per bug-31 bypass discipline). Engineer acknowledged + drafted execution plan (uid/gid via `-u $(id -u):$(id -g)`, defense-in-depth writability via shell + Hub-side); architect green-lit all calls in thread-306 round 3. Engineer shipped T1 locally on `agent-greg/mission-48-t1` (fresh off `3fcb19a`): start-hub.sh env-var fallthrough + bind mount + uid/gid + shell-layer writability probe; hub/src/index.ts gate relaxation + Hub-side writability assertion; ADR-024 §6 + §6.1 amendment text; deploy/README mount-section stub; `.gitignore` += `local-state/`. 5 files modified +146/-18; hub tests green at 51/748/5 unchanged baseline; build + typecheck clean. Task commit `6c1f486`. Trace + push + PR open next.
 
