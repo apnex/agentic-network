@@ -20,7 +20,7 @@ If you're picking up cold on mission-48:
 1. **Read this file first**, then thread-303 for design-round context, then `docs/decisions/024-sovereign-storage-provider.md` §6.1 for the ADR-024 amendment.
 2. **DAG:** T1 → T2a → T2b → T2c → T3 → T4. Strictly sequential per ship-green discipline + thread-306 PR cadence.
 3. **Issuance pattern (architect-side):** mission-48 runs **without `plannedTasks`** as an explicit bypass of bug-31 (variant-1 cascade-auto-duplicate + variant-2 cascade-stall, both observed twice on mission-49). Architect manually `create_task`s each subsequent task on prior approval. Saves ~10-15 min of duplicate-detection cycles per mission.
-4. **Current state:** T1 ✅ merged at `1e61226` (PR #24, 2026-04-25); T2a shipped locally (task code at `b8c2257`); awaiting trace-commit + push + PR open. After T2a merges, architect issues T2b manually per the bug-31-bypass cadence.
+4. **Current state:** T1 ✅ merged at `1e61226` (PR #24); T2a ✅ merged at `bc5dbb6` (PR #25); T2b shipped locally (task code at `a02637e`); awaiting trace-commit + push + PR open. After T2b merges, architect issues T2c manually per the bug-31-bypass cadence.
 5. **Pre-authorized scope discipline:** uid/gid mitigation = `docker run -u $(id -u):$(id -g)` (architect-confirmed thread-306); `local-state/` is gitignored; ADR-024 amendment is single-writer-laptop-prod-eligible only — multi-writer / Cloud Run continue to require `STORAGE_BACKEND=gcs` per the still-intact `concurrent:false` capability flag.
 6. **Bug carry-forward:** bug-32 (cross-package CI debt — `network-adapter` + `claude-plugin` + `opencode-plugin` test cells red on every PR) — pre-existing pattern. Verify hub scope green; ignore the 3 known-noisy cells.
 7. **Mission-49 dependency:** ✅ resolved. AuditStore + NotificationStore now migrated to Repository pattern; durable on local-fs. mission-48's success-criterion 5 (no audit/notification regression post-cutover) is now structurally provable.
@@ -29,11 +29,9 @@ If you're picking up cold on mission-48:
 
 ## In-flight
 
-- ▶ **T2a — Cutover bootstrap.** Shipped on `agent-greg/mission-48-t2a` (fresh off `origin/main` at `1e61226`). Task commit `b8c2257`. 1 file modified (`scripts/state-sync.sh`), +120/-18 LOC. Hub tests untouched at 51/748/5 (shell-only change). Smoke validation passed on a fake-gsutil harness across all four scenarios (bootstrap green / divergence red / restore green / idempotent rerun). Awaiting trace-commit (this file) + push + PR open. Will reply on thread-306 with PR URL.
+- ▶ **T2b — Flip default + bootstrap-required sentinel guard.** Shipped on `agent-greg/mission-48-t2b` (fresh off `origin/main` at `bc5dbb6`). Task commit `a02637e`. 5 files changed (3 modified + 2 new); +152/-9 LOC. New `hub/src/lib/cutover-sentinel.ts` helper + `hub/test/unit/cutover-sentinel.test.ts` (+7 unit tests). Hub tests green at 52/755/5 (was 51/748/5 — delta +1 file / +7 tests / 0 regressions; architect estimated +1 test). Manual smoke: empty-dir guard fires FATAL exit 1; sentinel-touched proceeds. Live Docker restart cycle deferred to T3 dogfood per task-357 scope. Awaiting trace-commit (this file) + push + PR open. Will reply on thread-306 with PR URL.
 
 ## Queued / filed
-
-- ○ **T2b — Flip default + Hub-restart smoke.** `STORAGE_BACKEND=local-fs` becomes laptop-Hub default in `scripts/local/start-hub.sh`. One `docker stop && docker start` to prove state readable + uncorrupted post-flip. Architect issues task once T2a PR merges.
 - ○ **T2c — Reverse-direction sync (local→GCS manual backup).** `state-sync.sh --reverse` capability + tmp-file filter (`.tmp.*` files never cross the wire); runbook entry for on-demand backup; feeds rollback procedure directly.
 - ○ **T3 — Dogfood continuous validation + explicit Hub-restart-mid-mission readback assertion.** Every state change from mission activation onward lands on local-fs; after T2b lands, explicit `docker stop && docker start` with pre/post entity set-equality readback across all entity types; then proceed with remaining mission work. Restart is the load-bearing check for mission success criterion #1 — happy-path dogfood alone doesn't prove durability.
 - ○ **T4 — Closing hygiene.** `deploy/README` cutover-runbook + rollback-runbook (rollback pre-step: `state-sync.sh --reverse` when post-cutover writes exist, then env-var flip back to gcs, then Hub restart); fold idea-193 (mission-47 T5 engineer-side docs hygiene); retrospective captures.
@@ -43,7 +41,19 @@ If you're picking up cold on mission-48:
 
 ## Done this session
 
-### T2a (Cutover bootstrap: invariant + sentinel + tmp-file exclusion) — shipped locally 2026-04-25
+### T2b (Flip default + bootstrap-required sentinel guard) — shipped locally 2026-04-25
+
+- ✅ **`scripts/local/start-hub.sh` — laptop-Hub default flipped `gcs` → `local-fs`.** Comment updated to note the rollback path (`STORAGE_BACKEND=gcs`) + ADR-024 amendment §6.1 reference + T4 rollback runbook reference.
+- ✅ **`hub/src/lib/cutover-sentinel.ts` — new helper.** `CUTOVER_SENTINEL_FILENAME = ".cutover-complete"` constant; `cutoverSentinelPath(root)` + `isCutoverComplete(root)`. Defensive: returns false on non-existent root, fs errors, and `.cutover-complete/` as a directory (sentinel contract is "regular file with provenance"). Extracted as a helper rather than inlined for testability.
+- ✅ **`hub/src/index.ts` — bootstrap-required guard wired.** Inserted between the T1 writability assertion and LocalFsStorageProvider construction. Refuses to start if `isCutoverComplete(root)` returns false — emits FATAL with the missing path, the fix (`scripts/state-sync.sh`), and an explicit fresh-start note (state-sync.sh against an empty bucket trivially passes invariant + writes sentinel — supports the no-GCS-data-import scenario without bypass).
+- ✅ **`hub/test/unit/cutover-sentinel.test.ts` — 7 tests.** Coverage: constant matches state-sync.sh filename; `cutoverSentinelPath()` joins correctly; `isCutoverComplete()` returns false on fresh empty dir; true when sentinel-as-file exists; false on `.cutover-complete/` directory; false on non-existent path; false on non-existent root. `mkdtemp`/`rm` per-test root.
+- ✅ **`deploy/README.md` — Local-fs Hub state directory section updated.** Notes default flip + rollback path + bootstrap-required dependency + new "Operator first-launch flow" code-block. Full cutover + rollback runbook still defers to T4.
+- ✅ **Manual smoke (best-effort; no live Docker in worktree).** GUARD CASE A: empty dir, no sentinel → FATAL would fire, exit 1. GUARD CASE B: empty dir + `touch .cutover-complete` → would proceed, exit 0. Both verified via `node -e` against compiled `dist/lib/cutover-sentinel.js`. Live Docker `start-hub.sh + state-sync.sh + restart` cycle deferred to T3 dogfood per task-357 scope.
+- ✅ **Verification.** `npm test` (hub): 52 files / 755 passed / 5 skipped (was 51/748/5 — delta +1 file / +7 tests / 0 regressions; architect estimated +1 test). `npm run build`: clean. `npx tsc --noEmit`: clean. `bash -n scripts/local/start-hub.sh`: clean. `@ois/storage-provider`: unchanged.
+
+### T2a (Cutover bootstrap: invariant + sentinel + tmp-file exclusion) — shipped + merged 2026-04-25
+
+- ✅ **PR #25 merged at `bc5dbb6`** (architect-merged 2026-04-25 per thread-306; bug-32 CI pattern matched).
 
 - ✅ **`scripts/state-sync.sh` — extended with mission-48 T2a discipline.** Adds `TMP_FILE_EXCLUDE_REGEX='.*\.tmp\..*'` constant for both forward direction (this T2a, defensive against future reverse-sync leaks) and T2c reverse-sync (which will reuse the same constant). `gsutil rsync` invocation gains `-x` to exclude tmp files at copy time. Post-rsync invariant: `gsutil ls -r` vs `find -type f` keyspace comparison with normalization (sed-strip-bucket-prefix, drop `:`-suffix directory markers, drop blanks, drop tmp files via regex, drop script artifacts via `SCRIPT_ARTIFACT_REGEX`). Diff-on-failure surfaces explicit `<` GCS-only / `>` local-only paths so operators can re-run in narrow scope. `.cutover-complete` sentinel is written ONLY after invariant green; contains timestamp_utc + gcs_source + local_root + script_commit (HEAD SHA) + script_invocation epoch.
 - ✅ **Bootstrap idempotence verified.** Re-running after a successful bootstrap is a no-op: rsync detects matching files and skips; invariant re-passes; sentinel is rewritten with a fresh timestamp + epoch (provenance refresh).
@@ -72,9 +82,9 @@ If you're picking up cold on mission-48:
 mission-49 ✅────────────[Audit + Notification Repository migration shipped on main; durable on local-fs]
                                                                     │
                                                                     ▼
-T1 ✅ ──→ T2a ▶ ──→ T2b ○ ──→ T2c ○ ──→ T3 ○ ──→ T4 ○ ──→ mission-48 close
-[merged                                                       │
- 1e61226]                                                     └─[unblocks]─→ idea-191 / idea-192
+T1 ✅ ──→ T2a ✅ ──→ T2b ▶ ──→ T2c ○ ──→ T3 ○ ──→ T4 ○ ──→ mission-48 close
+[merged    [merged                                              │
+ 1e61226]   bc5dbb6]                                            └─[unblocks]─→ idea-191 / idea-192
                                                                               (workflow-primitive design rounds —
                                                                                blocked on mission-48 per thread-303)
 
@@ -87,6 +97,8 @@ Outside-mission downstream: idea-191 (GH event bridge) + idea-192 (Hub triggers 
 ---
 
 ## Session log (append-only)
+
+- **2026-04-25 late (T2b)** — T2a PR #25 merged at `bc5dbb6` (architect-merged; bug-32 CI pattern matched, no triage). Architect issued task-357 (T2b) manually per bug-31 bypass. Engineer shipped T2b locally on `agent-greg/mission-48-t2b` (fresh off `bc5dbb6`): scripts/local/start-hub.sh STORAGE_BACKEND default flipped from `gcs` to `local-fs`; hub/src/lib/cutover-sentinel.ts new helper (`CUTOVER_SENTINEL_FILENAME` + `cutoverSentinelPath()` + `isCutoverComplete()`); hub/src/index.ts wired with bootstrap-required guard between the T1 writability assertion and LocalFsStorageProvider construction; hub/test/unit/cutover-sentinel.test.ts new test file with 7 unit tests covering both happy + edge cases (sentinel-as-directory defensiveness, non-existent root, non-existent path); deploy/README.md mount-section updated with default-flip + rollback + bootstrap-required dependency + first-launch-flow code-block. Manual smoke (best-effort; no live Docker): empty-dir guard fires FATAL exit 1; sentinel-touched proceeds — both verified via `node -e` against compiled dist. Live Docker restart cycle deferred to T3 dogfood per task-357 scope. Hub tests green at 52/755/5 (delta +1 file / +7 tests vs T2a baseline; architect estimated +1 test). Task commit `a02637e`. Trace + push + PR open next.
 
 - **2026-04-25 late (continuation)** — T1 PR #24 merged at `1e61226` (architect-merged 2026-04-25; bug-32 CI pattern matched, no surprises). Architect issued task-356 (T2a) manually per bug-31 bypass. Engineer shipped T2a locally on `agent-greg/mission-48-t2a` (fresh off `1e61226`): scripts/state-sync.sh extended with TMP_FILE_EXCLUDE_REGEX (-x exclusion at rsync time + T2c-shared constant), post-copy set-equality invariant (gsutil ls -r vs find -type f, normalized + sorted + diffed), `.cutover-complete` sentinel (timestamp + bucket + commit + epoch, written only on invariant green), diagnostic-rich failure output with per-path GCS-only / local-only annotation. Verified across four smoke scenarios via a fake-gsutil harness (bootstrap green / divergence red / restore green / idempotent rerun); operator-side smoke against a real GCS bucket deferred to T2b/T3 per task-356 explicit scope. Hub tests untouched at 51/748/5. Task commit `b8c2257`. Trace + push + PR open next.
 
