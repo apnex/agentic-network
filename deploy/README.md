@@ -110,6 +110,19 @@ Both plans use the **local backend** as of the split (state files kept in-dir). 
 **Per-env fields recommended in `base/env/<env>.tfvars`:**
 - `state_bucket_name = "<project-id>-hub-state"` or similar uniqueness-guaranteed name (GCS bucket names are global-namespaced — don't reuse `ois-relay-hub-state` across envs)
 
+## Local-fs Hub state directory (post-mission-48 T1)
+
+Mission-48 T1 (2026-04-25) wired the `local-fs` Hub profile into `scripts/local/start-hub.sh` for single-writer-laptop-prod use. ADR-024 §6.1 captures the profile reclassification.
+
+- **Default host path:** `${REPO_ROOT}/local-state/` (gitignored). Override via `OIS_LOCAL_FS_ROOT=<path>`.
+- **Selection:** set `STORAGE_BACKEND=local-fs` before `scripts/local/start-hub.sh`. Default remains `gcs` (no behavior change for existing operators).
+- **Bind mount:** start-hub.sh bind-mounts the host path into the container at the same path; the container `OIS_LOCAL_FS_ROOT` env resolves identically inside.
+- **uid/gid:** the container runs as host uid/gid (`docker run -u $(id -u):$(id -g)`) to keep bind-mount writes host-owned and operator-inspectable.
+- **Single-writer enforcement:** `scripts/local/start-hub.sh:148-161` enforces one `ois-hub-local-*` container at a time per host. Concurrent hubs against the same state directory will corrupt state — the enforcement script makes this hard to do accidentally.
+- **Defense-in-depth writability check:** the start-hub.sh shell-layer pre-flights writability before `docker run`; the Hub container also runs an internal writability assertion in `hub/src/index.ts` and fail-fasts on `EACCES`/`EPERM` with a uid/gid-diagnostic message.
+
+Full cutover + rollback runbook lands under mission-48 T4. T1 ships only the wiring + ADR-024 amendment.
+
 ## Hub GCS state layout (post-mission-49)
 
 Hub state is keyed under the env's state bucket (e.g. `gs://<env>-state` or `gs://ois-relay-hub-state` for prod). Mission-49 (2026-04-25) introduced a v2 audit namespace; pre-migration audit blobs are frozen-but-grep-accessible.
