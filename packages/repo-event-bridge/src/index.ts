@@ -30,3 +30,35 @@ export type {
 } from "./sink.js";
 
 export { CreateMessageSink } from "./sink.js";
+
+// ── PollSource (T2) ──────────────────────────────────────────────────
+
+export { CursorStore, CursorStoreConflictError, mergeLru } from "./cursor-store.js";
+export type { CursorStoreOptions, RepoCursor } from "./cursor-store.js";
+
+export {
+  GhApiClient,
+  GhApiAuthError,
+  GhApiRateLimitError,
+  GhApiTransientError,
+  PatScopeError,
+  REQUIRED_PAT_SCOPES,
+  parseRateLimitResume,
+} from "./gh-api-client.js";
+export type {
+  GhApiClientOptions,
+  GhEventEnvelope,
+  PollResult,
+} from "./gh-api-client.js";
+
+export {
+  PollSource,
+  GH_PAT_RATE_LIMIT_PER_HOUR,
+  DEFAULT_CADENCE_SECONDS,
+  DEFAULT_BUDGET_FRACTION,
+} from "./poll-source.js";
+export type {
+  Logger,
+  PollSourceOptions,
+  PollOutcome,
+} from "./poll-source.js";
