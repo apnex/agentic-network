@@ -7,6 +7,8 @@
  * Deployed to Cloud Run as a containerized Express application.
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ITaskStore, IEngineerRegistry, IProposalStore, IThreadStore, IAuditStore, INotificationStore } from "./state.js";
 import { reconcileCounters, cleanupOrphanedFiles } from "./gcs-state.js";
@@ -102,11 +104,44 @@ if (STORAGE_BACKEND === "gcs") {
   console.log(`[Hub] Using GCS storage backend: gs://${bucket}`);
   storageProvider = new GcsStorageProvider(bucket);
 } else if (STORAGE_BACKEND === "local-fs") {
+  // Mission-48 T1 (ADR-024 amendment 2026-04-25): local-fs is now
+  // single-writer-laptop-prod-eligible. The single-writer assumption
+  // (capabilities.concurrent=false) is enforced operationally by the
+  // one-hub-at-a-time check in `scripts/local/start-hub.sh:148-161`.
+  // Previously this branch fatal-exited under NODE_ENV=production; the
+  // gate is now warn-and-allow so the laptop-Hub deploy pattern works
+  // out of the box.
   if (process.env.NODE_ENV === "production") {
-    console.error("[Hub] FATAL: STORAGE_BACKEND is 'local-fs' in production. local-fs is a dev-only backend (cas:true, durable:true, concurrent:false — single-writer only). Use STORAGE_BACKEND=gcs in prod.");
-    process.exit(1);
+    console.warn(
+      "[Hub] STORAGE_BACKEND='local-fs' under NODE_ENV='production' — laptop-Hub single-writer-prod profile. " +
+      "Single-writer enforcement: scripts/local/start-hub.sh enforces one ois-hub-local-* container at a time. " +
+      "DO NOT run multiple hubs against the same OIS_LOCAL_FS_ROOT — the local-fs provider is concurrent:false."
+    );
   }
   const root = OIS_LOCAL_FS_ROOT!;
+
+  // Mission-48 T1: writability assertion. Catches the bind-mount uid/gid
+  // trap loudly rather than letting it surface as a generic putIfMatch
+  // permission error mid-mission. Defense-in-depth alongside the shell-
+  // layer pre-flight in scripts/local/start-hub.sh.
+  try {
+    fs.mkdirSync(root, { recursive: true });
+    const probe = path.join(root, `.hub-writability-${process.pid}`);
+    fs.writeFileSync(probe, "");
+    fs.unlinkSync(probe);
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM") {
+      console.error(
+        `[Hub] FATAL: STORAGE_BACKEND='local-fs' but ${root} is not writable by container user uid=${process.getuid?.() ?? "?"}. ` +
+        `Most likely cause: bind-mount uid/gid mismatch between host and container. ` +
+        `Fix: 'docker run -u $(id -u):$(id -g) ...' (scripts/local/start-hub.sh handles this).`
+      );
+      process.exit(1);
+    }
+    throw err;
+  }
+
   console.log(`[Hub] Using local-fs storage backend at: ${root}`);
   storageProvider = new LocalFsStorageProvider(root);
 } else {

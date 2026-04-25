@@ -86,7 +86,14 @@ CONTAINER_PORT="8080"
 # Hub-side env defaults (non-secret)
 GCS_BUCKET="$(read_tfvar state_bucket_name)"
 GCS_BUCKET="${GCS_BUCKET:-ois-relay-hub-state}"
-STORAGE_BACKEND="gcs"
+# Mission-48 T1: STORAGE_BACKEND is now caller-overridable. Default `gcs`
+# preserves prior behavior (single-env operators see no change). Set
+# `STORAGE_BACKEND=local-fs` + `OIS_LOCAL_FS_ROOT=<path>` to run the
+# laptop-Hub against a host-mounted state directory.
+STORAGE_BACKEND="${STORAGE_BACKEND:-gcs}"
+# Mission-48 T1: default state-dir host path matches mission-47 T3's
+# state-sync.sh layout. `${REPO_ROOT}/local-state/` is gitignored.
+OIS_LOCAL_FS_ROOT="${OIS_LOCAL_FS_ROOT:-${REPO_ROOT}/local-state}"
 WATCHDOG_ENABLED="false"   # ADR-017 watchdog paused locally; queue still operational
 NODE_ENV="production"
 PROJECT_ID="$(read_tfvar project_id)"
@@ -168,30 +175,73 @@ if ss -ltn "( sport = :$HOST_PORT )" 2>/dev/null | tail -n +2 | grep -q .; then
   exit 1
 fi
 
+# ── Mission-48 T1: state-dir pre-flight (local-fs only) ────────────────
+#
+# When `STORAGE_BACKEND=local-fs`, the container bind-mounts the host
+# state directory and writes through it. Catch the bind-mount uid/gid
+# trap loudly at the shell layer (before docker run) by ensuring the
+# directory exists + is writable by the host user. The Hub-side
+# writability assertion in `hub/src/index.ts` provides defense-in-depth
+# inside the container.
+
+if [[ "$STORAGE_BACKEND" == "local-fs" ]]; then
+  if ! mkdir -p "$OIS_LOCAL_FS_ROOT" 2>/dev/null; then
+    echo "[start-hub] ERROR: cannot create state directory $OIS_LOCAL_FS_ROOT." >&2
+    echo "              Check parent-directory permissions; ensure host path is writable." >&2
+    exit 1
+  fi
+  WRITABILITY_PROBE="${OIS_LOCAL_FS_ROOT}/.start-hub-writability-$$"
+  if ! ( : > "$WRITABILITY_PROBE" ) 2>/dev/null; then
+    echo "[start-hub] ERROR: $OIS_LOCAL_FS_ROOT not writable by host user $(id -u):$(id -g)." >&2
+    echo "              Most likely cause: state-dir was previously written by a different uid (e.g., container running as appuser without -u override)." >&2
+    echo "              Fix: either chown the dir to $(id -u):$(id -g), or remove + recreate it before re-running." >&2
+    exit 1
+  fi
+  rm -f "$WRITABILITY_PROBE"
+fi
+
 # ── Launch ─────────────────────────────────────────────────────────────
 
 echo "[start-hub] OIS_ENV:      $OIS_ENV"
 echo "[start-hub] Image:        $IMAGE"
 echo "[start-hub] Container:    $CONTAINER_NAME"
 echo "[start-hub] Port:         ${HOST_PORT}:${CONTAINER_PORT}"
-echo "[start-hub] GCS bucket:   $GCS_BUCKET"
+echo "[start-hub] Backend:      $STORAGE_BACKEND"
+if [[ "$STORAGE_BACKEND" == "local-fs" ]]; then
+  echo "[start-hub] State dir:    $OIS_LOCAL_FS_ROOT (bind-mounted; uid/gid $(id -u):$(id -g))"
+else
+  echo "[start-hub] GCS bucket:   $GCS_BUCKET"
+fi
 echo "[start-hub] SA key:       $GOOGLE_APPLICATION_CREDENTIALS"
 echo "[start-hub] Watchdog:     $WATCHDOG_ENABLED"
 
-docker run -d \
-  --name "$CONTAINER_NAME" \
-  --restart unless-stopped \
-  -p "${HOST_PORT}:${CONTAINER_PORT}" \
-  -e "NODE_ENV=$NODE_ENV" \
-  -e "PORT=$CONTAINER_PORT" \
-  -e "GOOGLE_APPLICATION_CREDENTIALS=/secrets/sa-key.json" \
-  -e "GCS_BUCKET=$GCS_BUCKET" \
-  -e "STORAGE_BACKEND=$STORAGE_BACKEND" \
-  -e "HUB_API_TOKEN=$HUB_API_TOKEN" \
-  -e "WATCHDOG_ENABLED=$WATCHDOG_ENABLED" \
-  -v "$GOOGLE_APPLICATION_CREDENTIALS:/secrets/sa-key.json:ro" \
-  --security-opt seccomp=unconfined \
-  "$IMAGE" >/dev/null
+# Build docker run argv as an array so the local-fs bind mount can be
+# conditionally appended without nested escaping.
+DOCKER_ARGS=(
+  -d
+  --name "$CONTAINER_NAME"
+  --restart unless-stopped
+  -u "$(id -u):$(id -g)"
+  -p "${HOST_PORT}:${CONTAINER_PORT}"
+  -e "NODE_ENV=$NODE_ENV"
+  -e "PORT=$CONTAINER_PORT"
+  -e "GOOGLE_APPLICATION_CREDENTIALS=/secrets/sa-key.json"
+  -e "GCS_BUCKET=$GCS_BUCKET"
+  -e "STORAGE_BACKEND=$STORAGE_BACKEND"
+  -e "HUB_API_TOKEN=$HUB_API_TOKEN"
+  -e "WATCHDOG_ENABLED=$WATCHDOG_ENABLED"
+  -v "$GOOGLE_APPLICATION_CREDENTIALS:/secrets/sa-key.json:ro"
+  --security-opt seccomp=unconfined
+)
+
+# Mission-48 T1: bind-mount the state directory + propagate the path
+# into the container so `OIS_LOCAL_FS_ROOT` resolves identically inside.
+if [[ "$STORAGE_BACKEND" == "local-fs" ]]; then
+  DOCKER_ARGS+=( -v "$OIS_LOCAL_FS_ROOT:$OIS_LOCAL_FS_ROOT" )
+  DOCKER_ARGS+=( -e "OIS_LOCAL_FS_ROOT=$OIS_LOCAL_FS_ROOT" )
+fi
+
+docker run "${DOCKER_ARGS[@]}" "$IMAGE" >/dev/null
 
 # ── Health check ───────────────────────────────────────────────────────
 

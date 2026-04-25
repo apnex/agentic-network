@@ -181,3 +181,27 @@ Rejected. Breaks the sovereign property — each entity would pull its own provi
 - Design round thread-290 (architect lily + engineer greg) converged 2026-04-24.
 - Mission-47 released by Director via thread-291 (2026-04-24).
 - This ADR committed under mission-47 T1.
+
+---
+
+## 6. Amendments
+
+### 6.1 Amendment 2026-04-25 — local-fs profile reclassification (mission-48 T1)
+
+**Source:** thread-303 design round (mission-48 M-Local-FS-Cutover); engineer Flag #1b (`hub/src/index.ts:106-109` hard-refused `STORAGE_BACKEND=local-fs` under `NODE_ENV=production`); Director ratification 2026-04-25.
+
+**Reclassification.** The `local-fs` `StorageProvider` profile, originally captured under §2.3 as **dev-only** (`cas:true, durable:true, concurrent:false`), is now also valid as a **single-writer-laptop-prod** profile.
+
+**Rationale.** The `concurrent:false` capability flag (single-writer requirement) is operationally enforceable via deployment discipline rather than a runtime gate:
+
+- `scripts/local/start-hub.sh:148-161` enforces one `ois-hub-local-*` container at a time per host. Switching envs is stop-prior-start-new.
+- Bind-mounted state directory (host path `${REPO_ROOT}/local-state/` by default) means there is structurally only one writer per host.
+- The laptop-Hub deployment pattern (mission-46 onward) has always been single-Director-single-machine; concurrent-writer scenarios do not arise.
+
+The `concurrent:false` flag therefore remains accurate; what changes is the *deployment context* in which `local-fs` is acceptable — extended from purely-dev to also include single-writer-laptop-prod.
+
+**Code change.** `hub/src/index.ts:106-109` previously fatal-exited (`process.exit(1)`) when `STORAGE_BACKEND=local-fs && NODE_ENV=production`. Mission-48 T1 relaxes to **warn-and-allow** — the warning still surfaces the single-writer constraint at startup, but the Hub now boots. Operators who run multiple hubs against the same `OIS_LOCAL_FS_ROOT` are responsible for the corruption that ensues; the warning + the start-hub.sh enforcement together make this hard to do accidentally.
+
+**Multi-writer guard left intact for non-laptop targets.** Cloud Run / multi-instance deployments must continue to use `STORAGE_BACKEND=gcs`. There is no architectural endorsement of `local-fs` for any multi-writer profile; the `concurrent:false` flag still rules that out by contract. This amendment is scoped narrowly to single-writer-laptop-prod and does not widen `local-fs` semantics elsewhere.
+
+**Related:** see `docs/traces/m-local-fs-cutover-work-trace.md` for in-flight execution tracking; `deploy/README.md` §Hub GCS state layout for state-file conventions across both backends.
