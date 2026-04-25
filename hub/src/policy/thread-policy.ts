@@ -1011,6 +1011,24 @@ async function handleThreadConvergedWithAction(
   // look the thread up separately.
   const summaryForCascade = summary.trim() || sourceThread.summary?.trim() || "(no summary provided)";
 
+  // Mission-51 W5: cascade-pending marker (closes bug-31). Written
+  // BEFORE runCascade so a Hub-process death mid-cascade leaves the
+  // marker behind; the Hub-startup CascadeReplaySweeper picks it up
+  // on next start and re-runs (idempotency-keyed at the per-action
+  // level via existing findByCascadeKey short-circuit). Marker write
+  // is best-effort: failure is logged + cascade still runs (existing
+  // cascade-key idempotency is the load-bearing recovery mechanism;
+  // marker is OPTIMIZATION-not-correctness).
+  try {
+    await ctx.stores.thread.markCascadePending(threadId, actions.length);
+  } catch (markerErr) {
+    ctx.metrics.increment("cascade_replay.marker_write_failed", {
+      threadId,
+      error: (markerErr as Error)?.message ?? String(markerErr),
+    });
+    console.warn(`[ThreadPolicy] cascade-pending marker write failed for ${threadId}; cascade still runs:`, markerErr);
+  }
+
   // Mission-24 Phase 2 (M24-T4, INV-TH19): validate-then-execute
   // cascade. Validate phase already ran inside the store gate; this
   // is the async execute phase. Handlers are registered by type in
@@ -1020,6 +1038,22 @@ async function handleThreadConvergedWithAction(
   // actions; each gets its attempt, and the thread terminal
   // classifies on the aggregate.
   const cascadeResult = await runCascade(ctx, sourceThread, actions, summaryForCascade);
+
+  // Mission-51 W5: clear the cascade-pending marker. Runs whether the
+  // cascade succeeded or had per-action failures (marker tracks
+  // EXECUTION COMPLETION, not success). Failure is non-fatal — the
+  // marker may stay stale, in which case the next Hub-startup sweeper
+  // will re-run cascade and the per-action idempotency-key
+  // short-circuit will catch already-completed actions cleanly.
+  try {
+    await ctx.stores.thread.markCascadeCompleted(threadId);
+  } catch (clearErr) {
+    ctx.metrics.increment("cascade_replay.marker_clear_failed", {
+      threadId,
+      error: (clearErr as Error)?.message ?? String(clearErr),
+    });
+    console.warn(`[ThreadPolicy] cascade-completed marker clear failed for ${threadId}; sweeper may re-run cascade (idempotent):`, clearErr);
+  }
 
   // Terminal transition per ADR-014 INV-TH19: any handler failure →
   // cascade_failed (audit + terminal); all succeeded/skipped → closed.

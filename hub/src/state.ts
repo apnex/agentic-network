@@ -802,6 +802,36 @@ export interface Thread {
    * already-projected threads, NOT a correctness gate.
    */
   lastMessageProjectedAt?: string;
+
+  /**
+   * Mission-51 W5: cascade-pending marker. True iff `runCascade` was
+   * invoked but has not yet completed (success OR failure-isolated).
+   * Written via `markCascadePending` before cascade; cleared via
+   * `markCascadeCompleted` after. The Hub-startup CascadeReplaySweeper
+   * lists threads with `cascadePending: true` and re-runs `runCascade`
+   * for each — closes the orphaned-mid-cascade gap that bug-31
+   * variants 1+2 surfaced when the Hub process dies before all
+   * cascade actions complete.
+   *
+   * The marker is OPTIMIZATION-not-correctness: cascade-action
+   * idempotency (per-action `findByCascadeKey` short-circuit on
+   * already-spawned entities) is the load-bearing mechanism that
+   * prevents duplication on replay. The marker tells the sweeper
+   * which threads to scan; the idempotency keys handle correct
+   * re-execution.
+   */
+  cascadePending?: boolean;
+
+  /** Mission-51 W5: count of committed actions at cascade start.
+   *  Telemetry/diagnostics only — not consumed by replay logic. */
+  cascadePendingActionCount?: number;
+
+  /** Mission-51 W5: ISO-8601 timestamp of cascade start. Diagnostic. */
+  cascadePendingStartedAt?: string;
+
+  /** Mission-51 W5: ISO-8601 timestamp of cascade completion (success
+   *  OR failure-isolated terminal). Diagnostic. */
+  cascadeCompletedAt?: string;
 }
 
 // ── Audit Types ──────────────────────────────────────────────────────
@@ -949,6 +979,31 @@ export interface IThreadStore {
    * newer than the current value (no-op idempotent).
    */
   markLastMessageProjected(threadId: string, projectedAt: string): Promise<boolean>;
+  /**
+   * Mission-51 W5: write the cascade-pending marker (idempotent CAS
+   * update). Sets `cascadePending: true` + `cascadePendingActionCount`
+   * + `cascadePendingStartedAt`. Returns true on successful set,
+   * false when the thread doesn't exist or the marker is already
+   * pending (in which case the existing marker is preserved).
+   */
+  markCascadePending(threadId: string, actionCount: number): Promise<boolean>;
+  /**
+   * Mission-51 W5: clear the cascade-pending marker (idempotent CAS
+   * update). Sets `cascadePending: false`, clears the diagnostic
+   * fields, sets `cascadeCompletedAt` to the current timestamp.
+   * Returns true on successful clear, false when the thread doesn't
+   * exist (already-cleared returns true since it's a no-op idempotent
+   * end state).
+   */
+  markCascadeCompleted(threadId: string): Promise<boolean>;
+  /**
+   * Mission-51 W5: list threads with the cascade-pending marker set.
+   * Used by the Hub-startup CascadeReplaySweeper to discover
+   * orphaned-mid-cascade threads. Returns full Thread (with messages
+   * + convergenceActions hydrated) so the sweeper can re-run
+   * runCascade against the committed actions.
+   */
+  listCascadePending(): Promise<Thread[]>;
   /**
    * Mission-24 Phase 2 (ADR-014, M24-T7, INV-TH21): scan all active
    * threads and transition to `abandoned` any whose idle time
