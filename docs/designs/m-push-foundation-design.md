@@ -114,49 +114,86 @@ When adapter connects without prior Last-Event-ID (first-ever connection, post-c
 **3-layer adapter decomposition (Q1 + Q2 outcomes; v1.2 confirmed):**
 
 ```
-[LAYER 1 — Network adapter / Universal Adapter]
-  Sovereign-package: @ois/network-adapter
-  Concerns (3 internal sub-concerns; sub-organized into src/ subdirs during cleanup mission):
-    1a. src/wire/         — TCP/SSE conn lifecycle; reconnect; backoff; heartbeat;
-                            atomic teardown; wire FSM
-                            (mcp-transport.ts, transport.ts)
-    1b. src/session/      — register_role handshake; session-claim; session FSM 5-state;
-                            agent identity; instance lifecycle; SSE watchdog
-                            (mcp-agent-client.ts, agent-client.ts, handshake.ts,
-                             session-claim.ts, instance.ts, state-sync.ts, event-router.ts)
-    1c. src/mcp-boundary/ — MCP-boundary handler factory: Initialize/ListTools/CallTool;
-                            pendingActionMap for queueItemId injection; tool-catalog cache;
-                            cache-fallback paths; error envelope
-                            (dispatcher.ts, tool-catalog-cache.ts) ← NEW post-cleanup;
-                            foreign-engineer-as-inspiration; this is foreign engineer's
-                            "dispatcher" semantics — qualified always as "MCP-boundary
-                            dispatcher" to disambiguate from Message-router
-     │
-     ▼
-[LAYER 2 — Message-router]
-  Sovereign-package: @ois/message-router (sovereign-package #6 NEW; Q2-renamed from
-                                          @ois/message-dispatcher)
-  Concerns: Message kind/subkind routing; "which host-surface mechanism for this Message?";
-            Message-arrival event handling; seen-id LRU cache; hooks-pattern for shim
-            host-injection (notificationHooks bag)
-  Output: route(Message) → host-binding handler
-  Q1 outcome: kept as separate sovereign-package — Message-routing is a distinct concern from
-              MCP-transport handler-factory; sovereign-package boundary earned via separability
-  Q2 outcome: renamed "dispatcher" → "Message-router" to disambiguate from foreign engineer's
-              MCP-boundary "dispatcher". Same word, different layer; design-time rename costs
-              less than execution-time confusion.
-     │
-     ▼
-[LAYER 3 — Per-host shim (Universal Adapter contract implementer)]
-  Per-host plugin packages: adapters/<host>-plugin/
-  Active: claude-plugin (stdio MCP; `<channel>` render); opencode-plugin (HTTP+Bun.serve;
-          client.session.promptAsync render)
-  Future: terminal-direct, ACP-host (out of scope this Design)
-  Concerns: host-specific transport plumbing; host-specific render-surface; notification-log
-            writes; process lifecycle (signals, config, pid-file); HTTP fetch handler per-host
-  NOT a sovereign-package — per-host plugin convention; tiny host-specific glue (foreign
-  engineer's hoist correctly minimized this layer)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 1 — Network Adapter / Universal Adapter                               │
+│ Sovereign-package: @ois/network-adapter                                     │
+│                                                                             │
+│ Internal sub-concerns (sub-organized into src/ subdirs during cleanup):     │
+│   1a. src/wire/         — TCP/SSE conn lifecycle; reconnect; backoff;       │
+│                           heartbeat; atomic teardown; wire FSM              │
+│                           (mcp-transport.ts, transport.ts)                  │
+│   1b. src/session/      — register_role handshake; session-claim;           │
+│                           session FSM 5-state; agent identity;              │
+│                           instance lifecycle; SSE watchdog                  │
+│                           (mcp-agent-client.ts, agent-client.ts,            │
+│                            handshake.ts, session-claim.ts, instance.ts,     │
+│                            state-sync.ts, event-router.ts)                  │
+│   1c. src/mcp-boundary/ — MCP-boundary handler factory:                     │
+│                           Initialize/ListTools/CallTool; pendingActionMap   │
+│                           for queueItemId injection; tool-catalog cache;    │
+│                           cache-fallback paths; error envelope              │
+│                           (dispatcher.ts, tool-catalog-cache.ts)            │
+│                           ← NEW post-cleanup; foreign-engineer-as-          │
+│                             inspiration; "MCP-boundary dispatcher"          │
+│                             semantics qualified always to disambiguate      │
+│                             from Message-router                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 2 — Message-Router                                          ← NEW     │
+│ Sovereign-package: @ois/message-router (#6 NEW; Q2-renamed from             │
+│                                          @ois/message-dispatcher)           │
+│                                                                             │
+│ Concerns:                                                                   │
+│   - Message kind/subkind routing                                            │
+│     ("which host-surface mechanism for this Message?")                      │
+│   - Message-arrival event handling                                          │
+│   - Seen-id LRU cache (push+poll dedup at render-surface)                   │
+│   - Hooks-pattern for shim host-injection (notificationHooks bag)           │
+│                                                                             │
+│ Output: route(Message) → host-binding handler                               │
+│                                                                             │
+│ Q1 outcome: kept as separate sovereign-package — Message-routing is a       │
+│             distinct concern from MCP-transport handler-factory; sovereign- │
+│             package boundary earned via separability                        │
+│ Q2 outcome: renamed "dispatcher" → "Message-router" to disambiguate from    │
+│             foreign engineer's MCP-boundary "dispatcher"                    │
+│                                                                             │
+│ Lands in M-Push-Foundation W4 (NOT cleanup mission).                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 3 — Per-Host Shim (Universal Adapter contract implementer)            │
+│ Per-host plugin packages: adapters/<host>-plugin/                           │
+│                                                                             │
+│ Active hosts:                                                               │
+│   - adapters/claude-plugin     (stdio MCP transport;                        │
+│                                 `<channel>` render-surface)                 │
+│   - adapters/opencode-plugin   (Bun.serve+HTTP transport;                   │
+│                                 client.session.promptAsync() render)        │
+│                                                                             │
+│ Future hosts (extension points):                                            │
+│   - adapters/terminal-direct   (any LLM via terminal stdio)                 │
+│   - adapters/<acp-host>        (ACP-protocol consumers — out of scope)      │
+│                                                                             │
+│ Concerns:                                                                   │
+│   - Host-specific transport plumbing (stdio / HTTP / future)                │
+│   - Host-specific render-surface (kind/subkind → host-binding)              │
+│   - Notification-log writes                                                 │
+│   - Process lifecycle (signals, config-load, pid-file)                      │
+│   - HTTP fetch handler per-host (where applicable)                          │
+│                                                                             │
+│ NOT a sovereign-package — per-host plugin convention; tiny host-specific    │
+│ glue (foreign engineer's hoist correctly minimized this layer).             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Counts:**
+- **3 layers** (Q1-confirmed)
+- **2 sovereign-packages**: `@ois/network-adapter` (Layer 1; keeps name; IS the Universal Adapter); `@ois/message-router` (Layer 2; sovereign-package #6 NEW; Q2-renamed)
+- **N per-host shims** (today: 2; designed for arbitrary extension)
 
 Each layer single-concern; tele-3 (sovereign composition) preserved.
 
