@@ -277,9 +277,20 @@ Methodology calibration #23 (formal-Design-phase-per-idea + tele-pre-check):
 
 **Director ratified: author calibration #23 methodology doc NOW** — three executions either side of M-Push-Foundation gives Director ratification surface. Doc lands at `docs/methodology/calibration-23-formal-design-phase.md` (or similar) as a downstream artifact.
 
-### 6. Pattern-replication-sizing-calibration validated again — RATIFIED
+### 6. Pattern-replication-sizing-calibration validated TWICE in this arc — RATIFIED
 
-mission-55 hit S lower edge realized (~3 hours vs 1-2 day estimate). Cleanup is mechanical-with-judgement using the recon's distilled blueprint; no novel structural decisions inside the mission. Calibration: when a mission scope is "execute the patterns a recon already distilled", size at S lower edge.
+mission-55 hit S lower edge realized (~3 hours vs 1-2 day estimate) AND mission-54 recon shipped in ~10min (also pattern-replication: greg follows the architect-dispatched 8-section Recon Report template). Both validate the calibration: when a mission scope is "execute the patterns a [recon|template|prior-blueprint] already distilled", size at S lower edge. Calibration ratified across two execution examples in a single arc; ready to ratify in `feedback_pattern_replication_sizing.md` if not already there (lily memory check).
+
+### 8. Multi-PR mission velocity skew — NEW (surfaced from §2 timeline)
+
+**Observation:** for mission-55's 3-PR shape, engineer-time per PR was 24min / 4min / 6min (PR 1 / PR 2 / PR 3). The **load-bearing PR (hoist) takes the bulk; subsequent doc-PRs ship rapidly**.
+
+**Calibration:** when sizing a multi-PR mission, expect velocity skew toward the first (substantive code-change) PR. Subsequent PRs (spec docs, closing audits, follow-on refactors) typically ship in <half the first PR's time, IF the first PR establishes the pattern + the docs are descriptive-of-what-shipped.
+
+**Implications:**
+- Architect can budget mid-mission Director-surface windows AFTER the first PR merges (subsequent doc-PRs land too fast to need Director check-ins between them)
+- Architect ping discipline matters MOST between PR 1 merge and PR 2 open (the gap where the "build pattern internalized" cognitive shift happens engineer-side)
+- Multi-PR mission cross-approval pattern stabilizes after PR 1 (architect knows what shape to expect for spec/audit doc PRs)
 
 ### 7. Tele evaluation of post-cleanup adapter — RATIFIED
 
