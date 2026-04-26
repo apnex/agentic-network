@@ -32,6 +32,8 @@ import { CognitivePipeline } from "@ois/cognitive-layer";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { resolveSourceAttribute } from "./source-attribute.js";
+
 // ── Configuration ───────────────────────────────────────────────────
 
 interface HubConfig {
@@ -129,7 +131,17 @@ function pushChannelNotification(
   const content = buildPromptText(event.event, event.data, {
     toolPrefix: "mcp__plugin_agent-adapter_proxy__",
   });
-  const meta: Record<string, unknown> = { event: event.event, source: "hub", level };
+  const meta: Record<string, unknown> = {
+    event: event.event,
+    // Mission-56 W2.3: kind-family-aware source attribution per Design
+    // v1.2 §"Architectural commitments #4" + Universal Adapter
+    // notification contract spec §"Render-surface semantics" worked
+    // example. Replaces the flat "hub" fallback so consumers (LLM
+    // prompts, dashboards) can disambiguate repo-events / directives /
+    // general notifications without parsing the inner subkind.
+    source: resolveSourceAttribute(event.event),
+    level,
+  };
   const data = event.data as Record<string, unknown>;
   if (data.taskId) meta.taskId = data.taskId;
   if (data.threadId) meta.threadId = data.threadId;
