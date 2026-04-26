@@ -109,38 +109,62 @@ When adapter connects without prior Last-Event-ID (first-ever connection, post-c
 
 ### 4. Adapter-side: SSE event-handler + 3-layer decomposition + render-surface
 
+**Universal Adapter framing (Director-confirmed 2026-04-26):** `@ois/network-adapter` IS the Universal Adapter. Layer 3 (per-host shim) implements the Universal Adapter's notification contract; Layer 1 emits notifications into it; Layer 2 routes Messages through it. "Universal" describes the contract Layer 3 implements against, not a separate package name.
+
 **3-layer adapter decomposition (Q1 + Q2 outcomes; v1.2 confirmed):**
 
 ```
-[Network adapter — @ois/network-adapter sovereign-package]
-  Concerns: SSE connection lifecycle; Last-Event-ID reconnect; transport-level dedupe;
-            MCP-boundary handler factory (Initialize / ListTools / CallTool — what foreign
-            engineer's "dispatcher" handles; lives here, not as a separate sovereign-package)
+[LAYER 1 — Network adapter / Universal Adapter]
+  Sovereign-package: @ois/network-adapter
+  Concerns (3 internal sub-concerns; sub-organized into src/ subdirs during cleanup mission):
+    1a. src/wire/         — TCP/SSE conn lifecycle; reconnect; backoff; heartbeat;
+                            atomic teardown; wire FSM
+                            (mcp-transport.ts, transport.ts)
+    1b. src/session/      — register_role handshake; session-claim; session FSM 5-state;
+                            agent identity; instance lifecycle; SSE watchdog
+                            (mcp-agent-client.ts, agent-client.ts, handshake.ts,
+                             session-claim.ts, instance.ts, state-sync.ts, event-router.ts)
+    1c. src/mcp-boundary/ — MCP-boundary handler factory: Initialize/ListTools/CallTool;
+                            pendingActionMap for queueItemId injection; tool-catalog cache;
+                            cache-fallback paths; error envelope
+                            (dispatcher.ts, tool-catalog-cache.ts) ← NEW post-cleanup;
+                            foreign-engineer-as-inspiration; this is foreign engineer's
+                            "dispatcher" semantics — qualified always as "MCP-boundary
+                            dispatcher" to disambiguate from Message-router
      │
      ▼
-[Message-router — @ois/message-router sovereign-package #6 (NEW; renamed from @ois/message-dispatcher)]
-  Concerns: Message kind/subkind routing; "which host-surface mechanism for this Message?"
+[LAYER 2 — Message-router]
+  Sovereign-package: @ois/message-router (sovereign-package #6 NEW; Q2-renamed from
+                                          @ois/message-dispatcher)
+  Concerns: Message kind/subkind routing; "which host-surface mechanism for this Message?";
+            Message-arrival event handling; seen-id LRU cache; hooks-pattern for shim
+            host-injection (notificationHooks bag)
   Output: route(Message) → host-binding handler
   Q1 outcome: kept as separate sovereign-package — Message-routing is a distinct concern from
-              MCP-transport handler-factory; sovereign-package boundary earned via separability,
-              not just by analogy to other packages
-  Q2 outcome: renamed from "dispatcher" → "Message-router" to disambiguate from foreign engineer's
-              "dispatcher" (MCP-boundary handler factory). Same word, different layer; design-time
-              rename costs less than execution-time confusion.
+              MCP-transport handler-factory; sovereign-package boundary earned via separability
+  Q2 outcome: renamed "dispatcher" → "Message-router" to disambiguate from foreign engineer's
+              MCP-boundary "dispatcher". Same word, different layer; design-time rename costs
+              less than execution-time confusion.
      │
      ▼
-[Host-specific shim — adapters/<host>-plugin]
-  Concerns: claude-code-specific binding (`<channel>` injection)
-  Concerns: opencode-specific binding (different mechanism)
-  Concerns: future-host bindings (e.g., terminal-direct)
+[LAYER 3 — Per-host shim (Universal Adapter contract implementer)]
+  Per-host plugin packages: adapters/<host>-plugin/
+  Active: claude-plugin (stdio MCP; `<channel>` render); opencode-plugin (HTTP+Bun.serve;
+          client.session.promptAsync render)
+  Future: terminal-direct, ACP-host (out of scope this Design)
+  Concerns: host-specific transport plumbing; host-specific render-surface; notification-log
+            writes; process lifecycle (signals, config, pid-file); HTTP fetch handler per-host
+  NOT a sovereign-package — per-host plugin convention; tiny host-specific glue (foreign
+  engineer's hoist correctly minimized this layer)
 ```
 
 Each layer single-concern; tele-3 (sovereign composition) preserved.
 
 **Naming discipline going forward:**
-- "Message-router" / `@ois/message-router` = Design's commitment #4 layer (kind/subkind routing)
-- "MCP-boundary dispatcher" / "MCP handler factory" = recon's foreign-engineer layer (Initialize/ListTools/CallTool); this concern lives inside `@ois/network-adapter` per recon's 2-layer hoist pattern (folded into M-Pre-Push-Adapter-Cleanup mission scope as inspiration)
-- Avoid bare "dispatcher" in new code — always qualify
+- "Message-router" / `@ois/message-router` = Layer 2 (Design's commitment #4 layer; kind/subkind routing)
+- "MCP-boundary dispatcher" / "MCP handler factory" = Layer 1c module (Initialize/ListTools/CallTool); lives inside `@ois/network-adapter` per recon's 2-layer hoist pattern (folded into M-Pre-Push-Adapter-Cleanup mission scope as inspiration)
+- "Universal Adapter" = `@ois/network-adapter` itself (Director-confirmed framing); the adapter that's universal across hosts via the Layer-3-shim contract
+- Avoid bare "dispatcher" in new code — always qualify ("MCP-boundary dispatcher" or "Message-router")
 
 **SSE event-handler behavior:**
 - Subscribe to `message_arrived` event-type on existing SSE stream
@@ -277,11 +301,25 @@ The architect's pre-look (in mission-54 preflight) speculated the foreign engine
 
 **Reusable patterns to adopt as inspiration:**
 
-1. **Code-dedup hoist** — duplicated dispatcher / claim / cache code per-plugin → consolidated shared modules in `@ois/network-adapter` with hooks-pattern for host-injection. Naming-disciplined: shared modules are MCP-boundary-handler-factory concerns (foreign "dispatcher" semantics); does NOT live in or depend on the future Message-router (sovereign-package #6).
-2. **`notificationHooks` callback bag pattern** — generic shim-injection contract: `{onActionableEvent, onInformationalEvent, onStateChange, onPendingActionItem}`. Adoptable as the host-injection contract shape for both the cleanup-mission MCP-boundary refactor AND the future Message-router-shim contract (commitment #4 inheriting the same hooks-shape).
+1. **Code-dedup hoist + module sub-organization** — duplicated dispatcher / claim / cache code per-plugin → consolidated shared modules in `@ois/network-adapter` with hooks-pattern for host-injection. **Sub-organize `src/` into subdirs during the hoist:** `src/wire/` (transport / wire FSM), `src/session/` (handshake / session-claim / agent identity / instance lifecycle), `src/mcp-boundary/` (Initialize/ListTools/CallTool / pendingActionMap / tool-catalog cache). Naming-disciplined: `src/mcp-boundary/` modules are MCP-boundary-handler-factory concerns (foreign "dispatcher" semantics); does NOT live in or depend on the future Message-router (sovereign-package #6).
+2. **`notificationHooks` callback bag pattern** — generic shim-injection contract: `{onActionableEvent, onInformationalEvent, onStateChange, onPendingActionItem}`. **This is the Universal Adapter notification contract** (Director-ratified). Adoptable as the host-injection contract shape for both the cleanup-mission MCP-boundary refactor AND the future Message-router-shim contract (commitment #4 inheriting the same hooks-shape). Spec'd in this mission per deliverable below.
 3. **Lazy `createMcpServer()` factory** (vs eager `dispatcher.server`) — adoptable in HEAD as a clarity/correctness win independent of push-foundation work; supports per-session lifecycle for hosts with HTTP-session models (opencode-style).
 4. **Tool-catalog cache distillation** (157→77 lines per recon §4) — schema-version + atomic write + null-tolerant `isCacheValid`. Reusable as inspiration only; properties don't transfer wholesale to commitment #4's seen-id LRU (different cache semantics: bounded LRU N=1000 in-memory vs schema-versioned-on-disk).
 5. **Gate naming refinement** — `handshakeComplete` → `listToolsGate`, `agentReady` → `callToolGate`. Names what's gated, not what's complete. Adoptable in HEAD as a small clarity win.
+
+**New deliverable: Universal Adapter notification contract spec.**
+
+`docs/specs/universal-adapter-notification-contract.md` — generic notification interface specification, shim-agnostic. Co-authored from the cleanup work; architect-pool reviewed.
+
+Spec covers:
+- **Event taxonomy** — notification kinds/subkinds (`notification.actionable`, `notification.informational`, `state.change`, `pending-action.dispatch`)
+- **Payload shapes** — JSON envelope per kind (`{kind, subkind, source, body, metadata}`)
+- **Lifecycle** — fire/deliver/ack semantics; idempotency; at-least-once delivery
+- **Hooks contract** — `notificationHooks: {onActionableEvent, onInformationalEvent, onStateChange, onPendingActionItem}` callbacks the shim implements
+- **Render-surface semantics** — abstract description with claude-shim (`<channel>`) and opencode-shim (`client.session.promptAsync`) as worked examples
+- **NOT host-specific mechanism** — spec doesn't mandate `<channel>` vs `promptAsync` vs terminal-stdout; per-shim implementation freedom
+
+**Foreign-tree-deletion success criterion** (Director-ratified 2026-04-26): post-cleanup-merge, the foreign tree at `/home/apnex/taceng/codex/agentic-network` is no longer needed for any reference. Recon Report (PR #61, on main) preserves the architectural-pattern knowledge; cleanup mission ships the adopted patterns; foreign tree becomes redundant. Director may delete the foreign tree at will after cleanup-mission merge.
 
 **Anti-goals (binding from mission-54 carried forward):**
 - NOT a code-merge plan — engineer-authored from scratch; foreign work as inspiration only
@@ -289,14 +327,29 @@ The architect's pre-look (in mission-54 preflight) speculated the foreign engine
 - NO PRs from foreign engineer (not onboarded)
 - NO Message-router or push-foundation work in this mission — those land in M-Push-Foundation's W3+W4
 - NO new sovereign-packages in this mission — `@ois/message-router` lands in M-Push-Foundation W4
+- NO npm-publish work — distribution-readiness is M-Adapter-Distribution scope (Tier 2; future)
+- **NO new repo-internal couplings** — non-regression criterion: deps stay `@ois/*` resolvable; hooks/contracts authored to be relocatable to `@apnex/*` later (per future distribution mission)
 
 **Tele alignment:**
-- **Primary tele-3** (Sovereign Composition): consolidates duplicated per-plugin code into the existing `@ois/network-adapter` sovereign-package; clean shim/host boundary preserved
+- **Primary tele-3** (Sovereign Composition): consolidates duplicated per-plugin code into the existing `@ois/network-adapter` sovereign-package; clean shim/host boundary preserved; subdir sub-organization makes the layer-1-internal sub-concerns explicit
 - **Secondary tele-9** (Frictionless): smaller PRs in M-Push-Foundation when adapter baseline is clean; reduces architect-review overhead in W3+W4
+- **Secondary tele-2** (Isomorphic Specification): Universal Adapter notification contract spec captures the host-injection interface schema-driven; future hosts (terminal-direct, ACP-host) implement against the same spec
 - **Tertiary tele-7** (Confidence-Coverage): test-rewiring discipline already validated by foreign engineer (recon §4 + §6); adopting the same pattern reduces test-migration risk
 
 **Sequencing into M-Push-Foundation:**
 M-Pre-Push-Adapter-Cleanup ships → engineer round-2 audit of Design v1.2 (against post-cleanup adapter) → propose_mission cascade for M-Push-Foundation → Director activates M-Push-Foundation → W0-W7 ship.
+
+**Cleanup mission deliverables checklist:**
+1. Hoist dispatcher/claim/cache from per-plugin shims into `@ois/network-adapter` sub-organized into `src/wire/` + `src/session/` + `src/mcp-boundary/` subdirs (engineer-authored from scratch; foreign work as inspiration only)
+2. `notificationHooks` callback bag pattern adopted as Universal Adapter notification contract
+3. Lazy `createMcpServer()` factory replaces eager `dispatcher.server`
+4. Tool-catalog cache distilled (schema-version + atomic write + null-tolerant `isCacheValid`)
+5. Gate naming refined (`handshakeComplete` → `listToolsGate`; `agentReady` → `callToolGate`)
+6. `docs/specs/universal-adapter-notification-contract.md` spec authored
+7. Test rewiring per recon §4 pattern (preserve test parity; mocks updated)
+8. Foreign-tree-deletion success criterion verified — confirm Recon Report + cleanup work cover all the architectural-pattern knowledge; foreign tree may be deleted post-merge
+9. Hub vitest baseline preserved; cross-package failures match bug-32 pre-existing pattern
+10. Closing audit per mission-43/46/47/49/50/51/52/54 canonical 8-section shape
 
 ## Anti-goals (BINDING)
 
@@ -319,6 +372,8 @@ Each anti-goal mapped to the tele it protects:
 - M-Repo-Event-Bridge-Adoption shrinks to ~S follow-on (sink-target + correlation parser); ships after M-Push-Foundation
 - Subsecond-precision push (current SSE adequate for sub-30s; latency tighter is post-MVP)
 - Multi-org / multi-tenancy push isolation (current single-org architecture; tenant separation is its own future mission)
+- **ACP (Agent Communication Protocol) framing** — separate downstream design conversation; doesn't gate or shape Universal Adapter / push-foundation work; Director-confirmed 2026-04-26 ("ACP is separate to this work")
+- **Distribution-readiness / npm publish** — current `@ois/*` package names use `file:` tarball deps in the host-plugin packages (`@ois/claude-plugin`, `@ois/opencode-plugin`); external `npm install` of host-plugins is not currently supported. **Future M-Adapter-Distribution mission** (Tier 2; separate scope) handles: (i) registry namespace migration to **`@apnex/*`** (Director's npm org per memory `project_npm_namespace_apnex.md`); (ii) sovereign-package npm publish workflow; (iii) host-plugin deps from `file:` to registry semver. **M-Pre-Push-Adapter-Cleanup non-regression criterion: cleanup work must NOT introduce new repo-internal couplings** that worsen distribution shape (deps stay `@ois/*` resolvable; hooks/contracts authored to be relocatable to `@apnex/*` later)
 
 ## Mission-53 absorption (per greg's audit)
 
