@@ -204,7 +204,7 @@ This is a **structural design invariant** on the agentic network. Concrete impli
 
 **Director-ratified additions:**
 - Universal Adapter framing — `@ois/network-adapter` IS the Universal Adapter
-- Layer-1 module sub-organization — `src/wire/` (transport) + `src/session/` (Kernel) + `src/tool-manager/` (MCP request handlers)
+- Layer-1 module sub-organization — `src/wire/` (transport) + `src/kernel/` (Kernel) + `src/tool-manager/` (MCP request handlers)
 - Universal Adapter notification contract spec deliverable
 - Foreign-tree-deletion success criterion
 - Future M-Adapter-Distribution flag — `@apnex/*` namespace migration
@@ -214,7 +214,7 @@ This is a **structural design invariant** on the agentic network. Concrete impli
 **Output:** 10 deliverables across PR #63/#64/#65.
 
 **Concrete shipped:**
-- `packages/network-adapter/src/{wire,session,tool-manager}/` — Layer-1 sub-organization on main
+- `packages/network-adapter/src/{wire,kernel,tool-manager}/` — Layer-1 sub-organization on main
 - `notificationHooks` callback bag pattern — Universal Adapter notification contract surface
 - Lazy `createMcpServer()` factory + tool-catalog cache distillation + gate naming refinement
 - `docs/specs/universal-adapter-notification-contract.md` — generic shim-agnostic spec (commit `736e13d`)
@@ -390,7 +390,7 @@ Plus 5 design-walkthrough ratifications same window:
 
 | Topic | Director ratification |
 |---|---|
-| Kernel naming for `src/session/` | "I like term Kernel" — adopted as canonical name |
+| Kernel naming for `src/kernel/` | "I like term Kernel" — adopted as canonical name |
 | Cognition Substrate keep-separate vs consolidate | "Agree with 'Keep Separate'" — `@ois/cognitive-layer` stays peer sovereign-package |
 | Cognition Substrate cross-cutting framing | Architect-clarified: cross-cutting sovereign-package consumed by Layer 1 + (future) Layer 2 + Layer 3; no boundary/duty/interface change |
 | tool-manager naming (was `mcp-boundary`) | Director ratified rename 2026-04-26: "Lets rename MCP-boundary to 'tool-manager' perhaps? Says what it does" — adopted; small standalone rename PR queued post-retrospective |
@@ -417,7 +417,7 @@ Plus 2 retrospective-walkthrough codifications (binding patterns added to §1):
 │ Internal sub-concerns (sub-organized into src/ subdirs; mission-55 PR #63): │
 │   1a. src/wire/         — Transport: TCP/SSE conn lifecycle; reconnect;     │
 │                           backoff; heartbeat; atomic teardown; wire FSM     │
-│   1b. src/session/      — Kernel: register_role handshake; session-claim;   │
+│   1b. src/kernel/      — Kernel: register_role handshake; session-claim;   │
 │                           session FSM 5-state; agent identity;              │
 │                           instance lifecycle; SSE watchdog                  │
 │   1c. src/tool-manager/ — MCP protocol handler factory:                     │
@@ -473,7 +473,7 @@ Plus 2 retrospective-walkthrough codifications (binding patterns added to §1):
 
 | # | Package | Concern | Layer |
 |---|---|---|---|
-| 1 | `@ois/network-adapter` | Layer 1 (wire + Kernel + tool-manager) | Layer 1 |
+| 1 | `@ois/network-adapter` | Layer 1 (wire + kernel + tool-manager) | Layer 1 |
 | 2 | `@ois/cognitive-layer` | Cognition Substrate | Cross-cutting |
 | 3 | `@ois/storage-provider` | Storage primitive (Hub-side) | Hub-side |
 | 4 | `@ois/repo-event-bridge` | GH event source (Hub-side; mission-52) | Hub-side |
@@ -483,7 +483,7 @@ Plus 2 retrospective-walkthrough codifications (binding patterns added to §1):
 ### Naming discipline
 
 - "Network Adapter" / `@ois/network-adapter` = Layer 1 (Universal Adapter)
-- "Kernel" = Layer 1b sub-concern (`src/session/`); session FSM + agent identity + lifecycle
+- "Kernel" = Layer 1b sub-concern (`src/kernel/`); session FSM + agent identity + lifecycle
 - "Transport" = Layer 1a sub-concern (`src/wire/`); TCP/SSE wire FSM
 - "tool-manager" = Layer 1c sub-concern (`src/tool-manager/`); MCP protocol handler factory at the host-network-adapter edge
 - "Message-Router" = Layer 2 (`@ois/message-router`); Message kind/subkind routing; sovereign-package #6
