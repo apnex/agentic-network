@@ -269,6 +269,8 @@ Sunset (write-path removal + read-path migration to Message store), sequential p
 2. **Notification second** (largest read-path coverage; once migrated, legacy SSE path obsolesces; biggest tele-3+10 win)
 3. **PendingActionItem last** (ADR-017 saga FSM-touching; highest regression risk; migrate when pattern is dialed in)
 
+> **W4.3 scope correction (mission-56 execution; thread-345 ratified 2026-04-26):** at the start of W4.3, engineer re-grep + structural-difference analysis revealed PendingActionItem is a **saga FSM primitive**, not a notification record like DirectorNotification (W4.1) and Notification (W4.2). PAI carries states beyond Message's `new → received → acked` (escalated, errored, continuation_required) and primitives Messages don't track (attemptCount, receiptDeadline, naturalKey, continuationState). Full migration would have been 3-5 eng-days of saga-rewrite touching the watchdog escalation ladder + adapter pendingActionMap + ADR-017 invariants — well beyond mission-56's W4.3 ~1-1.5d sizing and outside the W4 "notification entity sunset" framing. **Director ratified Option C** (thread-345 r2): W4.3 collapses to this doc-only correction; PendingActionItem is retained as the saga primitive. Proper sunset deferred to **idea-207 M-PAI-Saga-On-Messages** as a Tier 2 future mission. Mission-56 W4 closes 2/3 legacy notification entities (DirectorNotification + Notification) into Message-store projection — the over-aggressive "three entities" framing was an architecting error caught at execution time, surfaced + corrected before code landed.
+
 Each entity's migration is its own commit/PR within W6 for clean revert.
 
 Per-entity migration mechanics:
