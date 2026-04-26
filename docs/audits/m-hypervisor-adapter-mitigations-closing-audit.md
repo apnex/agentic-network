@@ -310,7 +310,7 @@ Unblocked — task-314 `continuationState` primitive is the storage layer. Imple
 
 - Mission brief: `documents/missions/m-hypervisor-adapter-mitigations.md`
 - Work-trace: `docs/traces/m-hypervisor-adapter-mitigations-work-trace.md`
-- This closing report: `docs/audits/m-hypervisor-adapter-mitigations-closing-report.md`
+- This closing report: `docs/audits/m-hypervisor-adapter-mitigations-closing-audit.md`
 
 ### Thread history
 

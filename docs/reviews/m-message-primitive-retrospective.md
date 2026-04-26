@@ -31,7 +31,7 @@
 - **Cascade-pending marker on Thread + CascadeReplaySweeper.fullSweep on Hub-startup** (W5) — closes bug-31 structurally; Hub-startup-only replay (process-death is the only marker-set condition; periodic-tick adds churn without correctness)
 - **list_messages / create_message MCP verbs** (W6) — additive tool surface; tool count 51 → 53; existing surface preserved
 - **ADR-025** at `docs/decisions/025-message-primitive-sovereign-entity.md` — companion to ADR-024; ratifies the sovereign-architectural-surface pattern
-- **Closing audit** at `docs/audits/m-message-primitive-closing-report.md` (engineer-authored W6) — 8-section per canonical mission-43/46/47/49/50 shape with 6 emergent observations
+- **Closing audit** at `docs/audits/m-message-primitive-closing-audit.md` (engineer-authored W6) — 8-section per canonical mission-43/46/47/49/50 shape with 6 emergent observations
 
 **Quantitative outcomes:**
 - 7 waves shipped engineer-side in single autonomous-operation session (~3 hours architect-time including reviews + spike ratifications)

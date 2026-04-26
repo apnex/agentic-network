@@ -14,7 +14,7 @@
 
 | Wave | Source directive | Status | Branch artifact | PR | Test count delta |
 |---|---|---|---|---|---|
-| W0 | Storage transactional capability spike (investigation; report at `docs/missions/mission-51-w0-spike-report.md`) | ✅ Merged | `29b26c2` | #42 | 0 (docs-only spike) |
+| W0 | Storage transactional capability spike (investigation; report at `docs/audits/m-message-primitive-w0-spike-report.md`) | ✅ Merged | `29b26c2` | #42 | 0 (docs-only spike) |
 | W1 | Message entity + repository + migration shim + ID-strategy pick | ✅ Merged | `de66c57` | #44 | +57 (`message-entity` 30; `message-repository` 27) |
 | W2 | Thread-message normalization read-path async-shadow projector + bounded sweeper + helpers | ✅ Merged | `a16d4ec` | #45 | +20 (`message-projection-sweeper` 14; `message-helpers` 6) |
 | W3 | State-transition trigger machinery + downstream-actor registry + initial mechanization | ✅ Merged | `490e874` | #46 | +21 (`triggers` 21) |
@@ -172,7 +172,7 @@ These deferrals are NOT mission-51 success criteria; they're follow-on cleanup. 
 | Thread schema (state.ts) | 1 | 0 | +90 (cascade marker fields, projection marker, methods) |
 | ADRs | 0 | 1 (ADR-025) | +180 |
 | Documentation | 0 | 4 (W0 spike report, triggers.md, scheduled-messages.md, this audit) | ~1100 |
-| Spike report | 0 | 1 (`docs/missions/mission-51-w0-spike-report.md`) | ~370 |
+| Spike report | 0 | 1 (`docs/audits/m-message-primitive-w0-spike-report.md`) | ~370 |
 | Closing report (this) | 0 | 1 | ~280 |
 
 Net (across W0-W6): ~24 modified production files; ~25 new files; ~7000 LOC delta.
@@ -268,7 +268,7 @@ The engineer-judgment clause in the directive enabled this discipline; without i
 - **Design round:** thread-311 — architect lily + engineer greg, 6 rounds, converged 2026-04-25 with Position A scope expansion ratified by Director at round 3.
 - **Companion ADR:** `docs/decisions/024-sovereign-storage-provider.md` — ratified storage substrate (mission-47).
 - **This wave's ADR:** `docs/decisions/025-message-primitive-sovereign-entity.md` — ratifies workflow-primitive contract.
-- **W0 spike report:** `docs/missions/mission-51-w0-spike-report.md` — backend characterization + path picks + sizing call.
+- **W0 spike report:** `docs/audits/m-message-primitive-w0-spike-report.md` — backend characterization + path picks + sizing call.
 - **W3 architecture doc:** `docs/architecture/triggers.md` — TRIGGERS + DOWNSTREAM_ACTORS + how-to-add-triggers procedure.
 - **W4 architecture doc:** `docs/architecture/scheduled-messages.md` — sweeper + PRECONDITIONS + retry interlock + how-to-add-predicates procedure.
 - **Lifecycle audit:** `docs/methodology/mission-lifecycle.md` — 11 🔴 transitions catalogued; mission-51 mechanizes 3 of 7 idea-192-closure-list transitions; remaining 4 available-to-add-via-PR.
@@ -291,7 +291,7 @@ The engineer-judgment clause in the directive enabled this discipline; without i
 
 Per task-376 explicit out-of-scope:
 
-- **Architect retrospective** at `docs/reviews/mission-51-retrospective.md` (or equivalent) — covers W0-W6 + Position A scope expansion + 7-wave cadence + bug-31 closure narrative + the empirical wave-cadence speed observation (§5.1) at architect-level framing.
+- **Architect retrospective** at `docs/reviews/m-message-primitive-retrospective.md` (or equivalent) — covers W0-W6 + Position A scope expansion + 7-wave cadence + bug-31 closure narrative + the empirical wave-cadence speed observation (§5.1) at architect-level framing.
 - **Architect-side dogfood** post-W6 merge — verify the new MCP verbs work end-to-end against a real Hub redeploy. mission-50 §5.6 dogfood-gate-discipline applies: real-deploy verifies the mechanic AS-COMPOSED.
 - **Mission-status flip** mission-51 → `completed` (architect-gated; pending W6 merge + dogfood-pass + retrospective).
 - **bug-31 status flip** to `resolved` with `fixCommits: ["6e8754a", "<W6-merge-sha>"]` + `linkedMissionId: "mission-51"` — routine; either side at W6 merge.

@@ -218,7 +218,7 @@ This is a **structural design invariant** on the agentic network. Concrete impli
 - `notificationHooks` callback bag pattern — Universal Adapter notification contract surface
 - Lazy `createMcpServer()` factory + tool-catalog cache distillation + gate naming refinement
 - `docs/specs/universal-adapter-notification-contract.md` — generic shim-agnostic spec (commit `736e13d`)
-- `docs/audits/m-pre-push-adapter-cleanup-closing-report.md` — canonical 8-section closing audit (commit `ef633144`)
+- `docs/audits/m-pre-push-adapter-cleanup-closing-audit.md` — canonical 8-section closing audit (commit `ef633144`)
 - 70/70 new unit tests passing; Hub vitest baseline preserved (919/5)
 
 **Sizing realized:** S lower edge (~3 hours engineer-time vs 1-2 day estimate). Pattern-replication-sizing-calibration validated again.
@@ -275,7 +275,7 @@ Methodology calibration #23 (formal-Design-phase-per-idea + tele-pre-check):
 - **Execution 2:** mission-55 (cleanup against ratified Design v1.2)
 - **Execution 3 (pending):** M-Push-Foundation (substantive feature mission)
 
-**Director ratified: author calibration #23 methodology doc NOW** — three executions either side of M-Push-Foundation gives Director ratification surface. Doc lands at `docs/methodology/calibration-23-formal-design-phase.md` (or similar) as a downstream artifact.
+**Director ratified: author calibration #23 methodology doc NOW** — three executions either side of M-Push-Foundation gives Director ratification surface. Doc lands at `docs/methodology/superseded/calibration-23-formal-design-phase.md` (or similar) as a downstream artifact.
 
 ### 6. Pattern-replication-sizing-calibration validated TWICE in this arc — RATIFIED
 
@@ -367,7 +367,7 @@ Per calibration insight #2, Director ratified formalizing the cross-approval pat
 
 Per calibration insight #5, Director ratified authoring NOW.
 
-**Filename:** `docs/methodology/calibration-23-formal-design-phase.md` (or similar; convention check needed).
+**Filename:** `docs/methodology/superseded/calibration-23-formal-design-phase.md` (or similar; convention check needed).
 
 **Content:** formal-Design-phase-per-idea + tele-pre-check discipline; 3 canonical execution examples (mission-54 + mission-55 + future M-Push-Foundation); how to apply in future ideas; relationship to other methodology docs.
 
@@ -514,7 +514,7 @@ The Universal Adapter does not need source modification to onboard a new host.
 ### Architect-authored downstream artifacts (retrospective-ratified scope)
 
 3. **Calibration #23 methodology doc** — author now per Director ratification of open Q3
-   - Filename: `docs/methodology/calibration-23-formal-design-phase.md` (convention TBD)
+   - Filename: `docs/methodology/superseded/calibration-23-formal-design-phase.md` (convention TBD)
    - Content: formal-Design-phase-per-idea + tele-pre-check discipline; mission-54 + mission-55 + M-Push-Foundation as canonical examples
 4. **`multi-agent-pr-workflow.md` v1.1** — post-M-Push-Foundation merge per Director ratification of open Q2
    - Cross-approval pattern formalization (engineer-pool ✓ on architect-content; architect-pool ✓ on engineer-content)
@@ -549,7 +549,7 @@ The Universal Adapter does not need source modification to onboard a new host.
 - **Recon Report:** `docs/designs/m-push-foundational-adapter-recon.md` (commit `f519f74`; PR #61)
 - **Design v1.2:** `docs/designs/m-push-foundation-design.md` (commit `cc90174`; PR #62)
 - **Universal Adapter notification contract spec:** `docs/specs/universal-adapter-notification-contract.md` (commit `736e13d`; PR #64)
-- **Cleanup mission closing audit:** `docs/audits/m-pre-push-adapter-cleanup-closing-report.md` (commit `ef633144`; PR #65)
+- **Cleanup mission closing audit:** `docs/audits/m-pre-push-adapter-cleanup-closing-audit.md` (commit `ef633144`; PR #65)
 - **Mission lifecycle map:** `docs/methodology/mission-lifecycle.md` v0.1 (2026-04-25)
 - **PR workflow:** `docs/methodology/multi-agent-pr-workflow.md` v1.0 RATIFIED (cross-approval pattern formalization queued for v1.1)
 - **Threads:** thread-318 (mission-54 T1) / thread-321 (mission-55 T1) / thread-322+323+324 (orchestration nudges) / thread-325 (round-2 audit)

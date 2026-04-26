@@ -12,7 +12,7 @@
 - Audit → simple `ctx.emit("tele_superseded"|"tele_retired", …)` (no idea-155 typed-payload)
 - Role-gating stays advisory (inherits existing `create_tele` posture); enforcement deferred to idea-121
 - `scripts/reset-teles.ts` delete folded into closing hygiene
-**How to read + update this file:** `docs/traces/trace-management.md`.
+**How to read + update this file:** `docs/methodology/trace-management.md`.
 
 **Status legend:** ▶ in-flight · ✅ done this session · ○ queued / filed · ⏸ deferred
 
@@ -78,7 +78,7 @@ _(nothing claimed — **ENGINEER-SIDE MISSION-43 100% DELIVERED**. Code + specs 
 - **2026-04-24 02:05Z** — Director requested Cloud Build wrapper as tracked deploy tooling. Promoted local `scripts/local/build-hub.sh` pattern to tracked `deploy/build-hub.sh` (commit `47957eb`). Paired with `deploy/deploy-hub.sh` for Cloud Run roll (commit `95a4ea6`). Director approved build; `deploy/build-hub.sh --tag mission-43-20260424-015414` succeeded in 1m27s (build `2f95e631`). `deploy/deploy-hub.sh --image ...` rolled Cloud Run revision `hub-00001-8bt`.
 - **2026-04-24 02:10Z** — Director clarified: local Docker is the delivery target, not Cloud Run. Cloud Run `hub` service destroyed. Memory updated (`project_local_docker_testing.md`). Mission trace updated to reflect local-Docker-as-target.
 - **2026-04-24 02:30-02:45Z approx** — `scripts/local/{build,start,stop}-hub.sh` promoted to tracked (commit `83b519c`) after secret-safety audit (no hardcoded tokens; runtime reads via gitignored `deploy/env/prod.tfvars`; never logs secrets). `scripts/local/build-hub.sh` invoked → Cloud Build `fe55fbe0` SUCCESS in 1m20s → image digest `3d954fdb…` pulled + tagged `ois-hub:local`. `scripts/local/start-hub.sh` stopped existing container, launched fresh, health-checked OK. Live smoke via `list_tele()` confirmed new schema + normalizer — all 13 teles return `status: "active"` without any write occurring on the store.
-- **2026-04-24 ~03:00Z** — Closing audit filed at `docs/audits/m-tele-retirement-primitive-closing-report.md`. All 9 brief success criteria resolved (8 MET + 1 pending bug-24 flip at audit commit). Engineer-side mission ship complete.
+- **2026-04-24 ~03:00Z** — Closing audit filed at `docs/audits/m-tele-retirement-primitive-closing-audit.md`. All 9 brief success criteria resolved (8 MET + 1 pending bug-24 flip at audit commit). Engineer-side mission ship complete.
 
 ---
 

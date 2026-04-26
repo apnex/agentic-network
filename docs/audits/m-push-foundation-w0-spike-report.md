@@ -219,7 +219,7 @@ Calls `ctx.stores.message.listMessages({...})` with those fields.
 - **Round-2 audit thread:** `thread-325` (closed; Design v1.2 ratified at engineer-spec level)
 - **Mission-56 preflight:** `docs/missions/mission-56-preflight.md` (commit `dd9cf5b` on main; PR #68 merged)
 - **Bundled rename PR:** `b6d5955` (mission-55 PR #69; activation gate #1 satisfier)
-- **Mission-55 closing audit:** `docs/audits/m-pre-push-adapter-cleanup-closing-report.md`
+- **Mission-55 closing audit:** `docs/audits/m-pre-push-adapter-cleanup-closing-audit.md`
 - **Recon Report:** `docs/designs/m-push-foundational-adapter-recon.md`
 - **Universal Adapter notification contract spec:** `docs/specs/universal-adapter-notification-contract.md`
 - **Thread-313 (mission-53 design):** ratified scope cross-mapped in §D2 above

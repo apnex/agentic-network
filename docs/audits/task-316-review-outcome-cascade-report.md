@@ -282,7 +282,7 @@ plannedTasks is the Task-scoped precursor to idea-134's Mission-wide execution p
 - bug-23 — bilateral-seal race (investigating; H1 verified by thread-242 controlled comparison)
 
 ### Adjacent
-- mission-38 closing report (`docs/audits/m-hypervisor-adapter-mitigations-closing-report.md`) — quantified the nudge cost this task eliminates
+- mission-38 closing report (`docs/audits/m-hypervisor-adapter-mitigations-closing-audit.md`) — quantified the nudge cost this task eliminates
 - idea-134 — Mission-wide Report + Trace (target model; task-316 is the transitional Task-scoped precursor)
 
 ---

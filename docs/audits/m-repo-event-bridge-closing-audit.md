@@ -271,7 +271,7 @@ mission-52 is a real-cloud-API mission; the bridge polls live GitHub. Architect-
 
 ## 7. Architect-owned remaining
 
-- **Architect retrospective** at `docs/reviews/mission-52-retrospective.md` — covers preflight + T1-T5 + the T3 5-revision arc + 3 calibration candidates (18, 19, 20) at architect-level framing.
+- **Architect retrospective** at `docs/reviews/m-repo-event-bridge-retrospective.md` — covers preflight + T1-T5 + the T3 5-revision arc + 3 calibration candidates (18, 19, 20) at architect-level framing.
 - **Architect-side dogfood gate decision** (Director call): activate mission-53 first → clean Hub redeploy; OR proceed with Hub redeploy + Director-coordinated greg restart; OR defer dogfood + close mission with skip-noted-coverage. Surface for Director.
 - **Mission-status flip** mission-52 → `completed` (architect-gated; pending T5 PR merge + dogfood-gate decision).
 - **bug-31 status note** — mission-52 is the last bypass-active mission; methodology v1.x update can confirm bypass technique fully sunset post mission-52 close (already structurally closed at mission-51 W5; mission-52 closing is the last consumer reference).

@@ -6,7 +6,7 @@
 **Inputs:**
 - `docs/reviews/2026-04-retrospective-lite.md` (8 methodology deltas captured pre-ship 2026-04-22)
 - `docs/missions/mission-41-merge.md` §Retrospective-lite observations (9 multi-branch-merge deltas captured 2026-04-23 during first worked example)
-- `docs/audits/m-workflow-test-harness-closing-report.md` (mission-41 closing audit, 800 lines)
+- `docs/audits/m-workflow-test-harness-closing-audit.md` (mission-41 closing audit, 800 lines)
 - Mission-41 execution threads (thread-255 through thread-271)
 
 ---
@@ -18,7 +18,7 @@ This formal retrospective **incorporates** the retrospective-lite (2026-04-22) a
 **Three methodology pillars covered:**
 1. `docs/methodology/strategic-review.md` (v1.0 → v1.1 fold pending)
 2. `docs/methodology/mission-preflight.md` (v1.0 → v1.1 fold pending)
-3. `docs/methodology/multi-branch-merge.md` (v1.0 → v1.1 fold pending)
+3. `docs/methodology/superseded/multi-branch-merge.md` (v1.0 → v1.1 fold pending)
 
 Each pillar gets its own §Edit queue section below.
 

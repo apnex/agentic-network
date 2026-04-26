@@ -198,7 +198,7 @@ Mission-48's success-criterion 1 ("audit + notification durability post-cutover"
 - **Source idea:** `get_idea(idea-190)` — filed by Director 2026-04-25.
 - **Design round:** thread-303 — architect lily + engineer greg, 5 rounds, converged 2026-04-25. Director ratification at round 5.
 - **PR coordination:** thread-306 (rounds 1-10; round-limited at PR #27 announce) → thread-307 (rounds 1-onwards; mission-48 close coordination).
-- **Prerequisite mission:** mission-49 M-Audit-Notification-Repository-Migration (closed 2026-04-25) — `docs/audits/m-audit-notification-repository-migration-closing-report.md`.
+- **Prerequisite mission:** mission-49 M-Audit-Notification-Repository-Migration (closed 2026-04-25) — `docs/audits/m-audit-notification-repository-migration-closing-audit.md`.
 - **ADR amendment:** `docs/decisions/024-sovereign-storage-provider.md` §6.1 — local-fs profile reclassification.
 - **Operator drill runbook:** `docs/runbooks/m-local-fs-cutover-drills.md` — Hub-restart readback + live rollback drill procedures.
 - **Deploy runbooks:** `deploy/README.md` §Cutover runbook + §Rollback runbook (consolidated in T4 from T1/T2b/T2c stubs).

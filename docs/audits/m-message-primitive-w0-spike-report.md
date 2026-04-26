@@ -346,7 +346,7 @@ Per mission-51 brief XL trigger #1: *"W0 finds atomic-transactions infeasible AN
 - **Cascade runner:** `hub/src/policy/cascade.ts` (M-Cascade-Perfection Phase 1; ADR-015).
 - **Cascade ActionSpec registry:** `hub/src/policy/cascade-spec.ts`.
 - **PendingActionItem saga:** `hub/src/entities/pending-action.ts` (ADR-017) — architectural template for W5.
-- **Mission-50 closing arc:** `docs/audits/m-cloud-build-tarball-codification-closing-report.md` — engineer-side mission immediately preceding mission-51.
+- **Mission-50 closing arc:** `docs/audits/m-cloud-build-tarball-codification-closing-audit.md` — engineer-side mission immediately preceding mission-51.
 - **bug-31:** cascade-bookkeeping issue that mission-51 W2 absorbs (per brief).
 - **Out-of-scope for W0 / deferred to W1+:** Message entity schema design (W1), thread normalization migration code (W2), trigger machinery (W3), scheduled-message sweeper (W4), cascade transactional boundary IMPLEMENTATION (W5; this spike informs the path), legacy-read sunset + tool-surface migration (W6).
 

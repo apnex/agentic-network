@@ -26,7 +26,7 @@
 - Bootstrap-required sentinel guard at Hub startup
 - Defense-in-depth writability assertion (start-hub.sh shell-layer + hub/src/index.ts Hub-side, with explicit uid/gid diagnostic on EACCES/EPERM)
 - 270-line operator runbook at `docs/runbooks/m-local-fs-cutover-drills.md`
-- 270-line engineer-authored closing report at `docs/audits/m-local-fs-cutover-closing-report.md`
+- 270-line engineer-authored closing report at `docs/audits/m-local-fs-cutover-closing-audit.md`
 - idea-193 folded: `docs/specs/entities.md` Repository-pattern updates; `deploy/README` §Outstanding sweep documented as no-op (no storage-abstraction-resolvable items remained)
 
 **Closure of the 12-entity Repository migration arc:** mission-47 W1-W7 (10 entities) + mission-49 W8-W9 (Audit + Notification) shipped the migration; mission-48 is the deployment counterpart that operationalizes the storage-backend swap on laptop-Hub. ADR-024 6-primitive surface held across all 12 entities, 3 ID schemes (counter / fingerprint / ULID), 60+ CAS sites. Zero contract changes.
@@ -185,7 +185,7 @@ Ordered by importance:
 ## 9. Mission-48 closing state — pre-drill
 
 - Engineer-side work: **complete** (6 PRs merged: T1+T2a+T2b+T2c+T3+T4)
-- Closing report (engineer-authored): `docs/audits/m-local-fs-cutover-closing-report.md`
+- Closing report (engineer-authored): `docs/audits/m-local-fs-cutover-closing-audit.md`
 - Operator drill runbook: `docs/runbooks/m-local-fs-cutover-drills.md`
 - Architect retrospective: **this document** (complete-pending-drill-outputs)
 - Architect mission-status flip: **pending** (gated on drill outputs OR Director close-without-drill signal)

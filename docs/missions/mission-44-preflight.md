@@ -24,7 +24,7 @@
 ## Category C — Referenced-artifact currency
 
 - **C1.** File paths cited exist:
-  - `docs/audits/m-hypervisor-adapter-mitigations-closing-report.md` (mission-38 closing audit; brief cites for baseline telemetry + 7-mitigation status): ✅ exists
+  - `docs/audits/m-hypervisor-adapter-mitigations-closing-audit.md` (mission-38 closing audit; brief cites for baseline telemetry + 7-mitigation status): ✅ exists
   - `agents/vertex-cloudrun/` (the adapter runtime mission-44 targets): ✅ exists (Dockerfile + src + test + tsconfig.json + vitest.config.ts)
   - Brief-referenced tools + concepts (§2.2 Substrate-First Logic, §2.6 Precision Context Engineering, §3.11 Cognitive Economy cluster) — all in Phase 3 concepts-and-defects register; not re-verified but consistent with brief
 - **C2.** Numeric claims verified:
@@ -102,7 +102,7 @@ Brief engineer flag #4: *"Deploy-gate is explicit — Architect Cloud Run redepl
 
 - **E1.** First task clear, day-1 scaffoldable: **PASS** — Task 1 Phase E pre-hydration is well-scoped; engineer can scaffold immediately: adapter preloads thread state + participant set + active tool surface + pending-action queue snapshot into prompt preamble; pattern guided by idea-114 state-sync drift-reconciliation
 - **E2.** Deploy-gate dependencies explicit: **PASS with ordering-flag** — Architect Cloud Run redeploy required mid-mission (after Task 1 implementation). Engineer flagged upfront per mission-38 lesson. Deploy-gate triggers prod-effect; telemetry baseline accumulates in the 7-day window *after* deploy
-- **E3.** Success-criteria metrics measurable from current baseline: **PASS with dependency** — brief references "pre-mission-38 baseline"; that baseline telemetry should be documented in `docs/audits/m-hypervisor-adapter-mitigations-closing-report.md` (mission-38 closing audit). Engineer should verify at Task 3 (verdict-flip) implementation. Pre-requisite — baseline data must be retrievable, not lost
+- **E3.** Success-criteria metrics measurable from current baseline: **PASS with dependency** — brief references "pre-mission-38 baseline"; that baseline telemetry should be documented in `docs/audits/m-hypervisor-adapter-mitigations-closing-audit.md` (mission-38 closing audit). Engineer should verify at Task 3 (verdict-flip) implementation. Pre-requisite — baseline data must be retrievable, not lost
 
 ## Category F — Coherence with current priorities
 
@@ -149,7 +149,7 @@ This note is not a decision; preserving the observation because the cross-runtim
 
 - Hub state queried: `get_mission(mission-44)`, `get_bug(bug-11)` — both confirmed current
 - Brief read: `docs/reviews/2026-04-phase-4-briefs/m-cognitive-layer-silence-closure.md` (156 lines; 6× idea-132 citations)
-- Path verification: `docs/audits/m-hypervisor-adapter-mitigations-closing-report.md` ✓; `agents/vertex-cloudrun/` ✓
+- Path verification: `docs/audits/m-hypervisor-adapter-mitigations-closing-audit.md` ✓; `agents/vertex-cloudrun/` ✓
 - Cross-mission check: no superseding filings; missions 41/42/43 don't block mission-44 activation
 
 ---

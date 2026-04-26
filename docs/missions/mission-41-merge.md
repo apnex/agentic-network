@@ -3,7 +3,7 @@
 **Date:** 2026-04-23
 **Mission(s) merged:** mission-41 (M-Workflow-Test-Harness)
 **Option chosen:** A (per-task review → direct merge; review gate cleared)
-**Methodology:** `docs/methodology/multi-branch-merge.md` v1.0 (first worked example; recursive-bootstrap)
+**Methodology:** `docs/methodology/superseded/multi-branch-merge.md` v1.0 (first worked example; recursive-bootstrap)
 **Architect:** `eng-40903c59d19f` (lily) **Engineer:** `eng-0d2c690e7dd5` (greg)
 **Coordinating thread(s):** thread-268 (design), thread-269 (co-authorship), thread-270 (pre-merge checklist), thread-271 (execution — opens post-artifact-draft)
 
@@ -22,7 +22,7 @@
 | Commit | Purpose |
 |---|---|
 | `b2fa9d3` | `[merge] agent/lily into main (mission-41)` — architect branch landed first; 26 docs-only files; zero conflicts |
-| `d4cb120` | `[merge] agent/greg into main (mission-41)` — engineer branch landed second; resolved `docs/methodology/multi-branch-merge.md` via `git checkout --theirs` (content-superset) |
+| `d4cb120` | `[merge] agent/greg into main (mission-41)` — engineer branch landed second; resolved `docs/methodology/superseded/multi-branch-merge.md` via `git checkout --theirs` (content-superset) |
 | **Post-merge main HEAD:** `d4cb120` |
 
 ## Post-merge tags (to be created bilaterally post-Cat-G-verification)
@@ -111,7 +111,7 @@ Breakdown by directory-ownership:
 | `adapters/opencode-plugin/test/mocks/` | 3 | Engineer |
 | `.github/workflows/test.yml` | 1 | Shared (co-sign) |
 | `docs/audits/` | 2 | Shared (co-sign) |
-| `docs/methodology/multi-branch-merge.md` | 1 | Shared (co-sign; architect-primary) |
+| `docs/methodology/superseded/multi-branch-merge.md` | 1 | Shared (co-sign; architect-primary) |
 | `docs/specs/workflow-registry.md` | 1 | Shared (co-sign) |
 | `docs/reviews/2026-04-phase-*` | ~20 | Shared (co-authored over time) |
 | `docs/traces/m-workflow-test-harness-work-trace.md` | 1 | Engineer |
@@ -121,14 +121,14 @@ Breakdown by directory-ownership:
 Per thread-270 engineer report: `comm -12 <(sort greg-files) <(sort lily-files)` → **exactly 1 file**:
 
 ```
-docs/methodology/multi-branch-merge.md
+docs/methodology/superseded/multi-branch-merge.md
 ```
 
 ### Per-conflict resolution
 
 | File | Primary owner | Resolution | Rationale |
 |---|---|---|---|
-| `docs/methodology/multi-branch-merge.md` | Architect (Shared co-sign for this specific file) | **Engineer version wins** (content-superset) | Engineer's v1.0 commit at `1e8be98` is a pure additive superset of architect's DRAFT at `d065f43`: same structure, same sections, same body text; engineer added the 6 TODO(engineer) section fills + flipped status header "v1.0 DRAFT" → "v1.0". 3-way merge should produce engineer version mechanically — no content contention means the veto rule doesn't fire. Recursive-bootstrap: methodology governs its own first merge. |
+| `docs/methodology/superseded/multi-branch-merge.md` | Architect (Shared co-sign for this specific file) | **Engineer version wins** (content-superset) | Engineer's v1.0 commit at `1e8be98` is a pure additive superset of architect's DRAFT at `d065f43`: same structure, same sections, same body text; engineer added the 6 TODO(engineer) section fills + flipped status header "v1.0 DRAFT" → "v1.0". 3-way merge should produce engineer version mechanically — no content contention means the veto rule doesn't fire. Recursive-bootstrap: methodology governs its own first merge. |
 
 ## Category E — Merge-path choice ✅
 
@@ -283,7 +283,7 @@ Coordinated via thread-271 (architect-engineer bilateral execution thread).
 | Pre-Step 2 (added) | Architect | Push main → origin/main | Fast-forward `c8c5145..2f481d0` — 16 commits (5 mission-40 + 4 drift + pre-mission-40 M-Session-Claim-Separation chain) landed on origin |
 | Step 2 | Architect | `git merge --no-ff agent/lily -m "[merge] agent/lily into main (mission-41)"` | **`b2fa9d3`** — clean merge, zero conflicts; 26 files landed |
 | Step 2 | Architect | Push main → origin/main | `2f481d0..b2fa9d3` |
-| Step 3 | Engineer | `git merge --no-ff agent/greg -m "[merge] agent/greg into main (mission-41)"` | **`d4cb120`** — 1 conflict as predicted (`docs/methodology/multi-branch-merge.md`); resolved via `git checkout --theirs` (engineer-superset per Cat D resolution); merge completed |
+| Step 3 | Engineer | `git merge --no-ff agent/greg -m "[merge] agent/greg into main (mission-41)"` | **`d4cb120`** — 1 conflict as predicted (`docs/methodology/superseded/multi-branch-merge.md`); resolved via `git checkout --theirs` (engineer-superset per Cat D resolution); merge completed |
 | Step 3 | Engineer | Push main → origin/main | `b2fa9d3..d4cb120` |
 | Step 4 (bilateral) | Both | Cat G/H/I/J verification | All pass; 1118 tests across 83 files, tsc-clean across 5 packages; Hub state consistent |
 | Step 4 | Engineer | Fill Cat G/H/I/J on artifact + commit | `3864854` |
@@ -291,7 +291,7 @@ Coordinated via thread-271 (architect-engineer bilateral execution thread).
 
 ### Conflict resolution detail
 
-**Only conflict:** `docs/methodology/multi-branch-merge.md` (add/add conflict during greg-merge).
+**Only conflict:** `docs/methodology/superseded/multi-branch-merge.md` (add/add conflict during greg-merge).
 
 - **Lily's contribution:** v1.0 DRAFT with 6 `TODO(engineer)` markers (committed at `d065f43`)
 - **Greg's contribution:** v1.0 with TODO sections filled (committed at `1e8be98`)

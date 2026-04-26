@@ -170,7 +170,7 @@ Probes (e.g. `claude mcp list`) MUST NOT call `claim_session` — that defeats t
 
 - bug-26 — `class: identity-management`. Resolved by mission-40 commits `[18cde2d, a011fcd, dd1423c, 9e14ff7, e2ce3f8]`.
 - Mission brief — `documents/missions/m-session-claim-separation.md` v1.1.
-- Closing audit — `docs/audits/m-session-claim-separation-closing-report.md`.
+- Closing audit — `docs/audits/m-session-claim-separation-closing-audit.md`.
 - Deprecation runway dashboard spec — `docs/observability/m-session-claim-separation-runway-dashboard.md`.
 - Bug-candidate doc (origin) — `docs/reviews/bug-candidate-mcp-probe-displacement.md` (carries `RESOLVED-BY-MISSION` banner post-T5).
 - Companion bug-A (already shipped) — `docs/reviews/bug-candidate-adapter-startup-race.md` (commit `83b57e3`).

@@ -2,7 +2,7 @@
 
 **Mission:** M-Session-Claim-Separation (mission-40)
 **ADR:** ADR-021 — Identity / Session Claim Separation
-**Closing audit:** `docs/audits/m-session-claim-separation-closing-report.md`
+**Closing audit:** `docs/audits/m-session-claim-separation-closing-audit.md`
 **Status:** Spec (no dashboard config infrastructure exists at the Hub today; this document defines the panel queries + acceptance criteria for whoever builds it)
 **Audience:** Hub operators + the post-architectural-review hardening pass that will retire the back-compat auto-claim hooks per brief §10.1
 

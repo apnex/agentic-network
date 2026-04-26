@@ -1,8 +1,8 @@
 # Multi-Agent PR Workflow — Methodology
 
-**Status:** v1.0 RATIFIED (2026-04-25). Engineer co-authorship complete (2026-04-23). Architect spec-alignment review + worked-example validation across 5 missions on new workflow (mission-43, 46, 47, 49, 48 in chronological completion order). Calibrations from missions 47/48/49 captured in §v1.0 ratified-with calibrations. Supersedes `docs/methodology/multi-branch-merge.md` per ADR-023 Phase 3.
+**Status:** v1.0 RATIFIED (2026-04-25). Engineer co-authorship complete (2026-04-23). Architect spec-alignment review + worked-example validation across 5 missions on new workflow (mission-43, 46, 47, 49, 48 in chronological completion order). Calibrations from missions 47/48/49 captured in §v1.0 ratified-with calibrations. Supersedes `docs/methodology/superseded/multi-branch-merge.md` per ADR-023 Phase 3.
 **Scope:** reusable procedure for agents collaborating via trunk-based development with PR-gated integration. Replaces the sovereign-branch-per-agent + periodic-merge model.
-**Supersedes:** `docs/methodology/multi-branch-merge.md` v1.0 (retained as historical reference; see its Superseded header).
+**Supersedes:** `docs/methodology/superseded/multi-branch-merge.md` v1.0 (retained as historical reference; see its Superseded header).
 
 ---
 

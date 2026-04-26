@@ -84,7 +84,7 @@ Full detail in `reports/task-352-v1-report.md`. Key surfaces:
 ### 3.3 T3 — Closing audit + engineer-side hygiene (this report)
 
 Deliverables per task-353:
-1. ✅ **Closing report** at `docs/audits/m-audit-notification-repository-migration-closing-report.md` — this file.
+1. ✅ **Closing report** at `docs/audits/m-audit-notification-repository-migration-closing-audit.md` — this file.
 2. ✅ **Emergent-correctness capture** — see §5.
 3. ✅ **ADR-024 delta evaluation** — see §6. Confirmed: no contract change.
 4. ✅ **`deploy/README` v2-namespace note** added under new §Hub GCS state layout subsection.
@@ -204,7 +204,7 @@ Captured per task-353 deliverable #5 for future migration-pattern archaeology.
 
 Per task-353 explicit out-of-scope:
 
-- **Architect-side retrospective** at `docs/reviews/mission-49-retrospective.md` — owned by architect; not in engineer scope.
+- **Architect-side retrospective** at `docs/reviews/m-audit-notification-repository-migration-retrospective.md` — owned by architect; not in engineer scope.
 - **Mission-status flip to `completed`** — architect-gated transition.
 
 Per mission anti-goals (thread-304):

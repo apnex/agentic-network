@@ -7,7 +7,7 @@
 **Release-gate:** thread-291 (Director approval, 2026-04-24).
 **ADR:** [`docs/decisions/024-sovereign-storage-provider.md`](../decisions/024-sovereign-storage-provider.md).
 **Coordination model:** Option C hybrid — DAG-driven serialization + 4 architect-gated checkpoint threads (post-T1, post-W1, pre-W7, T5) + routine waves via normal PR-review.
-**How to read + update this file:** `docs/traces/trace-management.md`.
+**How to read + update this file:** `docs/methodology/trace-management.md`.
 
 **Status legend:** ▶ in-flight · ✅ done this session · ○ queued / filed · ⏸ blocked
 
