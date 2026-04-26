@@ -19,7 +19,7 @@ This applies to every commit on every branch (main, `agent/*`, feature branches,
 Other repo-specific conventions live in the methodology docs:
 
 - `docs/methodology/multi-agent-pr-workflow.md` — per-PR integration gate (v1.0 DRAFT; supersedes sovereign-branch model)
-- `docs/methodology/multi-branch-merge.md` — sovereign-branch merge procedure (Superseded; in-flight missions only)
+- `docs/methodology/superseded/multi-branch-merge.md` — sovereign-branch merge procedure (Superseded; in-flight missions only)
 - `docs/methodology/mission-preflight.md` — activation gate (proposed → active)
 - `docs/methodology/strategic-review.md` — backlog triage + mission prioritization
 - `.github/CODEOWNERS` — directory-ownership map; mechanized review routing via `@apnex-org/architect` + `@apnex-org/engineer`

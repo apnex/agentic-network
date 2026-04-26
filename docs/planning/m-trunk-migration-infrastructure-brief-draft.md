@@ -137,7 +137,7 @@ Two related docs:
 - Engineer co-authors execution-side sections per Phase 4 co-authoring pattern
 - Covers: PR workflow, CODEOWNERS map, branch protection, merge queue discipline, per-PR review cadence, PR artifact templates, failure modes
 
-**6b. `docs/methodology/multi-branch-merge.md` v1.1 → v2.0 retirement**
+**6b. `docs/methodology/superseded/multi-branch-merge.md` v1.1 → v2.0 retirement**
 - Add header: **Status: v1.0 worked-example complete; Superseded by `docs/methodology/multi-agent-pr-workflow.md` per ADR-023 Phase 3 completion**
 - Retain v1.0 content as historical reference
 - Edit queue from 2026-04 retrospective (10 v1.1 deltas) absorbed into the new workflow doc rather than v1.1 of the old one

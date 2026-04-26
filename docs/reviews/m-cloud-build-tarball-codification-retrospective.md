@@ -24,7 +24,7 @@
 - `hub/.gitignore` — path-anchored exclusion of `ois-storage-provider-*.tgz` (prevents accidental commits of staged tarball).
 - `hub/.gcloudignore` — self-contained gcloudignore (no `#!include:.gitignore` directive); `node_modules/` baseline + `!ois-storage-provider-*.tgz` re-include. Comment header names bug-36 + load-bearing nature + idea-186 sunset.
 - `deploy/README.md` §"Cloud Build tarball staging (mission-50)" — six subsections (Why / How / Stays clean / CI parity / Sunset condition / ADR-024 boundary statement) + addenda for T3/T4/T5 evolution.
-- `docs/audits/m-cloud-build-tarball-codification-closing-report.md` — 8-section closing-audit (mission-43/46/47/49 shape) with **18 success criteria** (all met or flippable) + 6 emergent observations including §5.6 "Architect-dogfood-via-real-rebuild surfaces real-gcloud-context bugs that mocked happy-path testing cannot".
+- `docs/audits/m-cloud-build-tarball-codification-closing-audit.md` — 8-section closing-audit (mission-43/46/47/49 shape) with **18 success criteria** (all met or flippable) + 6 emergent observations including §5.6 "Architect-dogfood-via-real-rebuild surfaces real-gcloud-context bugs that mocked happy-path testing cannot".
 - `docs/traces/m-cloud-build-tarball-codification-work-trace.md` — canonical 7-section trace.
 
 **Quantitative outcomes:**

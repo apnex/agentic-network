@@ -1,6 +1,6 @@
 # BUG CANDIDATE — Concurrent MCP probe displaces live session identity
 
-> **RESOLVED-BY-MISSION: m-session-claim-separation (mission-40)** — flipped `open → resolved` at T5 commit. fixCommits: `[18cde2d, a011fcd, dd1423c, 9e14ff7, e2ce3f8]`. See `docs/audits/m-session-claim-separation-closing-report.md` + `docs/decisions/021-identity-session-claim-separation.md`.
+> **RESOLVED-BY-MISSION: m-session-claim-separation (mission-40)** — flipped `open → resolved` at T5 commit. fixCommits: `[18cde2d, a011fcd, dd1423c, 9e14ff7, e2ce3f8]`. See `docs/audits/m-session-claim-separation-closing-audit.md` + `docs/decisions/021-identity-session-claim-separation.md`.
 
 **Status:** **RESOLVED via mission-40** (2026-04-22). bug-26 Hub entity flipped `open → resolved`. Original filing context preserved below for forensic continuity. Authored 2026-04-22 by greg (engineer); diagnosis by lily (architect).
 **Discovery context:** 2026-04-22 architectural review cold-start. While lily was debugging her own startup failure (see companion bug `bug-candidate-adapter-startup-race.md`), every `claude mcp list` she invoked bumped her Hub `sessionEpoch` and displaced the prior session — including her live session when she had one. greg's Hub-log read corroborated: `eng-40903c59d19f` epoch 7 → 14 entirely caused by lily's probe spawns.
@@ -121,6 +121,6 @@ bug-26 was structurally resolved by mission-40 (M-Session-Claim-Separation) over
 
 **ADR:** see `docs/decisions/021-identity-session-claim-separation.md` for the design decision + Consequences (notably the `currentSessionEpoch` semantics change that requires adapters to key takeover-detection on `sessionClaimed` + `displacedPriorSession` rather than epoch delta).
 
-**Closing audit:** see `docs/audits/m-session-claim-separation-closing-report.md` for the full mission report, deliverable scorecard, audit-action inventory, observability surface, deprecation runway baseline, and findings (including sibling bug-27 + bug-28 that surfaced during mission execution).
+**Closing audit:** see `docs/audits/m-session-claim-separation-closing-audit.md` for the full mission report, deliverable scorecard, audit-action inventory, observability surface, deprecation runway baseline, and findings (including sibling bug-27 + bug-28 that surfaced during mission execution).
 
 **Companion bug already shipped:** see `docs/reviews/bug-candidate-adapter-startup-race.md` (commit `83b57e3`). Predates mission-40 but motivated the diagnostic context — fixed adapter startup race that compounded with bug-26 to make the failure mode unrecoverable.

@@ -132,7 +132,7 @@ Explicitly defers to `adapters/opencode-plugin/QUICKSTART.md` for plugin install
 ### 4.5 T5 — Hygiene + closing (this report)
 
 - Hygiene audit per §3 above — no hard-blocking hardcodes remain; every textual hit is env-overridable default or back-compat-preserving comment.
-- Closing report (this document) filed at `docs/audits/m-multi-env-substrate-closing-report.md`.
+- Closing report (this document) filed at `docs/audits/m-multi-env-substrate-closing-audit.md`.
 - `deploy/README.md §Outstanding` updated in T4's commit to reflect T2 completion (T4 PR body contains the change).
 
 No bug flips; mission resolves no existing bugs. Director-ratified deliverable completion is the success signal.

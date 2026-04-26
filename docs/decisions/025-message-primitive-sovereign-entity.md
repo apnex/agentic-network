@@ -168,7 +168,7 @@ Mission-51 lands +159 tests across 7 waves (760 → 919 baseline). Per-axis enfo
 - **W5 cascade-replay:** PR #48 / `6e8754a` — marker + Hub-startup replay; closes bug-31.
 - **W6 (this ADR + closing audit):** [W6 PR — this PR].
 - **Companion ADR:** ADR-024 (StorageProvider).
-- **Closing audit:** `docs/audits/m-message-primitive-closing-report.md`.
+- **Closing audit:** `docs/audits/m-message-primitive-closing-audit.md`.
 - **Methodology lifecycle audit:** `docs/methodology/mission-lifecycle.md` §5.1 (idea-192 closure list — 7 of 11 🔴 transitions mechanizable via the trigger primitive).
 
 ---

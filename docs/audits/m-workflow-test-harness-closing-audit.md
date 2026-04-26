@@ -295,7 +295,7 @@ Per kickoff-decisions §Decision 1 boundary, Wave 2 task filings become appropri
 - `docs/missions/mission-41-preflight.md` (GREEN verdict)
 - `docs/methodology/mission-preflight.md` v1.0 (methodology applied first time to this mission)
 - `docs/traces/m-workflow-test-harness-work-trace.md` (live state)
-- `docs/traces/trace-management.md` (trace-discipline guide)
+- `docs/methodology/trace-management.md` (trace-discipline guide)
 
 ### Mission-41-generated artifacts
 

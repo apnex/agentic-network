@@ -108,8 +108,8 @@ PR #34 / `af19bbf`. Key surfaces:
   - **CI parity note (forward-look)** — script-canonical-until-idea-186; idea-197 inheritance requirement; bypass-regresses-bug-33 warning.
   - **Sunset condition** — idea-186 trigger + 4-action cleanup list (3 from T1 + this README section).
   - **ADR-024 boundary statement** — explicit non-amendment per methodology v1.0 §ADR-amendment-scope-discipline.
-- **`docs/audits/m-cloud-build-tarball-codification-closing-report.md`** — this file. Standard 8-section closing-audit shape per mission-43/46/47/49 precedent.
-- **`docs/traces/m-cloud-build-tarball-codification-work-trace.md`** — concise 7-section work-trace per `docs/traces/trace-management.md`. Captures resumption pointer + In-flight (empty post-T2) + Done-this-session (T1 + T2) + Edges + Session log + Canonical references + Status legend.
+- **`docs/audits/m-cloud-build-tarball-codification-closing-audit.md`** — this file. Standard 8-section closing-audit shape per mission-43/46/47/49 precedent.
+- **`docs/traces/m-cloud-build-tarball-codification-work-trace.md`** — concise 7-section work-trace per `docs/methodology/trace-management.md`. Captures resumption pointer + In-flight (empty post-T2) + Done-this-session (T1 + T2) + Edges + Session log + Canonical references + Status legend.
 
 **Verification:**
 - No source changes; Hub vitest baseline holds at 52 files / 760 passing / 5 skipped.
@@ -362,7 +362,7 @@ The methodology v1.0 §dogfood-gate-discipline calibration #11 (load-bearing dog
 - **Sunset trigger:** idea-186 (npm workspaces adoption) — when ratified, drives the cleanup actions enumerated in §"Sunset condition" of `deploy/README.md` (now 5 actions: script section + Dockerfile COPY lines + .gitignore entry + .gcloudignore file + README section) and the inline `TODO(idea-186)` in `scripts/local/build-hub.sh` and `hub/.gcloudignore`.
 - **Forward-look CI dependency:** idea-197 (M-Auto-Redeploy-on-Merge — when filed/ratified) MUST invoke `scripts/local/build-hub.sh` (or its workspaces-aware successor) to inherit the tarball-staging behavior. See `deploy/README.md` §"CI parity note".
 - **Bug carry-forward:** bug-32 (cross-package CI debt) — affects every PR; not blocking; pre-existing on main per architect's PR #21 triage. Mission-50 does NOT absorb bug-32; CI debt is separate methodology surface.
-- **Sibling sovereign-package preservation:** mission-48 (`m-local-fs-cutover-closing-report.md`) §5.3 — ADR amendment scope discipline precedent that mission-50 §5.3 builds on.
+- **Sibling sovereign-package preservation:** mission-48 (`m-local-fs-cutover-closing-audit.md`) §5.3 — ADR amendment scope discipline precedent that mission-50 §5.3 builds on.
 - **Methodology reinforcement:** §5.6 above — dogfood-gate-discipline as load-bearing, not ceremonial. Reinforces methodology v1.0 §dogfood-gate-discipline that codification missions whose smoke tests mock the deployment surface MUST include real-deploy dogfood as a binding success criterion.
 
 ---

@@ -23,7 +23,7 @@
 - `MemoryAuditStore` + `GcsAuditStore` + `MemoryNotificationStore` + `GcsNotificationStore` — all four legacy classes deleted
 - `IAuditStore` + `INotificationStore` interfaces preserved; consumers untouched
 - ADR-024 unchanged (contract held)
-- Closing report at `docs/audits/m-audit-notification-repository-migration-closing-report.md`
+- Closing report at `docs/audits/m-audit-notification-repository-migration-closing-audit.md`
 - `deploy/README.md` §Hub GCS state layout — archaeology pointers for legacy + v2 namespaces
 
 **Quantitative outcomes:**

@@ -528,7 +528,7 @@ You're not at the repo root, or the repo was cloned incompletely. Check
 - ADR: ADR-023 Phase 1
 - Methodology: `docs/methodology/multi-agent-pr-workflow.md` v1.0 (sibling
   doc authored in mission-45 Task 6)
-- Retired methodology (reference): `docs/methodology/multi-branch-merge.md`
+- Retired methodology (reference): `docs/methodology/superseded/multi-branch-merge.md`
   (Superseded header landed with T6b)
 - Admin checklist (Director): `reports/task-344-v1-report.md` (bundled
   team creation + branch protection + merge queue)

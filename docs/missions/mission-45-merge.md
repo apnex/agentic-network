@@ -3,7 +3,7 @@
 **Date:** 2026-04-23
 **Mission:** mission-45 (M-Trunk-Migration-Infrastructure — ADR-023 Phase 1 scaffolding)
 **Option chosen:** Hybrid — merge `agent/lily` → `agent/greg` locally, then single squash-merge PR `agent/greg` → `main` (architect proposal on thread-276; engineer consent)
-**Methodology:** `docs/methodology/multi-branch-merge.md` v1.0 (final worked example — this mission *retires* the sovereign-branch methodology)
+**Methodology:** `docs/methodology/superseded/multi-branch-merge.md` v1.0 (final worked example — this mission *retires* the sovereign-branch methodology)
 **Architect:** `eng-40903c59d19f` (apnex-lily) **Engineer:** `eng-0d2c690e7dd5` (apnex-greg)
 **Coordinating threads:** thread-272 (kickoff + T1 scoping + handle-convention), thread-273 (T1 ratification plumbing), thread-274 (URGENT org migration apnex → apnex-org), thread-275 (bot-identity setup + worktreeConfig), thread-276 (mission-close coordination — this artifact)
 

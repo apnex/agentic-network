@@ -224,7 +224,7 @@ After Phase 2 validates the shape:
 
 - All future missions use PR workflow by default
 - `agent/lily` + `agent/greg` branches archived on origin (kept as historical tags; no new commits)
-- `docs/methodology/multi-branch-merge.md` v1.0 marked **Superseded** — retained for historical-merge understanding but not for new work
+- `docs/methodology/superseded/multi-branch-merge.md` v1.0 marked **Superseded** — retained for historical-merge understanding but not for new work
 - CODEOWNERS enforcement becomes authoritative; multi-branch-merge.md §Roles table deprecated
 
 **Timing:** after 2-3 missions confirm Phase 2 validator's observations generalize.
