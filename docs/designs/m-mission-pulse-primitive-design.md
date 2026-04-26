@@ -1,10 +1,26 @@
-# M-Mission-Pulse-Primitive — Design v0.1
+# M-Mission-Pulse-Primitive — Design v1.0
 
-**Status:** Draft v0.1 (architect-authored 2026-04-26; bilateral Design phase per new Survey-then-Design methodology)
+**Status:** Ratified v1.0 (architect-authored 2026-04-26; bilateral Design phase per new Survey-then-Design methodology; v0.1→v1.0 incorporates engineer round-2 audit refinements per thread-349 round 6)
 **Source idea:** idea-206 M-Mission-Pulse-Primitive (Hub-stored)
 **Pre-Design input:** `docs/designs/m-mission-pulse-primitive-survey.md` (6-anchor Director-intent envelope)
 **Mission class:** Coordination-primitive shipment (per mission-56 retrospective §5.4.1 taxonomy)
 **Sizing:** L lower edge (~6-8 eng-days; W0-W4 decomposition; sub-2-week)
+
+## Version delta — v0.1 → v1.0 (engineer round-2 audit refinements)
+
+Per thread-349 round 6 engineer round-2 audit (commit `a234ba8` → this commit):
+
+| Refinement | Class | Section affected | Fix shape |
+|---|---|---|---|
+| **Item 1** — migrationSourceId idempotency | BLOCKING | §4 firePulse | Deterministic key based on `nextFireDueAt` computed from prior bookkeeping (Option A); restart-safe; double-fire prevented |
+| **E1** — Mediation invariant on escalation | BLOCKING | §4 escalateMissedThreshold | Route to `target.role: "architect"` (NOT director); architect LLM evaluates + decides Director-surface per categorised-concerns table |
+| **Item 2** — Webhook vs poll for ack detection | engineer-final | §4 composition + §5 response detection | Webhook from `ack_message` cascade handler (Path 2); aligns with mechanise+declare doctrine; eliminates race conditions; existing W3+W4.1 precedent |
+| **E2** — Missed-count false-positive fix | engineer-final | §4 evaluatePulse step 4 | 3-condition guard: pulseFiredAtLeastOnce + noAckSinceLastFire + graceWindowElapsed |
+| **Item 3a** — (unset)/legacy missionClass row | engineer-final | §6 cadence table | NO PULSE for missions without explicit missionClass; backward-compat for existing missions post-W1 schema migration |
+| **Item 3b** — architectPulse responseShape default | engineer-final | §6 cadence defaults | `short_status` (was `ack`); matches concept memo intent + Survey Q1A coordination-latency outcome |
+| **E3** — Default-injection semantics | engineer-final | §3 new "Default-injection semantics" subsection | `precondition` + `firstFireDelaySeconds` + `missedThreshold` auto-inject at validation; persisted on mission entity; explicit `null` to disable |
+
+All refinements preserve Survey envelope intent. No Director re-engagement required (refinements are inside Survey-anchored design-mechanics scope per autonomous-arc-driving pattern).
 
 ---
 
@@ -114,6 +130,19 @@ interface MissionEntity {
 - **`intervalSeconds` floor** at 60s (sub-minute cadences anti-pattern); recommended ≥300s
 - **`missedThreshold` default** 3 (matches W3.2 ADR-017 receipt-deadline-missed-3x precedent for COMMS escalation; reduces false-positive rate vs 2; per-mission overridable via Survey Q5 envelope interpretation — see §6 mission-lifecycle.md content)
 
+### Default-injection semantics (E3 fix)
+
+Engineer round-2 audit surfaced ambiguity on optional-field default behavior. v1.0 explicit policy:
+
+| Field | Behavior when undefined |
+|---|---|
+| `precondition` | **Auto-injected** at `mission-policy.ts` validation: `{fn: "mission_idle_for_at_least", args: {seconds: <intervalSeconds>}}`. Reduces noise per S2; engineers can explicitly disable by declaring `precondition: null` (zod schema accepts null vs undefined distinction). |
+| `firstFireDelaySeconds` | **Auto-injected** at validation: equals `intervalSeconds`. First pulse fires after one cadence-interval, not immediately on activate. Per-mission override allowed for "5min initial verify-onboarded" use case. |
+| `missedThreshold` | **Auto-injected** at validation: `3`. Matches W3.2 ADR-017 precedent. Per-mission overridable. |
+| `responseShape` | **Required field; no default.** Engineer must declare per pulse (e.g., `short_status` for engineerPulse, `short_status` for architectPulse per §6 conventions). |
+
+Auto-injection happens once at write-time, persisted on the mission entity. Reading the entity returns the injected values explicitly; no implicit defaults at read-time.
+
 ### Backward compatibility
 
 - `pulses?` is optional; existing missions without `pulses` field parse unchanged against extended zod schema
@@ -186,20 +215,23 @@ export class PulseSweeper {
       }
     }
 
-    // 4. Detect missed response (only if a previous pulse fired)
-    if (lastFiredMs > 0) {
-      const lastResponseMs = config.lastResponseAt ? new Date(config.lastResponseAt).getTime() : lastFiredMs;
-      const grace = 30_000; // 30s grace post-cadence
-      if (now - lastResponseMs > (config.intervalSeconds * 1000) + grace) {
-        // Missed; increment count
-        const newMissedCount = (config.missedCount ?? 0) + 1;
-        await this.updatePulseBookkeeping(mission, pulseKey, { missedCount: newMissedCount });
+    // 4. Detect missed response — 3-condition guard (E2 fix)
+    //    Avoids false-positive when prior tick skipped fire due to precondition false
+    const lastResponseMs = config.lastResponseAt ? new Date(config.lastResponseAt).getTime() : 0;
+    const grace = 30_000; // 30s grace post-cadence
+    const pulseFiredAtLeastOnce = lastFiredMs > 0;
+    const noAckSinceLastFire = lastResponseMs < lastFiredMs;
+    const graceWindowElapsed = pulseFiredAtLeastOnce && (now - lastFiredMs > config.intervalSeconds * 1000 + grace);
 
-        // Escalate if threshold breached
-        if (newMissedCount >= config.missedThreshold) {
-          await this.escalateMissedThreshold(mission, pulseKey, config, newMissedCount);
-          return; // Pause pulse
-        }
+    if (pulseFiredAtLeastOnce && noAckSinceLastFire && graceWindowElapsed) {
+      // Missed; increment count
+      const newMissedCount = (config.missedCount ?? 0) + 1;
+      await this.updatePulseBookkeeping(mission, pulseKey, { missedCount: newMissedCount });
+
+      // Escalate if threshold breached
+      if (newMissedCount >= config.missedThreshold) {
+        await this.escalateMissedThreshold(mission, pulseKey, config, newMissedCount);
+        return; // Pause pulse
       }
     }
 
@@ -212,13 +244,25 @@ export class PulseSweeper {
     pulseKey: PulseKey,
     config: PulseConfig,
   ): Promise<void> {
-    const fireAt = new Date().toISOString();
+    // Item-1 fix (engineer round-2): migrationSourceId must be DETERMINISTIC across sweeper restarts.
+    // v0.1 used `new Date().toISOString()` which advanced on each restart → double-fire risk if
+    // sweeper crashed between createMessage and updatePulseBookkeeping. v1.0: key on next-fire-due
+    // time computed from prior bookkeeping (Option A from round-2 audit).
+    const lastFiredMs = config.lastFiredAt ? new Date(config.lastFiredAt).getTime() : 0;
+    const baseFireMs = lastFiredMs > 0
+      ? lastFiredMs + (config.intervalSeconds * 1000)
+      : new Date(mission.createdAt).getTime() + ((config.firstFireDelaySeconds ?? config.intervalSeconds) * 1000);
+    const fireAt = new Date(baseFireMs).toISOString();
     const migrationSourceId = `pulse:${mission.id}:${pulseKey}:${fireAt}`;
 
-    // Idempotency check (S1)
+    // Idempotency check (S1) — restart-safe via deterministic key
     const existing = await this.messageStore.findByMigrationSourceId(migrationSourceId);
     if (existing) {
-      // Already fired this tick; sweeper restart short-circuit
+      // Already fired this scheduled tick; sweeper restart short-circuit
+      // Reconcile bookkeeping if needed (lastFiredAt may not have been written before crash)
+      if (!config.lastFiredAt || new Date(config.lastFiredAt).getTime() < baseFireMs) {
+        await this.updatePulseBookkeeping(mission, pulseKey, { lastFiredAt: fireAt });
+      }
       return;
     }
 
@@ -259,13 +303,28 @@ export class PulseSweeper {
     config: PulseConfig,
     missedCount: number,
   ): Promise<void> {
-    const targetRole = pulseKey === "engineerPulse" ? "engineer" : "architect";
-    await this.directorNotificationHelper.emit({
-      severity: "warning",
-      source: "pulse_missed_threshold",
-      sourceRef: `${mission.id}:${pulseKey}`,
-      title: `Mission ${mission.id} ${targetRole} pulse missed ${missedCount} times`,
-      details: `Pulse cadence ${config.intervalSeconds}s; threshold ${config.missedThreshold}; pulse paused pending architect resolution.`,
+    // E1 fix (engineer round-2): preserve mediation invariant.
+    // v0.1 emitted directly to target.role=director — violates Director↔Engineer-via-Architect.
+    // v1.0: emit to architect adapter; architect LLM evaluates + decides Director-surface (per
+    // categorised-concerns table). If both engineer + architect pulses miss simultaneously,
+    // mediation naturally degrades; Director observes via Hub-state query (operational-support
+    // pattern engages — mission-56 D3 precedent).
+    const silentRole = pulseKey === "engineerPulse" ? "engineer" : "architect";
+    await this.messageStore.createMessage({
+      kind: "external-injection",
+      target: { role: "architect" },  // Architect-routed; architect LLM decides Director-surface
+      delivery: "push-immediate",
+      payload: {
+        pulseKind: "missed_threshold_escalation",
+        missionId: mission.id,
+        silentRole,
+        missedCount,
+        intervalSeconds: config.intervalSeconds,
+        threshold: config.missedThreshold,
+        title: `Mission ${mission.id} ${silentRole} pulse missed ${missedCount} times`,
+        details: `Pulse cadence ${config.intervalSeconds}s; threshold ${config.missedThreshold}; pulse paused. Architect: evaluate + resolve OR escalate to Director per categorised-concerns table.`,
+      },
+      migrationSourceId: `pulse-escalation:${mission.id}:${pulseKey}:${missedCount}`,  // deterministic; idempotent
     });
 
     await this.updatePulseBookkeeping(mission, pulseKey, {
@@ -277,15 +336,42 @@ export class PulseSweeper {
 }
 ```
 
-### Composition with W3.2 claim/ack FSM
+### Composition with W3.2 claim/ack FSM (webhook path; engineer round-2 final)
 
-PulseSweeper observes Message status via `messageStore.listMessages({target, status, since: lastFiredAt})`:
+**Item-2 verdict (engineer round-2 audit):** webhook from `ack_message` cascade handler. NOT list-by-status polling. Reasons:
 
-- `acked` Message → response received; reset missedCount; update lastResponseAt (via `onPulseAcked` cascade)
-- `received` Message → soft-ack (LLM saw it); count as response (engineer round-2 audit verifies — minor semantic)
-- `new` Message (never claimed) → missed; increment missedCount on next tick
+| Dimension | Poll path (rejected) | Webhook path (adopted) |
+|---|---|---|
+| Mechanise+declare doctrine | Polls every 60s for events that should be cascade-driven | Declarative cascade handler — exact match for the doctrine |
+| Latency | Up to 60s lag before sweeper sees ack | Real-time |
+| Query overhead | O(N) per tick × per active mission with pulses | Zero |
+| Race conditions | Edge case: pulse fired + acked + status-flipped within single 60s window → next tick may miscount | None; cascade handler invoked atomically post-status-transition |
+| Existing precedent | None; new pattern | mission-51 W3 trigger mechanism + W4.1 cascade handlers — exact precedent |
 
-**Engineer round-2 audit deliverable:** specific shape of how PulseSweeper observes Message status — list-by-target with status filter; or webhook from `ack_message` cascade handler; or both.
+**Specific implementation:**
+
+In `hub/src/policy/message-policy.ts` `ack_message` handler (W3.2 surface): post-status-flip-to-acked, check `payload.pulseKind === "status_check"`. If yes, invoke registered `pulseSweeper.onPulseAcked(message)` hook.
+
+```typescript
+// hub/src/policy/message-policy.ts (W3.2 ack_message handler — extend)
+async function ackMessage(args: ..., ctx: ...): Promise<...> {
+  const result = await ctx.stores.message.ackMessage(args.id);
+  if (result.status === "acked" && (result.payload as any)?.pulseKind === "status_check") {
+    // Pulse-specific cascade
+    await ctx.stores.pulseSweeper?.onPulseAcked(result);
+  }
+  return result;
+}
+```
+
+PulseSweeper registers via DI (constructor in `hub/src/index.ts`); message-policy looks up via `ctx.stores.pulseSweeper` (similar to W4.1 `directorNotificationHelper` plumbing).
+
+**Side benefit:** removes the ambiguity of "soft-ack on `received` status" — webhook fires only on `acked`. `received` status is unambiguously "claimed but not yet acted." Clean missedCount tracking.
+
+**Status semantics summary:**
+- `acked` Message → response received; webhook invokes `onPulseAcked` → reset missedCount + update lastResponseAt
+- `received` Message → claimed but not yet acted; no special handling (treated same as `new` for missedCount purposes)
+- `new` Message (never claimed) → missed; increment missedCount on next sweeper tick (per E2 3-condition guard above)
 
 ### Construction in `hub/src/index.ts`
 
@@ -336,9 +422,9 @@ plugin:agent-adapter:pulse  // pulse-driven status_check (informational)
 
 `<channel>` rendering uses `level="informational"` for reduced prominence vs `actionable` thread_messages — preserves cognitive context during high-activity sub-PR cascades.
 
-### Response detection
+### Response detection (webhook path per §4)
 
-Adapter calls `claim_message(pulseId)` on render → Message status `new → received`. LLM acts via standard tool-calls (any tool call is the LLM's response). Adapter-side cascade calls `ack_message(pulseId)` post-LLM-response → Message status `received → acked`. PulseSweeper observes status transition via cascade handler `onPulseAcked` (or list-by-status polling — engineer round-2 audit decides).
+Adapter calls `claim_message(pulseId)` on render → Message status `new → received`. LLM acts via standard tool-calls (any tool call is the LLM's response). Adapter-side cascade calls `ack_message(pulseId)` post-LLM-response → Message status `received → acked`. PulseSweeper observes status transition via cascade handler `onPulseAcked` invoked from `message-policy.ts` ack_message handler (Item-2 verdict; webhook path; see §4 composition section for code).
 
 ### opencode-plugin parity
 
@@ -354,18 +440,20 @@ Per Survey Q3+Q4+Q6 anti-goal: **per-class default cadences emerge as convention
 
 | missionClass | engineerPulse default | architectPulse default | Notes |
 |---|---|---|---|
-| `spike` | 30min | 60min | Short missions; quick check-ins suffice |
+| **(unset / legacy)** | **NO PULSE** | **NO PULSE** | Backward-compat: legacy missions without `missionClass` declaration get no auto-pulses. Explicit opt-in via `pulses.*` declaration only. (Item-3a fix per engineer round-2.) |
+| `spike` | 30min | 60min | Short missions; quick check-ins suffice; firstFireDelay protects against low-utility fires |
 | `substrate-introduction` | 30min | 60min | Standard cadence; substrate work has natural sub-PR rhythm |
 | `pre-substrate-cleanup` | 30min | 60min | Standard cadence |
-| **`structural-inflection`** | **60min** | **60min** | Longer pulses; high cognitive load per sub-PR; reduce noise |
-| `coordination-primitive-shipment` | 30min | 60min | Standard cadence |
+| **`structural-inflection`** | **60min** | **60min** | Longer pulses; high cognitive load per sub-PR; reduce noise; mission-56 evidence ~10-15min sub-PRs → 60min pulse fires every ~5 PRs (cognitive-load-friendly) |
+| `coordination-primitive-shipment` | 30min | 60min | Standard cadence (this mission's class) |
 | `saga-substrate-completion` | 30min | 60min | Standard cadence |
 | `substrate-cleanup-wave` | 60min | 120min | Less interactive; longer cadence acceptable |
 | `distribution-packaging` | 60min | 120min | Async work; longer cadence |
 
 **Default `missedThreshold`**: 3 across all classes (W3.2 ADR-017 precedent).
-**Default `responseShape`**: `short_status` for engineerPulse; `ack` for architectPulse (engineer carries more context per pulse).
+**Default `responseShape`**: `short_status` for **both** engineerPulse + architectPulse (Item-3b fix per engineer round-2 — architectPulse intent per concept memo is "Pending engineer signals? Director-surface needed? Mid-wave handoff status?" which is a status-elicitor, not pure ack).
 **Default `firstFireDelaySeconds`**: equal to `intervalSeconds` (per S2; first pulse fires after one cadence; not immediately on activate).
+**Default `precondition`**: `{fn: "mission_idle_for_at_least", args: {seconds: <intervalSeconds>}}` (per S2 + E3 auto-injection; reduces noise during high-activity sub-PR cascades).
 
 ### Override semantics
 
