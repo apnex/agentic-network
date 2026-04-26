@@ -1,6 +1,254 @@
+# Mission Lifecycle — formal lifecycle methodology
+
+**Status:** v1.0 (Director-ratified 2026-04-26 post mission-57 W4 ratification; supersedes v0.1 audit-only draft). v1.0 codifies the formal mission lifecycle phases + Survey-then-Design transition + mission-class taxonomy + per-class pulse cadence conventions + autonomous-arc-driving pattern + substrate-self-dogfood discipline. v0.1's lifecycle audit content preserved as appendix §A for forward-compat reference.
+
+**v0.1 → v1.0 delta:**
+| Section | Change |
+|---|---|
+| §1 Lifecycle phases | NEW — formal phase enumeration (Concept → Idea → Survey → Design → Manifest → Preflight → Release-gate → Execution → Close → Retrospective) |
+| §2 Survey-then-Design phase | NEW — references `docs/methodology/idea-survey.md` v1.0 (canonical) |
+| §3 Mission-class taxonomy | NEW — per mission-56 retrospective §5.4.1 (8 classes); mission-entity `missionClass` field codified |
+| §4 Pulse coordination | NEW — per-class default cadence template (NOT Hub primitives); override semantics; when-to-disable; ScheduleWakeup boundary |
+| §5 Autonomous-arc-driving pattern | NEW — categorised-concerns table + architect→Director surface discipline |
+| §6 Substrate-self-dogfood discipline | NEW — 5-requirement pattern + substrate-vs-enrichment refinement (mission-56 W2.2 substrate vs mission-57 W2 enrichment first canonical examples) |
+| §A Lifecycle audit (legacy) | RETAINED — v0.1's per-transition audit table preserved as appendix |
+
+---
+
+## §1 Formal mission lifecycle phases
+
+A mission moves through 10 macro-phases from Concept → Retrospective. Each phase has a defined entry condition + exit signal + binding artifact.
+
+```
+Phase 1  — Concept           Director / agent surfaces a workflow concept
+Phase 2  — Idea              Filed via `create_idea`; status: open → triaged
+Phase 3  — Survey            Architect 3+3 questions; Director picks; intent envelope ratified
+Phase 4  — Design            Bilateral architect+engineer Design v0.1 → v1.0
+Phase 5  — Manifest          Architect calls create_mission with plannedTasks; status: proposed
+Phase 6  — Preflight         Architect authors preflight artifact; verdict GREEN/YELLOW/RED
+Phase 7  — Release-gate      Director ratifies preflight; architect flips status: proposed → active
+Phase 8  — Execution         W0-Wn wave cascade; per-wave PR + cross-approval + admin-merge
+Phase 9  — Close             W5-equivalent closing wave; status: active → completed
+Phase 10 — Retrospective     Architect-authored retrospective draft + Director ratification + HOLD
+```
+
+**Phase artifact summary:**
+
+| Phase | Binding artifact | Stored at |
+|---|---|---|
+| 2 Idea | Idea entity | Hub |
+| 3 Survey | Pre-Design intent envelope (in dispatch thread + Survey artifact doc) | thread + `docs/designs/<mission>-survey.md` |
+| 4 Design | Design v1.0 doc (ratified) | `docs/designs/<mission>-design.md` |
+| 5 Manifest | Mission entity + plannedTasks[] | Hub |
+| 6 Preflight | Preflight artifact + verdict | `docs/missions/<mission>-preflight.md` |
+| 8 Execution | Per-wave sub-PRs + closing audit | branches + `docs/audits/<mission>-closing-audit.md` |
+| 9 Close | Status=completed; closing audit on main | Hub |
+| 10 Retrospective | Retrospective doc | `docs/reviews/<mission>-retrospective.md` |
+
+**Director-engagement points** (per autonomous-arc-driving pattern §5):
+- Phase 3 Survey (~5min Director-time; 6 picks)
+- Phase 7 Release-gate ratification (preflight verdict ratification)
+- Phase 10 Retrospective ratification
+
+All other phases are architect+engineer scope.
+
+---
+
+## §2 Survey phase (Idea → Design transition)
+
+**Canonical reference:** `docs/methodology/idea-survey.md` v1.0 (Director-ratified 2026-04-26; PR #89 merged at `04b7544`).
+
+The Survey phase is **mandatory for Idea→Design transitions**; first canonical execution at idea-206 → mission-57 (Director-engagement compressed ~36-50× vs mission-56 Director-paced Design walkthrough).
+
+**Pattern summary** (full spec in `idea-survey.md` v1.0):
+1. **Round 1** (architect proposes 3 orthogonal questions; Director picks; architect captures aggregate response surface; loops through each question for per-question interpretation)
+2. **Round 2** (architect proposes 3 refinement questions building on Round 1; Director picks)
+3. **Survey envelope** = composite of all 6 picks; bounds Design phase scope
+4. Director then **OUT of Design mechanics** until Phase 7 Release-gate
+
+**Bypass cases** (per `idea-survey.md` §2 scope table):
+- Bug→Fix flow: skip Survey
+- Spawned-from-current-Mission Idea: architect-judgment bypass IF sufficiently scoped
+
+**Anti-pattern: open-ended Director ratification at Design time** is retired by Survey-then-Design. Director time-cost concentrates at Survey (~5min) instead of Design walkthrough (~3h+).
+
+---
+
+## §3 Mission-class taxonomy
+
+Per mission-56 retrospective §5.4.1; mission entity gains optional `missionClass` field at mission-57 W1 (PR #87 merged `72f77ab`).
+
+| Class | Characteristic | Operationalize/Retire signature | Calibration cadence |
+|---|---|---|---|
+| **spike** | Recon / discovery / scoping; produces analysis for downstream missions | 1-2 ops / 0 retire | Low (1-3) |
+| **substrate-introduction** | Ships new primitive / sovereign-package; foundation for downstream | 1-2 ops / 0 retire | Medium (3-5) |
+| **pre-substrate-cleanup** | Prepares baseline for substantive substrate; refactors / consolidates | 2-4 ops / 0-2 retire | Medium (3-5) |
+| **structural-inflection** | Ships substrate that retires existing imperative patterns at structural level; mid-mission self-dogfood often present | 5+ ops / 3+ retire | High (6+) |
+| **coordination-primitive-shipment** | Ships single coordination primitive; composable atop existing substrate | 1-2 ops / 1-2 retire | Medium (3-5) |
+| **saga-substrate-completion** | Migrates existing saga primitive onto newer substrate | 1-2 ops / 1 retire | Medium (3-5) |
+| **substrate-cleanup-wave** | Retires deprecated patterns / fixes accumulated technical debt | 0-1 ops / 3+ retire | Low-Medium (2-4) |
+| **distribution-packaging** | Publishing / distribution / integration work | 1-2 ops / 0-1 retire | Low (1-3) |
+
+**Use of taxonomy:**
+1. **Mission preflight** — preflight checks `missionClass` declaration; mismatch with deliverable scope = scope-flex signal
+2. **Mission retrospective** — realized operationalize/retire/calibration counts compared against declared-class signature; mismatch = misclassification or execution-discipline-gap
+3. **Strategic-review prioritization** — Director-paced triage uses class to balance mission portfolio (avoid stacking 3 structural-inflection missions in series)
+
+`(unset)/legacy missionClass` = NO automatic pulses (per §4 backward-compat row).
+
+---
+
+## §4 Pulse coordination
+
+Per ADR-027; mission entity gains `pulses.{engineerPulse, architectPulse}` declarative config at mission-57 W1 (PR #87 merged `72f77ab`); PulseSweeper drives at mission-57 W2 (PR #88 merged `4f4b76f`).
+
+### §4.1 Per-class default cadence template
+
+**Conventions, NOT Hub primitives** (per Survey Q3+Q4+Q6 anti-goal). Mission entity always-canonical for runtime config; missions opt-in by declaring `pulses.*`.
+
+| missionClass | engineerPulse default | architectPulse default | Notes |
+|---|---|---|---|
+| **(unset / legacy)** | **NO PULSE** | **NO PULSE** | Backward-compat: legacy missions without `missionClass` declaration get no auto-pulses; explicit opt-in via `pulses.*` declaration only |
+| `spike` | 30min | 60min | Short missions; firstFireDelay protects against low-utility fires |
+| `substrate-introduction` | 30min | 60min | Standard cadence; substrate work has natural sub-PR rhythm |
+| `pre-substrate-cleanup` | 30min | 60min | Standard cadence |
+| `structural-inflection` | 60min | 60min | Longer pulses; high cognitive load per sub-PR; reduce noise (mission-56 evidence: ~10-15min sub-PRs → 60min pulse fires every ~5 PRs) |
+| `coordination-primitive-shipment` | 30min | 60min | Standard cadence (mission-57's class) |
+| `saga-substrate-completion` | 30min | 60min | Standard cadence |
+| `substrate-cleanup-wave` | 60min | 120min | Less interactive; longer cadence acceptable |
+| `distribution-packaging` | 60min | 120min | Async work; longer cadence |
+
+**Default `missedThreshold`**: 3 across all classes (matches W3.2 ADR-017 receipt-deadline-missed-3x precedent).
+
+**Default `responseShape`**: `short_status` for both engineerPulse + architectPulse (status-elicitor framing per concept memo intent).
+
+**Default `firstFireDelaySeconds`**: equal to `intervalSeconds` (first pulse fires after one cadence; not immediately on activate — S2 noise-reduction).
+
+**Default `precondition`**: `{fn: "mission_idle_for_at_least", args: {seconds: <intervalSeconds>}}` (auto-injected at mission-policy.ts validation; reduces noise during high-activity sub-PR cascades).
+
+### §4.2 Override semantics
+
+Mission `pulses.<role>Pulse.*` field declarations OVERRIDE per-class defaults. Architect declares at Design time (or at create_mission Manifest cascade); bilateral with engineer; engineer-final on cadence specifics. Per-pulse override fields:
+
+- `intervalSeconds` (≥60s enforced; ≥300s recommended)
+- `message` (non-empty)
+- `responseShape` (required; no default)
+- `missedThreshold` (default 3)
+- `precondition` (default `mission_idle_for_at_least`; explicit `null` to disable)
+- `firstFireDelaySeconds` (default `intervalSeconds`)
+
+Sweeper-managed bookkeeping fields (`lastFiredAt` / `lastResponseAt` / `missedCount` / `lastEscalatedAt`) are read-only via MCP tools; only PulseSweeper writes via direct repository updates.
+
+### §4.3 When to disable pulses
+
+| Situation | Action |
+|---|---|
+| Architect retrospective HOLD post-mission-close | Set `mission.status = "completed"` (pulse auto-suspends) OR set `pulses: {}` |
+| idea-208 CI-dogfood verification windows | Mission can declare `pulses.engineerPulse: null` to suppress |
+| Active sub-PR cascade with high natural coord cadence | `precondition: { fn: "mission_idle_for_at_least", args: { seconds: <intervalSeconds> } }` (default) skips fires when activity recent |
+| Mission stuck in escalation | Pulse auto-pauses (missedThreshold breached); no manual disable needed |
+| Substrate-self-dogfood-defer (substrate-vs-enrichment per §6) | Don't declare pulses on the mission shipping the pulse substrate |
+
+### §4.4 Pulse vs ScheduleWakeup boundary (S5)
+
+| Use case | Mechanism |
+|---|---|
+| Recurring agent coordination during active mission | idea-206 pulse primitive (this lifecycle's recurring path) |
+| One-off "wake at X to check Y" outside active mission | Local `ScheduleWakeup` (architect-side; retained) |
+| Recurring architect proactive ping | idea-206 pulse primitive (architectPulse) — calibration #4 retired |
+| Mission-status escalation watchdog | Pulse `missedThreshold` + architect-routed `escalateMissedThreshold` (NOT direct Director-pulse per Survey Q2) |
+
+`feedback_wakeup_cadence_15min_max.md` 15min cap retired by pulse adoption for recurring case; cap holds until pulse declaration on a given mission.
+
+### §4.5 Active-missions cap
+
+Recommended cap: **3 active missions per engineer** at any time. Aggregate pulse-storm at this cap is acceptable (3 pulses per cadence per role). If exceeded, consider coalesce primitive in future mission (deferred S6).
+
+---
+
+## §5 Autonomous-arc-driving pattern
+
+Per mission-56 retrospective §5.1.1 + pre-mission-arc retrospective §1.1. **First codified canonical execution example:** mission-56 (M-Push-Foundation; 3 architect→Director surfaces in ~3.5h; zero pattern violations).
+
+### §5.1 Categorised-concerns table
+
+Architect-side default-handle vs Director-surface concerns:
+
+| Concern category | Default | Surface to Director? |
+|---|---|---|
+| Routine PR-merge / cross-approval / admin-merge | Architect-autonomous | NO |
+| Sub-PR dispatch within ratified mission scope | Architect-autonomous | NO |
+| Bilateral seal / threading-2.0 stagedActions | Architect-autonomous | NO |
+| Mission status flip (active → completed) | Architect-autonomous | NO |
+| **Out-of-scope risks** (deployment-affecting; substrate-shifting) | Architect surface | **YES** |
+| **Strategic / scope-flex** (mid-mission scope reshape) | Architect surface | **YES** |
+| **Bug discovery** (architect-observed) | Architect file Bug entity + surface | **YES** (filed; not surface-blocked) |
+| **Methodology calibration** (architect-observed) | Architect file feedback memory + surface if binding | YES if binding |
+| Mission-execution-discipline (don't-rush / scope-discipline) | Director-initiated correction | (Director engages proactively) |
+
+### §5.2 Director-engagement modes
+
+**Director-as-active-collaborator** (queries / ratifications / tele surfaces / operational support) is a feature, not a pattern violation. Pattern's success metric = **architect→Director surface frequency conditional on category-fit**, not raw engagement volume.
+
+mission-56 empirical baseline: ~1 architect→Director surface per 70min during active mission execution (~3.5h window).
+
+mission-57 empirical baseline: ~1 architect→Director surface per ~80min during active mission execution (Survey + W0-W4 cascade); Director-as-active-collaborator engagement higher post-mid-mission Survey codification.
+
+### §5.3 Mediation invariant (Director ↔ Engineer through Architect)
+
+**Binding structural design invariant.** Pulse missed-threshold escalation routes via architect (E1 fix per Design v1.0 §4); both-roles-silent degradation handled by Director operational-support pattern (mission-56 D3: "I will restart greg" precedent).
+
+Zero direct Director↔Engineer surfaces required throughout mission-56 + mission-57 lineage.
+
+---
+
+## §6 Substrate-self-dogfood discipline
+
+Per mission-56 retrospective §6.4 + mission-57 thread-355 r3 substrate-vs-enrichment refinement.
+
+### §6.1 5-requirement pattern
+
+For substrate missions where the mission's own coordination consumes its shipped artifact, the mission Design should explicitly include:
+
+1. **Dogfood gate identification** — which sub-PR's merge unlocks the new coordination behavior?
+2. **Pre-gate sub-PR sequencing** — ensure sub-PRs after the gate can use the new behavior; before-gate sub-PRs use legacy
+3. **Adapter-restart / Hub-redeploy gating** — explicit step in the wave plan
+4. **Verification protocol** — specific architect-engineer interaction post-gate that demonstrates the new behavior
+5. **Hold-on-failure clause** — verification fails → downstream waves resume in legacy-mode + substrate change is investigated
+
+### §6.2 Substrate vs enrichment distinction (mission-57 refinement)
+
+**Substrate missions** (mission-56 W2.2 push pipeline canonical example):
+- Substrate the mission's own coordination consumes
+- Live dogfood high-leverage; closes architectural gaps structurally (mission-56 W2.2 closed bug-34)
+- Dogfood-gate execution typically warranted
+
+**Enrichment missions** (mission-57 W2 PulseSweeper canonical example):
+- Substrate that enriches future missions' coordination (not foundational substrate)
+- Live dogfood lower-pressure; verification via tests + integration sufficient pre-ship
+- Dogfood-defer is engineering call when reasoned (per substrate-vs-enrichment evaluation)
+
+### §6.3 Decision flow at dispatch time
+
+For substrate-self-dogfood-applicable missions, the architect (with engineer input) evaluates at the dogfood-gate sub-PR dispatch:
+
+1. Is this substrate that the mission's own coordination consumes? (substrate vs enrichment)
+2. If substrate: live dogfood likely warranted; execute 5-requirement pattern fully
+3. If enrichment: defer is acceptable; document substrate-vs-enrichment reasoning; verification via tests + integration; live dogfood deferred to a future mission OR reproducible-by-CI dogfood automation (idea-208)
+
+mission-57's first canonical DEFERRED execution validates the pattern accommodates defer when reasoned.
+
+---
+
+## §A Lifecycle audit (preserved from v0.1)
+
+(Original v0.1 audit content preserved unchanged below; serves as forward-compat reference for transitions enumerated pre-v1.0 codification.)
+
+# (v0.1 original content)
+
 # Mission Lifecycle Audit — goal-for-primitives reference
 
-**Status:** v0.1 draft (2026-04-25, architect lily). Not a policy document — a map of today's mission lifecycle mechanics + the gaps that the workflow-primitive ideas (idea-191 repo-event-bridge, idea-192 hub-triggers-inbox) must close.
+**Status (v0.1):** v0.1 draft (2026-04-25, architect lily). Not a policy document — a map of today's mission lifecycle mechanics + the gaps that the workflow-primitive ideas (idea-191 repo-event-bridge, idea-192 hub-triggers-inbox) must close.
 
 **Purpose.** Make the full multi-phasic mission collaboration workflow mechanically legible. Every state transition in a mission's lifecycle is either *driven by a Hub event* (mechanised) or *driven by a human/agent noticing something* (not mechanised). This doc enumerates every transition, classifies it, and names what primitive the Hub needs in order to mechanise each "not mechanised" step.
 
