@@ -21,6 +21,7 @@ import { registerPendingActionPolicy } from "../../src/policy/pending-action-pol
 import { createTestContext, type TestPolicyContext } from "../../src/policy/test-utils.js";
 import { Watchdog } from "../../src/policy/watchdog.js";
 import type { AgentClientMetadata } from "../../src/state.js";
+import { listDirectorNotificationViews } from "../../src/policy/director-notification-helpers.js";
 
 const noop = () => {};
 
@@ -195,10 +196,10 @@ describe("ADR-017 — persist-first comms queue + liveness FSM", () => {
         "queue_item_escalated",
       ]);
 
-      // INV-PA5 — escalated items surface to Director.
-      const dnStore = (engCtx.stores as any).directorNotification;
-      const notifications = await dnStore.list();
-      expect(notifications.filter((n: any) => n.source === "queue_item_escalated")).toHaveLength(1);
+      // INV-PA5 — escalated items surface to Director (mission-56 W4.1:
+      // emitted as a Message + projected back via the legacy view shape).
+      const notifications = await listDirectorNotificationViews(engCtx.stores.message, {});
+      expect(notifications.filter((n) => n.source === "queue_item_escalated")).toHaveLength(1);
 
       // INV-AG6 — agent livenessState demoted.
       const arch = await engCtx.stores.engineerRegistry.getAgent(archAgentId);

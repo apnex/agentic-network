@@ -27,6 +27,7 @@ import { createTestContext } from "../src/policy/test-utils.js";
 import { findNextUnissuedPlannedTask } from "../src/entities/mission.js";
 import type { TestPolicyContext } from "../src/policy/test-utils.js";
 import type { TaskRepository } from "../src/entities/task-repository.js";
+import { listDirectorNotificationViews } from "../src/policy/director-notification-helpers.js";
 
 const noop = () => {};
 
@@ -592,8 +593,9 @@ describe("task-316: cascade_failed robustness", () => {
     // Cascade was attempted
     expect(cascadeCalled).toBe(true);
 
-    // Director notification fired with source=cascade_failed
-    const notifications = await ctx.stores.directorNotification.list({});
+    // Director notification fired with source=cascade_failed (mission-56 W4.1:
+    // emitted as a Message + projected back via the legacy view shape).
+    const notifications = await listDirectorNotificationViews(ctx.stores.message, {});
     const cascadeFailed = notifications.find((n) => n.source === "cascade_failed" && n.sourceRef === taskAId);
     expect(cascadeFailed).toBeDefined();
     expect(cascadeFailed?.severity).toBe("warning");

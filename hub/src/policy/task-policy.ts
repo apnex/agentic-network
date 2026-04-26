@@ -29,6 +29,7 @@ import {
 import type { Task } from "../state.js";
 import { dispatchTaskSpawned } from "./dispatch-helpers.js";
 import { findNextUnissuedPlannedTask } from "../entities/mission.js";
+import { emitDirectorNotification } from "./director-notification-helpers.js";
 
 // ── Task FSM ────────────────────────────────────────────────────────
 
@@ -516,7 +517,7 @@ async function handleTaskCompleted(event: DomainEvent, ctx: IPolicyContext): Pro
         `Mission-advancement cascade failed on approval of task ${taskId}: ${msg}`,
         taskId,
       );
-      await ctx.stores.directorNotification.create({
+      await emitDirectorNotification(ctx.stores.message, {
         severity: "warning",
         source: "cascade_failed",
         sourceRef: taskId,

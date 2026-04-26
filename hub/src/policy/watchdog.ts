@@ -29,6 +29,7 @@
 import type { Agent } from "../state.js";
 import type { AllStores } from "./types.js";
 import type { PendingActionItem } from "../entities/pending-action.js";
+import { emitDirectorNotification } from "./director-notification-helpers.js";
 
 export type WakeClient = (wakeEndpoint: string, item: PendingActionItem) => Promise<void>;
 
@@ -120,7 +121,7 @@ export class Watchdog {
       if (agent) {
         await this.stores.engineerRegistry.setLivenessState(agent.engineerId, "unresponsive");
       }
-      await this.stores.directorNotification.create({
+      await emitDirectorNotification(this.stores.message, {
         severity: "critical",
         source: "queue_item_escalated",
         sourceRef: item.id,

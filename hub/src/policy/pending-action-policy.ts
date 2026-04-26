@@ -11,6 +11,11 @@
 import { z } from "zod";
 import type { IPolicyContext, PolicyResult } from "./types.js";
 import type { PolicyRouter } from "./router.js";
+import {
+  emitDirectorNotification,
+  listDirectorNotificationViews,
+  acknowledgeDirectorNotificationMessage,
+} from "./director-notification-helpers.js";
 
 async function drainPendingActions(
   _args: Record<string, unknown>,
@@ -49,7 +54,7 @@ async function listDirectorNotifications(
   if (typeof args.severity === "string") filter.severity = args.severity;
   if (typeof args.source === "string") filter.source = args.source;
   if (typeof args.acknowledged === "boolean") filter.acknowledged = args.acknowledged;
-  const notifications = await ctx.stores.directorNotification.list(filter);
+  const notifications = await listDirectorNotificationViews(ctx.stores.message, filter);
   return {
     content: [{ type: "text" as const, text: JSON.stringify({ count: notifications.length, notifications }) }],
   };
@@ -62,7 +67,11 @@ async function acknowledgeDirectorNotification(
   const id = args.id as string;
   const agent = await ctx.stores.engineerRegistry.getAgentForSession(ctx.sessionId);
   const acknowledgedBy = agent?.engineerId ?? ctx.sessionId;
-  const result = await ctx.stores.directorNotification.acknowledge(id, acknowledgedBy);
+  const result = await acknowledgeDirectorNotificationMessage(
+    ctx.stores.message,
+    id,
+    acknowledgedBy,
+  );
   if (!result) {
     return {
       content: [{ type: "text" as const, text: JSON.stringify({ error: `notification ${id} not found` }) }],
@@ -155,7 +164,7 @@ async function pruneStuckQueueItems(
   }
 
   if (abandoned.length > 0) {
-    await ctx.stores.directorNotification.create({
+    await emitDirectorNotification(ctx.stores.message, {
       severity: "warning",
       source: "queue_item_escalated",
       sourceRef: `prune-${Date.now()}`,
