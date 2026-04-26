@@ -393,7 +393,8 @@ Plus 5 design-walkthrough ratifications same window:
 | Kernel naming for `src/kernel/` | "I like term Kernel" — adopted as canonical name |
 | Cognition Substrate keep-separate vs consolidate | "Agree with 'Keep Separate'" — `@ois/cognitive-layer` stays peer sovereign-package |
 | Cognition Substrate cross-cutting framing | Architect-clarified: cross-cutting sovereign-package consumed by Layer 1 + (future) Layer 2 + Layer 3; no boundary/duty/interface change |
-| tool-manager naming (was `mcp-boundary`) | Director ratified rename 2026-04-26: "Lets rename MCP-boundary to 'tool-manager' perhaps? Says what it does" — adopted; small standalone rename PR queued post-retrospective |
+| tool-manager naming (was `mcp-boundary`) | Director ratified rename 2026-04-26: "Lets rename MCP-boundary to 'tool-manager' perhaps? Says what it does" — adopted; bundled rename PR queued post-retrospective |
+| `src/kernel/` directory naming (was `src/session/`) | Director surfaced naming inconsistency between canonical "Kernel" + shipped `src/session/` — rename bundled with tool-manager rename PR |
 | Mission workflow source-of-truth doc | Director-validated `mission-lifecycle.md` v0.1 already exists; converge + ratify v1.0 post-M-Push-Foundation |
 
 Plus 2 retrospective-walkthrough codifications (binding patterns added to §1):
