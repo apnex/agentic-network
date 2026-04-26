@@ -14,6 +14,7 @@ import { createTestContext } from "../src/policy/test-utils.js";
 import type { IPolicyContext } from "../src/policy/types.js";
 import type { ThreadRepository } from "../src/entities/thread-repository.js";
 import type { Thread } from "../src/state.js";
+import { listDirectorNotificationViews } from "../src/policy/director-notification-helpers.js";
 
 const noop = () => {};
 
@@ -505,8 +506,9 @@ describe("ThreadPolicy", () => {
     // Audit entry + Director notification emitted
     const audits = await ctx.stores.audit.listEntries();
     expect(audits.some((a: any) => a.action === "thread_force_closed" && a.relatedEntity === threadId)).toBe(true);
-    const notifs = await ctx.stores.directorNotification.list({});
-    expect(notifs.some((n: any) => n.sourceRef === threadId)).toBe(true);
+    // mission-56 W4.1: emitted as a Message + projected back via the legacy view shape.
+    const notifs = await listDirectorNotificationViews(ctx.stores.message, {});
+    expect(notifs.some((n) => n.sourceRef === threadId)).toBe(true);
   });
 
   it("force_close_thread denies engineer role", async () => {

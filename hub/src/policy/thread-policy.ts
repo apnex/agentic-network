@@ -36,6 +36,7 @@ import { validateActionsWithRegistry } from "./action-validators/index.js";
 import type { ValidationContext } from "./action-validators/index.js";
 import { AUTONOMOUS_STAGED_ACTION_TYPES, checkConvergerAuthority } from "./staged-action-payloads.js";
 import { logShadowInvariantBreach } from "../observability/shadow-invariants.js";
+import { emitDirectorNotification } from "./director-notification-helpers.js";
 
 // ── Routing Mode Validation (ADR-016, INV-TH18 + INV-TH28) ──────────
 /**
@@ -878,7 +879,7 @@ async function forceCloseThread(args: Record<string, unknown>, ctx: IPolicyConte
     threadId,
   );
 
-  await ctx.stores.directorNotification.create({
+  await emitDirectorNotification(ctx.stores.message, {
     severity: "warning",
     source: "queue_item_escalated",
     sourceRef: threadId,
@@ -1076,7 +1077,7 @@ async function handleThreadConvergedWithAction(
       .filter((r) => r.status === "failed")
       .map((r) => `${r.type}/${r.actionId}: ${r.error ?? "unknown error"}`)
       .join("; ");
-    await ctx.stores.directorNotification.create({
+    await emitDirectorNotification(ctx.stores.message, {
       severity: "critical",
       source: "cascade_failed",
       sourceRef: threadId,
