@@ -1,7 +1,7 @@
 # .github/CODEOWNERS
 #
-# Mechanizes the directory ownership + veto authority table from
-# docs/methodology/multi-branch-merge.md §Roles.
+# Mechanizes the directory ownership + veto authority table per
+# docs/methodology/multi-agent-pr-workflow.md §Roles.
 # Ratified by ADR-023 Phase 1 (mission-45).
 #
 # Handle convention: GitHub teams @apnex-org/architect + @apnex-org/engineer
