@@ -463,6 +463,55 @@ function labelsMatchAll(labels: Record<string, string>, match: Record<string, st
 // LLM-to-MCP-tool-call path doesn't enqueue items, so implicit-only
 // (drain+completion-ack) inference would be blind to most tool calls;
 // explicit signaling is required.
+//
+// Pass 5: each handler dispatches `agent_state_changed` SSE event after
+// successful state mutation per Design §4.2. broadcast-by-role-targeting
+// v1.0 (peers + architects); per-event-class subscription deferred to
+// idea-121.
+
+import type { Agent, ActivityState as ActivityStateType } from "../state.js";
+
+/**
+ * Mission-62 W1+W2 Pass 5: selector for agent_state_changed SSE event.
+ * Broadcast-by-role-targeting v1.0 — both architects + engineers see
+ * all transitions. Per-event-class subscription deferred to idea-121.
+ */
+function agentStateChangedSelector(): import("../state.js").Selector {
+  return { roles: ["architect", "engineer"] };
+}
+
+interface AgentStateChangedPayload {
+  event: "agent_state_changed";
+  agentId: string;
+  fromLivenessState: string | null;
+  toLivenessState: string;
+  fromActivityState: string | null;
+  toActivityState: string;
+  changedFields: string[];
+  at: string;
+}
+
+function buildAgentStateChangedPayload(
+  before: Agent,
+  toActivityState: ActivityStateType,
+  extraChangedFields: string[] = [],
+): AgentStateChangedPayload {
+  const changedFields: string[] = [];
+  if (before.activityState !== toActivityState) changedFields.push("activityState");
+  for (const f of extraChangedFields) {
+    if (!changedFields.includes(f)) changedFields.push(f);
+  }
+  return {
+    event: "agent_state_changed",
+    agentId: before.engineerId,
+    fromLivenessState: before.livenessState,
+    toLivenessState: before.livenessState, // unchanged by activity-only transitions
+    fromActivityState: before.activityState,
+    toActivityState,
+    changedFields,
+    at: new Date().toISOString(),
+  };
+}
 
 async function signalWorkingStarted(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
   const toolName = (args.toolName as string | undefined) ?? "";
@@ -480,6 +529,8 @@ async function signalWorkingStarted(args: Record<string, unknown>, ctx: IPolicyC
     };
   }
   await ctx.stores.engineerRegistry.recordToolCallStart(self.engineerId, toolName);
+  const payload = buildAgentStateChangedPayload(self, "online_working", ["lastToolCallAt", "lastToolCallName", "workingSince"]);
+  await ctx.dispatch("agent_state_changed", payload as unknown as Record<string, unknown>, agentStateChangedSelector());
   return {
     content: [{ type: "text" as const, text: JSON.stringify({ ok: true, agentId: self.engineerId, activityState: "online_working", toolName }) }],
   };
@@ -494,6 +545,8 @@ async function signalWorkingCompleted(_args: Record<string, unknown>, ctx: IPoli
     };
   }
   await ctx.stores.engineerRegistry.recordToolCallComplete(self.engineerId);
+  const payload = buildAgentStateChangedPayload(self, "online_idle", ["idleSince", "workingSince"]);
+  await ctx.dispatch("agent_state_changed", payload as unknown as Record<string, unknown>, agentStateChangedSelector());
   return {
     content: [{ type: "text" as const, text: JSON.stringify({ ok: true, agentId: self.engineerId, activityState: "online_idle" }) }],
   };
@@ -515,6 +568,8 @@ async function signalQuotaBlocked(args: Record<string, unknown>, ctx: IPolicyCon
     };
   }
   await ctx.stores.engineerRegistry.recordQuotaBlocked(self.engineerId, retryAfterSeconds);
+  const payload = buildAgentStateChangedPayload(self, "online_quota_blocked", ["quotaBlockedUntil", "workingSince"]);
+  await ctx.dispatch("agent_state_changed", payload as unknown as Record<string, unknown>, agentStateChangedSelector());
   return {
     content: [{ type: "text" as const, text: JSON.stringify({ ok: true, agentId: self.engineerId, activityState: "online_quota_blocked", retryAfterSeconds }) }],
   };
@@ -529,6 +584,8 @@ async function signalQuotaRecovered(_args: Record<string, unknown>, ctx: IPolicy
     };
   }
   await ctx.stores.engineerRegistry.recordQuotaRecovered(self.engineerId);
+  const payload = buildAgentStateChangedPayload(self, "online_idle", ["idleSince", "quotaBlockedUntil"]);
+  await ctx.dispatch("agent_state_changed", payload as unknown as Record<string, unknown>, agentStateChangedSelector());
   return {
     content: [{ type: "text" as const, text: JSON.stringify({ ok: true, agentId: self.engineerId, activityState: "online_idle" }) }],
   };
