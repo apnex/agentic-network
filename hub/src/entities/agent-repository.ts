@@ -52,6 +52,8 @@ import type {
   ClaimSessionTrigger,
   SessionRole,
   Selector,
+  ActivityState,
+  AgentErrorRecord,
 } from "../state.js";
 import {
   labelsMatch,
@@ -64,6 +66,7 @@ import {
   recordDisplacementAndCheck,
   shallowEqualLabels,
   computeLivenessState,
+  AGENT_RECENT_ERRORS_CAP,
 } from "../state.js";
 
 function agentPath(engineerId: string): string {
@@ -82,23 +85,52 @@ function decode(bytes: Uint8Array): Agent {
   return JSON.parse(new TextDecoder().decode(bytes)) as Agent;
 }
 
-/** ADR-017 defensive normalization — legacy Agent blobs lacking the
- *  liveness-layer fields get sane defaults on read. Ported verbatim
- *  from gcs-state.ts's `normalizeAgentShape`. */
+/** ADR-017 + Mission-62 defensive normalization — legacy Agent blobs
+ *  lacking the liveness-layer (ADR-017) or mission-62 activity-layer
+ *  fields get sane defaults on read. Ported from gcs-state.ts's
+ *  `normalizeAgentShape`; extended Mission-62 W1+W2 Pass 1 with
+ *  activityState + identity/session/diagnostics defaults. */
 function normalizeAgentShape(a: Agent): Agent {
   if (!a) return a;
   const raw = a as unknown as Record<string, unknown>;
   const now = (raw.lastSeenAt as string | undefined)
     ?? (raw.firstSeenAt as string | undefined)
     ?? new Date(0).toISOString();
+  const livenessState = (a.livenessState as AgentLivenessState | undefined)
+    ?? (a.status === "online" ? "online" : "offline");
+  // Mission-62 auto-clamp invariant (Design v1.0 §3.3): when liveness !== online,
+  // activityState clamps to "offline" regardless of stored value.
+  const storedActivity = raw.activityState as ActivityState | undefined;
+  const activityState: ActivityState = livenessState !== "online"
+    ? "offline"
+    : (storedActivity ?? "online_idle");
   return {
     ...a,
     labels: a.labels ?? {},
-    livenessState: (a.livenessState as AgentLivenessState | undefined)
-      ?? (a.status === "online" ? "online" : "offline"),
+    livenessState,
     lastHeartbeatAt: a.lastHeartbeatAt ?? now,
     receiptSla: typeof a.receiptSla === "number" ? a.receiptSla : DEFAULT_AGENT_RECEIPT_SLA_MS,
     wakeEndpoint: typeof a.wakeEndpoint === "string" ? a.wakeEndpoint : null,
+    // Mission-62 W1+W2 Pass 1 — additive defaults for legacy blobs.
+    name: typeof a.name === "string" ? a.name : a.engineerId,
+    activityState,
+    sessionStartedAt: typeof a.sessionStartedAt === "string" ? a.sessionStartedAt : null,
+    lastToolCallAt: typeof a.lastToolCallAt === "string" ? a.lastToolCallAt : null,
+    lastToolCallName: typeof a.lastToolCallName === "string" ? a.lastToolCallName : null,
+    idleSince: typeof a.idleSince === "string" ? a.idleSince : null,
+    workingSince: typeof a.workingSince === "string" ? a.workingSince : null,
+    quotaBlockedUntil: typeof a.quotaBlockedUntil === "string" ? a.quotaBlockedUntil : null,
+    adapterVersion: typeof a.adapterVersion === "string"
+      ? a.adapterVersion
+      : (a.clientMetadata?.sdkVersion ?? ""),
+    ipAddress: typeof a.ipAddress === "string" ? a.ipAddress : null,
+    restartCount: typeof a.restartCount === "number" ? a.restartCount : 0,
+    recentErrors: Array.isArray(a.recentErrors)
+      ? (a.recentErrors as AgentErrorRecord[])
+      : [],
+    restartHistoryMs: Array.isArray(a.restartHistoryMs)
+      ? (a.restartHistoryMs as number[])
+      : [],
   } as Agent;
 }
 
@@ -293,6 +325,21 @@ export class AgentRepository implements IEngineerRegistry {
           lastHeartbeatAt: now,
           receiptSla: payload.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
           wakeEndpoint: payload.wakeEndpoint ?? null,
+          // Mission-62 W1+W2 Pass 1 — additive defaults at first-contact create.
+          // `name` defaults to engineerId until adapter handshake supplies OIS_INSTANCE_ID (W3).
+          name: engineerId,
+          activityState: "offline", // first-contact has no SSE stream yet
+          sessionStartedAt: null,
+          lastToolCallAt: null,
+          lastToolCallName: null,
+          idleSince: null,
+          workingSince: null,
+          quotaBlockedUntil: null,
+          adapterVersion: payload.clientMetadata?.sdkVersion ?? "",
+          ipAddress: null,
+          restartCount: 0,
+          recentErrors: [],
+          restartHistoryMs: [],
         };
         const created = await this.provider.createOnly(path, encode(agent));
         if (!created.ok) {
@@ -408,6 +455,15 @@ export class AgentRepository implements IEngineerRegistry {
         agent.currentSessionId && agent.currentSessionId !== sessionId
           ? { sessionId: agent.currentSessionId, epoch: agent.sessionEpoch }
           : undefined;
+      // Mission-62 W1+W2 Pass 1: claimSession promotes activityState to
+      // online_idle (agent now eligible for work assignment) + stamps
+      // sessionStartedAt + bumps restartCount/restartHistoryMs accounting.
+      const nowMs = Date.parse(now);
+      const restartHistoryMs = [...(agent.restartHistoryMs ?? []), nowMs];
+      while (restartHistoryMs.length > 50) restartHistoryMs.shift(); // AGENT_RESTART_HISTORY_CAP
+      const restartCount = restartHistoryMs.filter(
+        (t) => nowMs - t <= 24 * 60 * 60 * 1000, // AGENT_RESTART_WINDOW_MS
+      ).length;
       const updated: Agent = {
         ...agent,
         sessionEpoch: agent.sessionEpoch + 1,
@@ -416,6 +472,12 @@ export class AgentRepository implements IEngineerRegistry {
         lastSeenAt: now,
         livenessState: "online",
         lastHeartbeatAt: now,
+        activityState: "online_idle",
+        sessionStartedAt: now,
+        idleSince: now,
+        workingSince: null,
+        restartHistoryMs,
+        restartCount,
       };
       const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
       if (!result.ok) {
@@ -580,6 +642,104 @@ export class AgentRepository implements IEngineerRegistry {
     if (!existing) return;
     const agent = normalizeAgentShape(decode(existing.data));
     const updated: Agent = { ...agent, livenessState: state };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  // ── Mission-62 W1+W2 Pass 2: activity FSM transition handlers ──────
+
+  async setActivityState(engineerId: string, state: ActivityState): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const updated: Agent = { ...agent, activityState: state };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordToolCallStart(engineerId: string, toolName: string): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const now = new Date().toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_working",
+      lastToolCallAt: now,
+      lastToolCallName: toolName,
+      workingSince: now,
+      idleSince: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordToolCallComplete(engineerId: string): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const now = new Date().toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_idle",
+      idleSince: now,
+      workingSince: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordQuotaBlocked(engineerId: string, retryAfterSeconds: number): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const nowMs = Date.now();
+    const quotaBlockedUntil = new Date(nowMs + retryAfterSeconds * 1000).toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_quota_blocked",
+      quotaBlockedUntil,
+      workingSince: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordQuotaRecovered(engineerId: string): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const now = new Date().toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_idle",
+      idleSince: now,
+      quotaBlockedUntil: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordAgentError(engineerId: string, error: AgentErrorRecord): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    // FIFO: append + drop-oldest if over cap.
+    const nextErrors = [...agent.recentErrors, error];
+    while (nextErrors.length > AGENT_RECENT_ERRORS_CAP) nextErrors.shift();
+    const updated: Agent = { ...agent, recentErrors: nextErrors };
     const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
     if (!result.ok) return;
     await this.provider.put(fpPath(agent.fingerprint), encode(updated));
