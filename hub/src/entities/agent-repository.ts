@@ -66,6 +66,7 @@ import {
   recordDisplacementAndCheck,
   shallowEqualLabels,
   computeLivenessState,
+  AGENT_RECENT_ERRORS_CAP,
 } from "../state.js";
 
 function agentPath(engineerId: string): string {
@@ -626,6 +627,104 @@ export class AgentRepository implements IEngineerRegistry {
     if (!existing) return;
     const agent = normalizeAgentShape(decode(existing.data));
     const updated: Agent = { ...agent, livenessState: state };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  // ── Mission-62 W1+W2 Pass 2: activity FSM transition handlers ──────
+
+  async setActivityState(engineerId: string, state: ActivityState): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const updated: Agent = { ...agent, activityState: state };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordToolCallStart(engineerId: string, toolName: string): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const now = new Date().toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_working",
+      lastToolCallAt: now,
+      lastToolCallName: toolName,
+      workingSince: now,
+      idleSince: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordToolCallComplete(engineerId: string): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const now = new Date().toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_idle",
+      idleSince: now,
+      workingSince: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordQuotaBlocked(engineerId: string, retryAfterSeconds: number): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const nowMs = Date.now();
+    const quotaBlockedUntil = new Date(nowMs + retryAfterSeconds * 1000).toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_quota_blocked",
+      quotaBlockedUntil,
+      workingSince: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordQuotaRecovered(engineerId: string): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    const now = new Date().toISOString();
+    const updated: Agent = {
+      ...agent,
+      activityState: "online_idle",
+      idleSince: now,
+      quotaBlockedUntil: null,
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
+  async recordAgentError(engineerId: string, error: AgentErrorRecord): Promise<void> {
+    const path = agentPath(engineerId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    // FIFO: append + drop-oldest if over cap.
+    const nextErrors = [...agent.recentErrors, error];
+    while (nextErrors.length > AGENT_RECENT_ERRORS_CAP) nextErrors.shift();
+    const updated: Agent = { ...agent, recentErrors: nextErrors };
     const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
     if (!result.ok) return;
     await this.provider.put(fpPath(agent.fingerprint), encode(updated));

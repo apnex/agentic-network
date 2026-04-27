@@ -1193,6 +1193,33 @@ export interface IEngineerRegistry {
   /** ADR-017: flip `livenessState` on an agent (used by the watchdog's
    *  demotion ladder). No-op for unknown agents. */
   setLivenessState(engineerId: string, state: AgentLivenessState): Promise<void>;
+  // ── Mission-62 (M-Agent-Entity-Revisit) — activity FSM transition handlers ──
+  /** Mission-62 W1+W2 Pass 2: write `activityState`. Auto-clamp invariant
+   *  (livenessState !== "online" → activityState = "offline") is enforced
+   *  read-side in normalizeAgentShape; this writer accepts any value and
+   *  the projection clamps on subsequent reads. No-op for unknown agents. */
+  setActivityState(engineerId: string, state: ActivityState): Promise<void>;
+  /** Mission-62 W1+W2 Pass 2: tool-call-start FSM transition. Sets
+   *  activityState=online_working + lastToolCallAt + lastToolCallName +
+   *  workingSince; clears idleSince. No-op for unknown agents. */
+  recordToolCallStart(engineerId: string, toolName: string): Promise<void>;
+  /** Mission-62 W1+W2 Pass 2: tool-call-complete FSM transition. Sets
+   *  activityState=online_idle + idleSince=now; clears workingSince.
+   *  No-op for unknown agents. */
+  recordToolCallComplete(engineerId: string): Promise<void>;
+  /** Mission-62 W1+W2 Pass 2: quota-block FSM transition (composes with
+   *  idea-109 signal_quota_blocked). Sets activityState=online_quota_blocked
+   *  + quotaBlockedUntil = now + retryAfterSeconds * 1000; clears
+   *  workingSince. No-op for unknown agents. */
+  recordQuotaBlocked(engineerId: string, retryAfterSeconds: number): Promise<void>;
+  /** Mission-62 W1+W2 Pass 2: quota-recovery FSM transition. Sets
+   *  activityState=online_idle + idleSince=now; clears quotaBlockedUntil.
+   *  No-op for unknown agents. */
+  recordQuotaRecovered(engineerId: string): Promise<void>;
+  /** Mission-62 W1+W2 Pass 2: append a tool-error entry to the agent's
+   *  recentErrors ring buffer (FIFO eviction; cap=AGENT_RECENT_ERRORS_CAP).
+   *  No-op for unknown agents. */
+  recordAgentError(engineerId: string, error: AgentErrorRecord): Promise<void>;
   /**
    * CP3 C4 (bug-16 part 1): return Agent records whose last-seen timestamp
    * is older than `staleThresholdMs` AND whose current state is offline
