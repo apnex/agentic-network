@@ -19,7 +19,6 @@
     "@ois/network-adapter": "*"
   },
   "devDependencies": {
-    "@ois/network-adapter": "file:../network-adapter",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.4"

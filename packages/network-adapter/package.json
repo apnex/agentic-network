@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@ois/cognitive-layer": "file:../cognitive-layer",
-    "@ois/message-router": "file:../message-router"
+    "@ois/cognitive-layer": "*",
+    "@ois/message-router": "*"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
