@@ -1,9 +1,9 @@
-# M-Wire-Entity-Convergence — Design v0.2 (architect post-audit ratify; pending engineer round-2 ratify)
+# M-Wire-Entity-Convergence — Design v1.0 (bilateral ratified; Phase 4 EXIT)
 
-**Author:** lily / architect
+**Author:** lily / architect (v0.1 + v0.2); bilateral ratified with engineer (greg) at thread-399 round 4 (2026-04-28T03:43:54Z)
 **Source:** idea-219 (Wire-Entity Envelope Convergence + Schema-Migration Discipline) + Survey envelope (`docs/designs/m-wire-entity-convergence-survey.md`)
-**Lifecycle phase:** 4 Design v0.2 (architect post-audit ratify; iterates to v1.0 on engineer round-2 ratify)
-**Status:** v0.2 — incorporates engineer round-1 audit (thread-399 round 2); 8 substantive asks + 2 framing tweaks ratified
+**Lifecycle phase:** 4 Design v1.0 — Phase 4 EXIT (bilateral ratified); Phase 5 Manifest is architect's next step (`create_mission`)
+**Status:** v1.0 ratified — all engineer round-1 audit asks (8 + 2 framing tweaks) incorporated; engineer round-2 ratify accepted
 **Mission class:** structural-inflection (per Survey envelope; sizing baseline **L on paper / M+ in flight** per round-1 audit recalibration)
 **Tele primaries:** tele-3 Absolute State Fidelity + tele-7 Resilient Operations + tele-6 Deterministic Invincibility (substrate-self-dogfood); tele-1 Sovereign State Transparency tertiary
 
@@ -163,6 +163,12 @@ New shape (canonical):
     activityState?: AgentProjection["activityState"],
     // (other fields can be added as Agent schema extends; only those that change appear)
   },
+  // Implementation note (v1.0 round-2 audit observation): `previous` uses TS
+  // optional-key semantics — at runtime, fields are *absent* (not undefined)
+  // when unchanged. SSE-event subscribers parsing JSON should treat both
+  // "absent" and "explicitly undefined" as no-change. Most JSON parsers
+  // serialize absent. W1+W2 unit tests SHOULD include explicit assertions
+  // on absence-vs-undefined behavior to catch JSON-parser drift.
   changed: ("livenessState" | "activityState" | ...)[],         // which fields changed (sorted; for fast diff)
   cause: "first_tool_call" | "signal_working_started" | ... ,   // FSM transition cause
   at: string,                                                    // ISO-8601 transition timestamp
@@ -598,5 +604,5 @@ Survey artifact + Design v1.0 ship in same PR per `idea-survey.md` §5; PR follo
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | v0.1 | 2026-04-28 ~12:30 AEST | architect lily | Architect draft; pending engineer round-1 audit; Phase 4 entry |
-| **v0.2** | **2026-04-28 ~13:40 AEST** | **architect lily** | **Post round-1 audit ratify; 8 asks + 2 framing tweaks incorporated; sizing recalibrated L → M+; pending engineer round-2 ratify on thread-399 round 3** |
-| v1.0 | (pending) | bilateral | Bilateral ratify; Phase 4 exit |
+| v0.2 | 2026-04-28 ~13:40 AEST | architect lily | Post round-1 audit ratify; 8 asks + 2 framing tweaks incorporated; sizing recalibrated L → M+; pending engineer round-2 ratify on thread-399 round 3 |
+| **v1.0** | **2026-04-28 ~13:45 AEST** | **bilateral (architect lily + engineer greg)** | **Bilateral ratified at thread-399 round 4 (2026-04-28T03:43:54Z); Phase 4 EXIT; engineer accepted all 8 asks + 2 framing tweaks; small impl-note added in §3.4 about `previous` absent-vs-undefined JSON semantics; ready for Phase 4 deliverable PR (Survey + Design v1.0 bundle per `idea-survey.md` §5)** |
