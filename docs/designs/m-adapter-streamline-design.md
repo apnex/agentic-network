@@ -1,6 +1,6 @@
-# M-Adapter-Streamline — Design v0.2 (architect-revision; engineer round-2 ratify pending)
+# M-Adapter-Streamline — Design v1.0 (bilateral ratified; thread-405 round-7 close)
 
-**Status:** v0.2 — engineer round-1 audit (thread-405 round-4) folded into design; v1.0 bilateral ratify pending engineer round-2.
+**Status:** v1.0 — bilateral ratified architect (lily) + engineer (greg) on thread-405 (converged 2026-04-28T07:34:09.132Z; action-1 close_no_action committed at round-7). Round-1 audit + round-2 ratify cycle complete; 2 minor adds (ADR-023 sealed companion + CLI-contract regression test) folded at status-flip per architect discretion.
 **Mission name:** M-Adapter-Streamline (final naming ratified at Manifest)
 **Mission class:** structural-inflection (M sizing; ~2-3 engineer-days; thin bundle + split scope; W0 publish-flow spike gates M-vs-L upsizing per R2)
 **Source Idea:** idea-217 (Streamline adapter compile/update/re-install for consumers)
@@ -133,7 +133,7 @@ Per Survey Q5 C narrow scope, this mission mechanises Pass 10 §B + §D ONLY (co
 **Out of scope (per Q5 C; deferred to idea-221):**
 - §A Hub container rebuild — operator-side; remains manual `scripts/local/build-hub.sh`
 - §C state-migration script — operator-side; per-PR migration scripts remain operator-runs
-- Cross-§ orchestration runner (auto-detect + sequence §A→§B→§C→§D) — operator-side runner consumes mission-217's CLI contract
+- Cross-§ orchestration runner (auto-detect + sequence §A→§B→§C→§D) — operator-side runner consumes mission-64's CLI contract
 
 ### §2.3 Namespace decision + migration sequence (Q6 NOT-A resolved)
 
@@ -238,16 +238,16 @@ Per round-1 audit Fold 6:
 
 Per round-1 audit Fold 5 — explicit decoupling at Pass 10-§ granularity:
 
-| Concern | mission-217 (this) | idea-221 (companion) |
+| Concern | mission-64 (this) | idea-221 (companion) |
 |---|---|---|
 | §A Hub rebuild | NOT scope | IN scope (delegates to existing `scripts/local/build-hub.sh`) |
-| §B SDK rebuild + tgz repack | IN scope (npm publish flow handles) | NOT (consumes mission-217's npm package) |
+| §B SDK rebuild + tgz repack | IN scope (npm publish flow handles) | NOT (consumes mission-64's npm package) |
 | §C state-migration | NOT scope | IN scope (runs per-PR migration scripts) |
-| §D claude-plugin reinstall | IN scope (script invokes install.sh) | NOT (consumes mission-217's script) |
+| §D claude-plugin reinstall | IN scope (script invokes install.sh) | NOT (consumes mission-64's script) |
 | Cross-§ orchestration runner | NOT scope | IN scope (THE deliverable) |
 | **Public CLI / exit-code / stdout contract** | **IN scope (script must be idea-221-runner-consumable)** | **IN scope (runner consumes the contract)** |
 
-**Critical pre-anchoring:** mission-217's `update-adapter.sh` MUST be designed for downstream consumption by idea-221's runner. Contract specified at §2.1.B; ratified in ADR-029 forward-consequences (§6.2).
+**Critical pre-anchoring:** mission-64's `update-adapter.sh` MUST be designed for downstream consumption by idea-221's runner. Contract specified at §2.1.B; ratified in ADR-029 forward-consequences (§6.2).
 
 This decoupling captures: (a) deprecation language at W4 closing wave doesn't preempt §A/§C territory; (b) §B/§D mechanisation doesn't accidentally encode §A/§C operator-action assumptions.
 
@@ -331,7 +331,13 @@ This is symmetric with mission-63 §6.3 9-step protocol but at the namespace-cut
 (Most round-1 questions resolved at v0.2; remaining open:)
 
 1. **Q11 (NEW):** Active-session coordination protocol concrete enough at §3 sub-section? OR needs sub-thread protocol like mission-63 §6.3 9-step? Engineer-side ergonomics-check.
-2. **Tests scope:** what test surfaces should W1+W2 PR include? Suggestions: namespace-migration smoke (zero `@ois/*` refs left); workspace-protocol publish-correctness (registry-pinned semver in published package.json); update-script idempotency; install.sh post-npm-cutover correctness; CLI contract conformance (exit codes / stdout format).
+2. **Tests scope (W1+W2 PR includes):**
+   - Namespace-migration smoke (zero `@ois/*` refs remaining post-rename)
+   - Workspace-protocol publish-correctness (registry-pinned semver in published `package.json`; NOT `workspace:^`)
+   - Update-script idempotency (run twice; second run is no-op)
+   - install.sh post-npm-cutover correctness (handshake parses cleanly post-update)
+   - CLI contract conformance (integration test: each exit code path + stdout shape)
+   - **CLI-contract regression test (separate test surface):** `scripts/test/update-adapter-cli.test.sh` (or equivalent) exercising each exit code (0=success / 1=registry-install error / 2=restart-required-but-not-attempted / 3=unrecoverable) + stdout final-line shape — independent of integration tests; protects the public-interface contract idea-221's runner consumes; regression-test surface that downstream-runner ratifies against
 
 ---
 
@@ -354,10 +360,11 @@ This is symmetric with mission-63 §6.3 9-step protocol but at the namespace-cut
 
 **Sealed companions:**
 - Pass 10 protocol (mission-63 W5 PR #120; this ADR extends §B + §D to point at npm package + script as canonical mechanism)
+- **ADR-023** (multi-agent-pr-workflow; W4 closing wave amends `multi-agent-pr-workflow.md` Pass 10 §B+§D deprecation language; ADR-023 is the underlying ADR covering the workflow doc territory)
 - ADR-028 (canonical envelope; orthogonal — wire-shape vs distribution-shape)
 - mission-61 Layer-3 lesson (sealed companion; this ADR closes Layer-3 root-cause class structurally via `workspace:^` rewrite)
 - **idea-186 (npm workspaces)** (foundational dependency; workspace-protocol publish flow rides idea-186)
-- **idea-221 forward-consequence** (CLI contract pre-anchoring at §2.1.B + §2.10; idea-221's runner consumes mission-217's script via this contract)
+- **idea-221 forward-consequence** (CLI contract pre-anchoring at §2.1.B + §2.10; idea-221's runner consumes mission-64's script via this contract)
 
 ### §6.3 Substrate-self-dogfood discipline
 
@@ -430,9 +437,10 @@ If GREEN-with-folds, engineer ratifies on round-2 thread-405 close → Design v1
 ## §9 Status
 
 - v0.1 architect-draft (commit 8936e2c)
-- **v0.2 architect-revision** (this commit; round-1 audit folded; round-2 ratify pending)
-- v1.0 expected: bilateral round-2 ratify (engineer concur on this thread → Design v1.0); ships in W0 bundle PR with Survey + Preflight + ADR-029 SCAFFOLD
+- v0.2 architect-revision (commit 05893c8; round-1 audit folded)
+- **v1.0 BILATERAL RATIFIED** (this commit; thread-405 round-7 close 2026-04-28T07:34:09.132Z; action-1 close_no_action committed; 2 minor adds folded: ADR-023 sealed companion + CLI-contract regression test surface)
+- Ships in W0 bundle PR with Survey + Preflight + ADR-029 SCAFFOLD
 
 ---
 
-*Design v0.2 architect-revision 2026-04-28 ~07:30Z+. Round-1 audit folded; round-2 ratify pending engineer (thread-405). Architect: lily.*
+*Design v1.0 bilateral ratified 2026-04-28 ~07:34Z. Architect: lily; Engineer: greg. thread-405 round-7 close.*
