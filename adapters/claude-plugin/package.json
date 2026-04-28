@@ -1,22 +1,21 @@
 {
-  "name": "@ois/claude-plugin",
-  "version": "1.0.0",
+  "name": "@apnex/claude-plugin",
+  "version": "0.1.0",
   "description": "Claude Code host bundle — Universal Agent Adapter for the OIS agentic network",
   "license": "MIT",
   "type": "module",
   "main": "dist/shim.js",
   "scripts": {
     "build": "tsc",
-    "postinstall": "tsc",
     "start": "node dist/shim.js",
     "dev": "tsx src/shim.ts",
     "test": "vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@ois/cognitive-layer": "file:ois-cognitive-layer-0.1.0.tgz",
-    "@ois/message-router": "file:ois-message-router-1.0.0.tgz",
-    "@ois/network-adapter": "file:ois-network-adapter-2.0.0.tgz"
+    "@apnex/cognitive-layer": "*",
+    "@apnex/message-router": "*",
+    "@apnex/network-adapter": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
