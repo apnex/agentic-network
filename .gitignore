@@ -75,3 +75,6 @@ raw-notes.txt
 .vscode/
 .idea/
 *.swp
+
+# Per-worktree .npmrc (env-var ref to NPM_TOKEN; never commit auth)
+.npmrc
