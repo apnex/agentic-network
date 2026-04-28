@@ -298,8 +298,14 @@ describe("dispatcher gates", () => {
 
     deferred.resolve();
     await requestPromise;
-    expect(agent.call).toHaveBeenCalledOnce();
-    expect(agent.call).toHaveBeenCalledWith("list_tele", {});
+    // Filter to list_tele calls (excludes the signal_working_started +
+    // signal_working_completed fire-and-forget wrap from PR #114 W3 — see
+    // TOOL_CALL_SIGNAL_SKIP). The gate semantic is "list_tele invoked
+    // exactly once after gate opened", independent of wrap mechanics.
+    const listTeleCalls = (agent.call as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([name]) => name === "list_tele");
+    expect(listTeleCalls).toHaveLength(1);
+    expect(listTeleCalls[0]).toEqual(["list_tele", {}]);
   });
 
   it("Initialize is NOT gated — MUST ack while gates pending", async () => {
@@ -360,7 +366,13 @@ describe("dispatcher gates", () => {
       method: "tools/call",
       params: { name: "list_tele", arguments: {} },
     });
-    expect(agent.call).toHaveBeenCalledOnce();
+    // Filter to list_tele calls (excludes the signal_working_started +
+    // signal_working_completed wrap from PR #114 W3). Tests the gate-omitted
+    // semantic: pass-through invokes list_tele exactly once, regardless of
+    // wrap mechanics.
+    const listTeleCalls = (agent.call as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([name]) => name === "list_tele");
+    expect(listTeleCalls).toHaveLength(1);
     expect(result).toBeDefined();
   });
 
