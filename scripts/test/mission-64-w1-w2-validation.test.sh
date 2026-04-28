@@ -82,7 +82,8 @@ rm -rf /tmp/m64-validation-tarballs/*
 # Apply version-rewrite (* → semver) before pack
 node scripts/version-rewrite.js >/dev/null 2>&1
 if npm pack --workspace=@apnex/network-adapter --pack-destination /tmp/m64-validation-tarballs >/dev/null 2>&1; then
-  rendered_dep="$(tar -xzf /tmp/m64-validation-tarballs/apnex-network-adapter-0.1.0.tgz -O package/package.json 2>/dev/null | node -e "let s=''; process.stdin.on('data', c => s+=c); process.stdin.on('end', () => { try { const p = JSON.parse(s); process.stdout.write(p.dependencies['@apnex/cognitive-layer'] || ''); } catch(e) {} });")"
+  na_tgz="$(ls /tmp/m64-validation-tarballs/apnex-network-adapter-*.tgz 2>/dev/null | head -1)"
+  rendered_dep="$(tar -xzf "$na_tgz" -O package/package.json 2>/dev/null | node -e "let s=''; process.stdin.on('data', c => s+=c); process.stdin.on('end', () => { try { const p = JSON.parse(s); process.stdout.write(p.dependencies['@apnex/cognitive-layer'] || ''); } catch(e) {} });")"
   if [[ "$rendered_dep" == ^* ]] || [[ "$rendered_dep" =~ ^[0-9] ]]; then
     assert_pass "2.1 tarball package.json has registry-pinned semver: $rendered_dep"
   else
