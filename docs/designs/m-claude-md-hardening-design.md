@@ -1,10 +1,10 @@
-# M-CLAUDE-MD-Hardening — Design v0.1
+# M-CLAUDE-MD-Hardening — Design v1.1
 
-**Status:** v1.0 (architect-authored 2026-04-30; engineer round-1 audit folded; bilateral converge in flight via thread-438)
+**Status:** v1.1 (architect-authored 2026-04-30; engineer round-1 + content-level round-1 audit folds applied; bilateral converge in flight via thread-439)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Survey envelope:** `docs/surveys/m-claude-md-hardening-survey.md` (Director-ratified 6 picks; composite intent envelope)
 **Source idea:** idea-226 M-CLAUDE-MD-Hardening (status=triaged via route-(a) skip-direct)
-**Bilateral thread:** thread-438 (architect-engineer Phase 4 Design)
+**Bilateral threads:** thread-438 (Phase 4 Design shape-level audit; sealed) → thread-439 (Phase 4 Design content-level audit + bilateral converge)
 
 ---
 
@@ -35,10 +35,10 @@ The hardened-CLAUDE.md surface composes a 3-tier progressive-disclosure hierarch
 
 **Tier-membership criteria** (ALL 3 must hold):
 1. **Universal applicability** — directive applies to ALL roles (architect + engineer + Director-session); not role-specific
-2. **Cross-mission impact on failure-to-bind** — failure to apply this directive has consequences spanning multiple missions OR breaks structural invariants (commit-policy violation pollutes Contributors graph permanently; routing-rule violation triggers calibration-class incidents)
+2. **Cross-mission impact on failure-to-bind** — failure to apply this directive has consequences spanning multiple missions OR breaks one of the named structural-invariant classes: (i) external-state irreversibility (e.g., commit-policy violation pollutes Contributors graph permanently), (ii) calibration-class incidents (e.g., routing-rule violation triggers #57-class engineer-routing failures), (iii) cross-mission-coordination breakdowns (e.g., bilateral-seal discipline absent → mission-lifecycle gates degrade), (iv) tele-alignment drift detectable at retrospective gates (e.g., directives that contradict ratified Tele set)
 3. **Inlinable** — directive + provenance-anchor + 1-2 line rationale fits in ~5-15 lines without losing semantic completeness; deep-dive offloaded to Tier 1 cross-link
 
-**Examples (current):** `## Commit message policy` · `## Mission RACI` · `## Calibration ledger discipline`
+**Examples (full Tier-0 enumeration; see §2.1 directive table for canonical list):** `## Commit message policy` · `## Calibration ledger discipline` · `## Mission RACI` · `## Cold-pickup primary surfaces` (NEW per §2 fold) · `## Companion policies` (index-section; framing/index carve-out per §5.3)
 
 **Counter-example (NOT Tier 0):** Pass 10 rebuild discipline — engineer-specific (fails criterion 1); belongs in `engineer-runtime.md` Tier 2 INDEX-overlay.
 
@@ -67,8 +67,8 @@ The hardened-CLAUDE.md surface composes a 3-tier progressive-disclosure hierarch
 
 **Tier-membership criteria:**
 1. **Deep-dive content** — depth-of-detail beyond what Tier 1 carries inline
-2. **Navigated-to**, not load-by-default — accessed via Tier 1 cross-link OR role-overlay TOC entry; cold-session does NOT load by default
-3. **Composes upward** — content composable into Tier 1 docs (cross-link target) OR role-overlay (INDEX entry)
+2. **Navigated-to**, not load-by-default — accessed via one of: (i) Tier 1 cross-link OR (ii) role-overlay TOC entry OR (iii) Tier 0 cold-pickup primary surface direct cross-link (per §4 Cold-pickup primary surfaces — `docs/traces/trace-management.md` is the canonical example); cold-session does NOT load by default
+3. **Composes upward** — content composable into Tier 1 docs (cross-link target) OR role-overlay (INDEX entry) OR Tier 0 cold-pickup surface (direct cross-link target)
 
 **Examples:** `docs/decisions/<adr>.md` · `docs/specs/<spec>.md` · `docs/methodology/entity-mechanics.md` · `engineer-runtime.md` · `architect-runtime.md` · `tele-glossary.md` (if scoped in)
 
@@ -91,9 +91,15 @@ A reviewer uses §1.1-§1.3 criteria to assign a fresh directive without archite
 | "Pass 10 rebuild after hub/src PRs" | Tier 0 (proposed) | **Rejected**: fails Tier 0 criterion 1 (universal applicability) — engineer-only directive. Belongs in Tier 2 `engineer-runtime.md` INDEX-overlay |
 | "Detailed per-FSM transition rules for Task entity" | Tier 0 (proposed) | **Rejected**: fails Tier 0 criterion 3 (inlinable) — full FSM table is ~40 lines; cannot inline at Tier 0. Belongs in Tier 1 `entity-mechanics.md` or Tier 2 `docs/specs/<entity>.md` |
 | "Survey methodology pick-list discipline" | Tier 0 (proposed) | **Rejected**: fails Tier 0 criterion 2 (cross-mission impact on failure-to-bind is concentrated at Idea→Design transition only — not all-roles-all-times). Belongs in Tier 1 `idea-survey.md` |
+| "Mission-lifecycle Phase + RACI matrix (full inline)" | Tier 0 (proposed) | **Rejected**: criteria 1+2 hold (universal ✓; cross-mission ✓) but criterion 3 fails — full RACI matrix + phase enumeration is >80 lines; cannot inline. Belongs in Tier 1 `mission-lifecycle.md`; Tier 0 carries Mission RACI summary + cross-link only |
+
+**Boundary case (POSITIVE assignment; NOT Tier 0):**
+
+| Test directive | Proposed tier | Reasoning |
+|---|---|---|
 | "Specific commit-push thread-heartbeat wording" | Tier 1 (proposed; mission-lifecycle.md §1.5.1) | **Confirmed Tier 1** (NOT Tier 0). Engineer-runtime concern; binding when phase-engaged. Methodology-domain: engineer-runtime decision-routing. Tier 2 `engineer-runtime.md` overlay surfaces it via INDEX |
 
-Operationally testable. Audit rubric §1 probe satisfied; criteria discriminate via positive AND negative cases.
+Net: 4 positive (3 base cases above + 1 boundary case) + 4 negative test cases. Operationally testable; audit rubric §1 probe satisfied; criteria discriminate via positive AND negative cases.
 
 ---
 
@@ -118,17 +124,17 @@ Per engineer round-1 N1 surface: P1 5 surfaces fold across §2.x sections (NOT a
 | § | Directive | Provenance-anchor | Tier-membership justification (vs §1.1 criteria) |
 |---|---|---|---|
 | Header | repo guidance preamble | (no anchor; framing line) | Header (not directive) |
-| §1 | Commit message policy | Director-ratified 2026-04-23 (clean GitHub Contributors graph; AI-attribution-free) | (1) all roles ✓ (2) cross-mission impact (Contributors graph) ✓ (3) inlinable ✓ |
-| §2 | Calibration ledger discipline | ADR-030 (calibration ledger mechanization; Director-ratified 2026-04-22) | (1) all roles ✓ (2) cross-mission impact (state-fidelity) ✓ (3) inlinable ✓ |
-| §3 | Mission RACI | calibration #57 + #55 (mission-66 W4 close, engineer-routing closure mechanism) | (1) all roles ✓ (2) cross-mission impact (engineer-routing class) ✓ (3) inlinable ✓ |
-| §4 | Cold-pickup primary surfaces (NEW) | Director-direct-anchor (this Phase 4 Design bilateral via thread-438; 2026-04-30); composite cite of contributing calibrations #54/#55/#57 + normative-doc-divergence candidate | (1) all roles ✓ (2) cross-mission (load-bearing-context failures cold-session-class) ✓ (3) inlinable ✓ |
-| §5 | Companion policies index | (composite of cited canonical docs; index-only — no normative content) | (1) all roles ✓ (2) discoverability hierarchy primary surface ✓ (3) inlinable ✓ |
+| §1 | Commit message policy | Director-direct-anchor (Director-ratified 2026-04-23; clean GitHub Contributors graph; AI-attribution-free) | (1) all roles ✓ (2) cross-mission impact (Contributors graph) ✓ (3) inlinable ✓ |
+| §2 | Calibration ledger discipline | ADR-ID (ADR-030 calibration ledger mechanization; Director-ratified 2026-04-22) | (1) all roles ✓ (2) cross-mission impact (state-fidelity) ✓ (3) inlinable ✓ |
+| §3 | Mission RACI | calibration-ID (#57; with #55 as compositional sister) | (1) all roles ✓ (2) cross-mission impact (engineer-routing class) ✓ (3) inlinable ✓ |
+| §4 | Cold-pickup primary surfaces (NEW) | Director-direct-anchor (Phase 4 Design bilateral via thread-438+439; 2026-04-30 ratification venue) | (1) all roles ✓ (2) cross-mission (load-bearing-context failures cold-session-class) ✓ (3) inlinable ✓ |
+| §5 | Companion policies index | §5.3 framing/index carve-out (no provenance-anchor required; index-section carries no normative content) | (1) all roles ✓ (2) discoverability hierarchy primary surface ✓ (3) inlinable ✓ |
 
 Net 5 sections + header. Projected line count breakdown in §6 size-budget tracking.
 
-**§4 provenance-anchor architect-decision (per engineer round-1 §2 probe):** Director-direct-anchor primary (this thread-438 bilateral IS the ratification venue; date + venue + ratification-context unambiguous); composite-secondary cites contributing calibrations for full provenance lookup.
+**§4 provenance-anchor architect-decision (per engineer round-1 §2 probe + content-level audit C2/C3 reconciliation):** Director-direct-anchor SOLE provenance per §5.3 "EXACTLY ONE" rule. Compositional context (contributing calibrations #54 + #55 + #57 + `normative-doc-divergence` pending-ratification) lives as a separate `*Compositions:*` informational sub-line in §2.2 directive details — NOT provenance. Preserves §5.3 strict-class invariant.
 
-### §2.1 Directive details (Tier 0 content)
+### §2.2 Directive details (Tier 0 content)
 
 **§1 Commit message policy** (current shape; minor format-update only)
 - Rule: no `Co-Authored-By: Claude ...` trailer in any form
@@ -151,13 +157,14 @@ Net 5 sections + header. Projected line count breakdown in §6 size-budget track
 
 **§4 Cold-pickup primary surfaces** (NEW; engineer P1 fold)
 - Rule: cold-session pickup loads work-trace + companion-policies index + role-runtime overlay before mission-engagement
-- Provenance sub-line: `*Provenance: calibration #X (normative-doc-divergence; pending Director ratification at Phase 4 close).*`
+- Provenance sub-line: `*Provenance: Director-direct-anchor (Phase 4 Design bilateral via thread-438+439; 2026-04-30 ratification venue).*`
+- Compositions sub-line (informational; NOT provenance per §5.3 strict-class rule): `*Compositions: contributing calibrations #54 (engineer-progress-visibility gap) + #55 (engineer-cadence-discipline) + #57 (engineer-routing) + `normative-doc-divergence` (calibration-candidate pending Director Phase-4-close ratification).*`
 - Inline rationale: ~3 lines (closes engineer-runtime-rules-invisible-class; tele-12 attention-ordering)
 - Cross-links:
-  - Work-trace location: `docs/traces/trace-management.md`
+  - Work-trace location: `docs/traces/trace-management.md` (Tier 2; direct cross-link from Tier 0 per §3.1 Tier 0 ↔ Tier 2 cold-pickup discipline)
   - Engineer-runtime overlay: `docs/methodology/engineer-runtime.md`
   - Architect-runtime overlay: `docs/methodology/architect-runtime.md`
-  - Tele glossary: `docs/methodology/tele-glossary.md` (if scoped in; see §6)
+  - Tele glossary: `docs/methodology/tele-glossary.md` (IN-SCOPE per §6.2 upgrade)
 
 **§5 Companion policies** (existing structure; expanded list)
 - Lists ALL Tier 1 docs + role-overlays + glossaries:
@@ -176,18 +183,34 @@ Net 5 sections + header. Projected line count breakdown in §6 size-budget track
 
 ## §3 Cross-link discipline
 
-### §3.1 Bidirectional cross-link invariant — single-mention-per-side
+### §3.1 Bidirectional cross-link invariant — single-mention-per-side (universal default + tier-pair clauses)
 
-Per engineer round-1 audit §3 ambiguity: bidirectional has two readings. **(a) Single-mention-per-side** = CLAUDE.md cites canonical-doc-heading once + canonical-doc-heading cites "binding via CLAUDE.md §X" once each (one-touch on both sides). **(b) Full cross-link maintenance** = every CLAUDE.md → companion link has reciprocal companion → CLAUDE.md link, all kept in sync (high maintenance; recursion-prone).
+Per engineer round-1 audit §3 ambiguity: bidirectional has two readings. **(a) Single-mention-per-side** = source cites target once + target cites source once (one-touch on both sides). **(b) Full cross-link maintenance** = every link has reciprocal link, all kept in sync (high maintenance; recursion-prone).
 
-**Architect-decision: (a) single-mention-per-side.** Lower maintenance; sufficient for back-reference-drift protection.
+**Architect-decision: (a) single-mention-per-side as universal default**, with tier-pair-specific clauses below. Lower maintenance; sufficient for back-reference-drift protection.
 
-Operationalization:
+#### §3.1.1 Tier 0 ↔ Tier 1 (default case)
+
 - CLAUDE.md `## Companion policies` index lists each Tier 1 doc once
 - Each Tier 1 doc carries a `## Companion docs` (or equivalent) section with a single back-reference to CLAUDE.md (e.g., `**Bound at runtime via CLAUDE.md §<X>**`)
-- No transitive cross-link maintenance (CLAUDE.md doesn't track Tier 2 deep-dives directly; navigation reaches Tier 2 via Tier 1 cross-links — multi-hop)
 
-**Audit-rubric §3 probe response:** bidirectional single-mention-per-side discipline specified; companion-policies index covers ALL methodology docs (per §2.1 §5 enumeration above).
+#### §3.1.2 Tier 0 ↔ Tier 2 (cold-pickup direct cross-link)
+
+§4 Cold-pickup primary surfaces direct-cross-links select Tier 2 docs (e.g., `docs/traces/trace-management.md`). Single-mention-per-side applies:
+- CLAUDE.md §4 cites Tier 2 doc once
+- Tier 2 doc back-references CLAUDE.md §4 once (e.g., `**Bound at runtime via CLAUDE.md §4 cold-pickup primary surfaces**`)
+
+This is a Tier 2 direct cross-link case (§1.3 criterion 2 case (iii)); does NOT violate "Tier 2 navigated-to-not-load-by-default" because the Tier 0 cross-link IS the navigation path.
+
+#### §3.1.3 Tier 1 ↔ Tier 2 (multi-hop default)
+
+Tier 1 docs (e.g., `mission-lifecycle.md`) reference Tier 2 docs (e.g., `docs/decisions/<adr>.md`) per existing methodology-doc convention. Single-mention-per-side: Tier 1 cites Tier 2 once; Tier 2 (ADR) cites Tier 1 in its provenance/companion-doc section once. No CLAUDE.md involvement (multi-hop reach via Tier 0 → Tier 1 → Tier 2).
+
+#### §3.1.4 Tier 2 → Tier 0 self-reference (role-overlay edge case)
+
+Per engineer P3 probe: role-overlay rows (Tier 2) may cite CLAUDE.md (Tier 0) as canonical-source when CLAUDE.md IS the canonical-source for the rule (e.g., `## Calibration ledger discipline` lives in CLAUDE.md §2; architect-runtime.md row 7 cites it). Valid INDEX-overlay shape; self-reference is consistent with INDEX-only invariant ("rule body lives in canonical doc"; CLAUDE.md §2 IS the canonical doc).
+
+**Audit-rubric §3 probe response:** bidirectional single-mention-per-side discipline specified across all 4 tier-pair clauses; companion-policies index covers ALL methodology docs (per §2.1 §5 enumeration above).
 
 ### §3.2 Cross-link target stability
 
@@ -230,7 +253,7 @@ Per Q2d + engineer P2 INDEX-overlay-not-content-fork shape: role-runtime overlay
 | Thread-side approval ≠ GitHub-side | Branch protection blocks merge without `gh pr review --approve` | `multi-agent-pr-workflow.md` | `#cross-approval-pattern` |
 | Commit-push thread-heartbeat | Per-commit thread ping for architect visibility (calibrations #54/#55) | `mission-lifecycle.md` | `#15-1-engineer-runtime-decision-moment-routing-calibration-57-codification` |
 | Work-trace discipline | `docs/traces/<task-or-mission>-work-trace.md` per task; engineer-owned | `mission-lifecycle.md` | `#7-2-trace-discipline-engineer-owned` |
-| Cross-package vitest baseline | bug-32 admin-merge per established lineage (35-PR consecutive) | `multi-agent-pr-workflow.md` | `#cross-package-vitest-baseline` (TBD; needs heading creation) |
+| Cross-package vitest baseline | bug-32 admin-merge per established lineage (35-PR consecutive at mission-57 close) | `mission-lifecycle.md` | `#7-4-cross-approval-pattern-mission-execution-discipline` |
 | Commit message format | No `Co-Authored-By:` trailer | `CLAUDE.md` | `#commit-message-policy` |
 | Hub thread protocol | `drain_pending_actions` on session-start; thread maxRounds discipline; bilateral seal via `close_no_action` + summary | `mission-lifecycle.md` | `#7-5-per-wave-bilateral-seal-discipline` |
 
@@ -265,11 +288,11 @@ CLAUDE.md adopts **semver-style versioning** matching `mission-lifecycle.md` v1.
 
 | Bump | Trigger | Examples |
 |---|---|---|
-| **MAJOR** (vN.0 → v(N+1).0) | Tier-0 directive add/remove OR tier-restructure (Tier 0 → Tier 1 demotion etc.) OR breaking change to provenance-anchor taxonomy | Adding a new Tier-0 section; removing Mission RACI; collapsing Tier 0+1 |
-| **MINOR** (vN.M → vN.(M+1)) | Companion-policies index expansion OR new cross-link OR tier-internal section refinement (e.g., §2 Calibration ledger getting Why/How-to-apply lines) OR new role-overlay doc | Adding `engineer-runtime.md` to Tier 2; companion-index entry add; rationale-line additions |
-| **PATCH** (vN.M.P → vN.M.(P+1)) | Format clarification OR typo fix OR cross-link target heading-rename OR provenance-anchor spell-out | Sub-line `**Provenance:**` format spelling; fixing a broken anchor; companion-doc rename absorbed |
+| **MAJOR** (vN.0 → v(N+1).0) | Tier-0 directive add/remove OR tier-restructure (Tier 0 → Tier 1 demotion etc.) OR provenance-anchor taxonomy REMOVE-or-REINTERPRET (e.g., dropping ADR-ID class; redefining Director-direct-anchor semantics) | Adding a new Tier-0 section; removing Mission RACI; collapsing Tier 0+1; dropping ADR-ID anchor class |
+| **MINOR** (vN.M → vN.(M+1)) | Companion-policies index expansion OR new cross-link OR tier-internal section refinement (e.g., §2 Calibration ledger getting Why/How-to-apply lines) OR new role-overlay doc OR provenance-anchor taxonomy ADDITION (e.g., adding 4th anchor class for framing/index per §5.3 carve-out) OR archive-sidecar creation (`CLAUDE-md-revisions.md` per §5.2) | Adding `engineer-runtime.md` to Tier 2; companion-index entry add; rationale-line additions; framing/index 4th-class carve-out add |
+| **PATCH** (vN.M.P → vN.M.(P+1)) | Format clarification OR typo fix OR cross-link target heading-rename OR provenance-anchor spell-out OR calibration-ID assigned post-ratification (filling `#X` placeholder per §2.2 §4 Cold-pickup primary surfaces sub-line note) | Sub-line `**Provenance:**` format spelling; fixing a broken anchor; companion-doc rename absorbed; `normative-doc-divergence` calibration-ID post-ratification fill |
 
-Director re-ratification REQUIRED at MAJOR bumps; architect-autonomous at MINOR + PATCH.
+Director re-ratification REQUIRED at MAJOR bumps; architect-autonomous at MINOR + PATCH (architect surfaces MINOR + PATCH log to Director at retrospective gates per `mission-lifecycle.md` v1.2 retrospective discipline).
 
 **Version declared at top of CLAUDE.md** in `Status:` line (currently absent; Design v1.0 specifies inclusion).
 
@@ -290,15 +313,18 @@ Git-log-as-source-of-truth secondary; in-CLAUDE.md trailer is canonical (matches
 
 **Line-budget impact** (per engineer round-1 §5 probe): trailer adds ~6 lines (heading + table-header + 1 row per version-delta); the §6.4 projected-62-line total INCLUDES the v1.0 trailer (= 7 lines: heading + header + v1.0 row + spacer). Each subsequent revision adds 1 row. Q5d-trigger from change-log growth alone: ~12-15 revisions before trailer-driven growth pushes total above 80 lines (assuming no Tier-0 section additions in interim). At that point: archive older revisions to a sidecar `docs/methodology/CLAUDE-md-revisions.md` Tier 2 doc; trailer keeps last N=5 versions inline.
 
-### §5.3 Provenance-anchor 3-class taxonomy (per engineer C3 fold)
+### §5.3 Provenance-anchor 3-class taxonomy + framing/index carve-out (per engineer C3 fold + content-level M2 fold)
 
-Every Tier 0 directive carries provenance from EXACTLY ONE of three valid anchor classes:
+Every Tier 0 **normative directive** carries provenance from EXACTLY ONE of three valid anchor classes. **Framing/index sections** that carry NO normative content are exempt from provenance-anchor requirement (carve-out per content-level audit M2):
 
 | Class | Format | Use when |
 |---|---|---|
 | **calibration ledger ID** | `*Provenance: calibration #N (<short-name>, <surfaced-at>).*` | Directive closes a calibration data-point |
 | **ADR ID** | `*Provenance: ADR-NNN (<short-name>); Director-ratified <date>.*` | Directive operationalizes an architectural decision |
 | **Director-direct-anchor** | `*Provenance: Director-ratified <date> (<context>; <ratification venue>).*` | Directive is direct Director-pref without calibration / ADR origin |
+| **(carve-out) framing/index — NO ANCHOR** | (no `*Provenance:*` sub-line; section structure self-evident as framing/index) | Section is index-only / framing-only with NO normative content (e.g., `## Companion policies` lists canonical docs without prescribing rules) |
+
+**Strict-class invariant:** the 3 normative-directive classes are mutually exclusive; a directive uses EXACTLY ONE. Compositional context (multiple contributing sources) goes in a separate `*Compositions:*` informational sub-line — NOT provenance. The carve-out is structurally distinct (no anchor at all); architect/engineer-judgment determines section-class at authoring-time per §1.1 criteria (normative directive → 1 of 3 anchor classes; framing/index → carve-out).
 
 **Sub-line placement (per engineer D3):** anchor lives on its own line immediately below the section heading (italic format). Example:
 
@@ -363,21 +389,24 @@ Per Q5d "if there are structural improvements available to our protocols/methodo
 
 **Projected-line-count breakdown** for hardened CLAUDE.md (post-PR-1):
 
-| Section | Projected lines | Cumulative |
-|---|---|---|
-| Header + framing | 4 | 4 |
-| ## Status + Change log trailer | 8 | 12 |
-| ## §1 Commit message policy | 8 | 20 |
-| ## §2 Calibration ledger discipline | 9 | 29 |
-| ## §3 Mission RACI | 10 | 39 |
-| ## §4 Cold-pickup primary surfaces | 9 | 48 |
-| ## §5 Companion policies index | 14 | 62 |
+**Per-section breakdown** (heading + provenance sub-line + spacer + rationale + cross-link rows; ±2-line tolerance per element):
 
-**Projected total: ~62 lines** — within 50-80 line target (Q5b default; Q5d flex unused this iteration).
+| Section | Element decomposition | Projected lines | Cumulative |
+|---|---|---|---|
+| Header + framing | title + 1 framing line + spacer | 4 | 4 |
+| ## Status + Change log trailer | status (1) + change-log heading (1) + table-header (1) + v1.0 row (1) + spacer (1) + future v1.x rows (~3) | 8 | 12 |
+| ## §1 Commit message policy | heading + provenance + spacer + rule (~3) + rationale (~2) | 8 | 20 |
+| ## §2 Calibration ledger discipline | heading + provenance + spacer + rule (~2) + Why (~2) + How-to-apply (~1) + cross-link (~1) | 9 | 29 |
+| ## §3 Mission RACI | heading + provenance + spacer + rule (~3) + rationale (~3) + cross-link (~1) | 10 | 39 |
+| ## §4 Cold-pickup primary surfaces | heading + provenance + compositions + spacer + rule (~2) + 4 cross-links (~4) | 12 | 51 |
+| ## §5 Companion policies index | heading + (carve-out: no provenance) + spacer + index-list intro (~1) + 10 entries (~10) | 14 | 65 |
 
-**Q5d-trigger conditions** (flag for Director surprise-avoidance at Phase 4 close):
-- If Round-1 audit folds add >18 lines (cumulative > 80) → Q5d Director-license trigger
+**Projected total: ~65 lines** (revised from v1.0's 62 to account for §4 compositions sub-line + per-element tolerance) — within 50-80 line target (Q5b default; Q5d flex unused this iteration).
+
+**Q5d-trigger conditions** (flag for Director surprise-avoidance at Phase 4 close; **scope clarified: applies to round-1 + round-2 audit folds AT-v0.1→v1.x stage; post-ratification revisions track via §5.1 semver-bump triggers separately**):
+- If round-1 + round-2 audit folds CUMULATIVE add >15 lines (final >80) → Q5d Director-license trigger AT Phase 4 close
 - If §6.2 tele-glossary cross-link expands (multi-line context block) → Q5d trigger
+- If post-ratification revisions trigger trailer-driven growth (~12-15 v1.x revisions) → archive-sidecar mechanism per §5.2 (MINOR bump per §5.1; NOT Q5d-trigger)
 - Otherwise: no Q5d trigger; default size budget honored
 
 ---
@@ -467,4 +496,4 @@ Surfaced for engineer round-1 audit per audit-rubric:
 
 ---
 
-— Architect: lily / 2026-04-30 (Design v0.1 DRAFT)
+— Architect: lily / 2026-04-30 (Design v1.1; bilateral content-level converge in flight)
