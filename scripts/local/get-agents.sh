@@ -125,31 +125,80 @@ CONFIG
     done
 }
 
-# --- call_get_agents() — engineer commit 7b ---
+# --- call_get_agents() — engineer commit 7b + post-mission-66 fix-forward ---
 #
-# POSTs JSON-RPC `tools/call get_agents` to ${HOST}/mcp with Bearer auth.
-# Reference: hub/src/hub-networking.ts:681-905 (Hub MCP-over-HTTP path;
-# requireAuth Bearer-token gate per thread-422 round-1 audit Q5 finding).
+# 2-step MCP-over-HTTP handshake against ${HOST}/mcp with Bearer auth:
+#   (1) POST `initialize` → captures Mcp-Session-Id from response headers
+#   (2) POST `tools/call get_agents` with Mcp-Session-Id header → projection
 #
-# Returns: full JSON-RPC envelope on stdout. Caller (main flow) checks
-# `.error` then unwraps `.result.content[0].text` for projection extraction.
+# Reference: hub/src/hub-networking.ts:702-776 — Hub /mcp POST is a stateful
+# StreamableHTTPServerTransport per @modelcontextprotocol/sdk; requires
+# session-init handshake before tool-calls. Single-step POST returns 400
+# "Bad Request: No valid session ID provided" (case 3 in handler).
+#
+# Hub responses are SSE-style framed (`event: message\ndata: <JSON>`); helper
+# strips the SSE wrapper to extract the JSON-RPC envelope.
+#
+# Returns: JSON-RPC envelope (post-SSE-strip) on stdout. Caller (main flow)
+# checks `.error` then unwraps `.result.content[0].text` for projection.
 # On curl failure: emits a synthetic JSON-RPC error envelope so caller's
 # `.error` check fires uniformly.
+
+# strip_sse_event: extract JSON-RPC body from SSE-framed response.
+# Input format: "event: message\r\ndata: <JSON>\r\n\r\n..."
+# Output: <JSON> on stdout (or input unchanged if no SSE framing).
+strip_sse_event() {
+    local INPUT="$1"
+    if echo "$INPUT" | head -1 | grep -q "^event:"; then
+        echo "$INPUT" | grep "^data:" | head -1 | sed 's/^data: //'
+    else
+        echo "$INPUT"
+    fi
+}
+
 call_get_agents() {
     local URL="${HOST}/mcp"
-    local BODY='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_agents","arguments":{}}}'
-    local RESPONSE
-    if ! RESPONSE=$(curl -sS -X POST "$URL" \
-        -H "Authorization: Bearer ${HUB_API_TOKEN}" \
-        -H "Accept: application/json, text/event-stream" \
-        -H "Content-Type: application/json" \
-        -d "$BODY" 2>&1); then
-        # Curl-level failure (network / auth / refused). Wrap as JSON-RPC
-        # error envelope so main flow's `.error` check fires uniformly.
-        printf '{"jsonrpc":"2.0","error":{"code":-32603,"message":"curl failure: %s"}}\n' "$(echo "$RESPONSE" | head -1 | sed 's/"/\\"/g')"
+    local AUTH="Authorization: Bearer ${HUB_API_TOKEN}"
+    local ACCEPT="Accept: application/json, text/event-stream"
+    local CT="Content-Type: application/json"
+
+    # ── Step 1: initialize handshake ─────────────────────────────────
+    local INIT_BODY='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"get-agents-cli","version":"1.0.0"}}}'
+    local INIT_RESPONSE INIT_HEADERS_FILE
+    INIT_HEADERS_FILE=$(mktemp)
+    if ! INIT_RESPONSE=$(curl -sS -D "$INIT_HEADERS_FILE" -X POST "$URL" \
+        -H "$AUTH" -H "$ACCEPT" -H "$CT" \
+        -d "$INIT_BODY" 2>&1); then
+        rm -f "$INIT_HEADERS_FILE"
+        printf '{"jsonrpc":"2.0","error":{"code":-32603,"message":"curl init failure: %s"}}\n' \
+            "$(echo "$INIT_RESPONSE" | head -1 | sed 's/"/\\"/g')"
         return 0
     fi
-    echo "$RESPONSE"
+
+    # Extract session-id from response headers (case-insensitive header lookup)
+    local SESSION_ID
+    SESSION_ID=$(grep -i "^mcp-session-id:" "$INIT_HEADERS_FILE" | sed 's/^[Mm][Cc][Pp]-[Ss]ession-[Ii][Dd]: *//' | tr -d '\r\n')
+    rm -f "$INIT_HEADERS_FILE"
+
+    if [[ -z "$SESSION_ID" ]]; then
+        printf '{"jsonrpc":"2.0","error":{"code":-32603,"message":"Hub did not return Mcp-Session-Id header on initialize"}}\n'
+        return 0
+    fi
+
+    # ── Step 2: tools/call get_agents with session ──────────────────
+    local CALL_BODY='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_agents","arguments":{}}}'
+    local CALL_RESPONSE
+    if ! CALL_RESPONSE=$(curl -sS -X POST "$URL" \
+        -H "$AUTH" -H "$ACCEPT" -H "$CT" \
+        -H "Mcp-Session-Id: ${SESSION_ID}" \
+        -d "$CALL_BODY" 2>&1); then
+        printf '{"jsonrpc":"2.0","error":{"code":-32603,"message":"curl call failure: %s"}}\n' \
+            "$(echo "$CALL_RESPONSE" | head -1 | sed 's/"/\\"/g')"
+        return 0
+    fi
+
+    # Strip SSE framing → emit JSON-RPC envelope.
+    strip_sse_event "$CALL_RESPONSE"
 }
 
 # --- MAIN ---
