@@ -821,6 +821,41 @@ calibrations:
     tele_alignment:
       - tele-3
 
+  - id: 46
+    class: methodology
+    title: "Two-sided convergence accounting — round-counting diplomatic phrasing for thread closure"
+    origin: mission-64-W4-followon
+    surfaced_at: thread-414-round-2-PR-129-review
+    status: closed-folded
+    closure_mechanism: |
+      Surfaced during thread-414 round-2 review of PR #129 (mission-64 retrospective)
+      by greg: original architect framing "the engineer closed at round N" or
+      "architect closed at round M" understated bilateral convergence — both sides
+      signal convergence at thread-close events even when the structural commit
+      (converged=true flip) is mechanically one-sided.
+
+      Architect lily fixup pre-merge: applied "thread-NNN round N close-of-bilateral
+      (engineer-side converged=true) + round N+1 architect-side commit" diplomatic
+      phrasing across mission-64 retrospective §2 timeline + §3 commitments. PR #129
+      commit body notes the discipline.
+
+      Folded into pattern two-sided-convergence-accounting (M64-W4-followon-origin).
+      Discipline pattern (no further structural closure needed); ledger captures
+      origin signal for future mission-arc applicability.
+
+      Calibration-from-the-review-loop-itself meta-evidence: greg surfaced this
+      during review of M64 retrospective PR #129 — review-loop-as-calibration-surface
+      pattern application.
+    closure_pr: 129
+    pattern_membership:
+      - two-sided-convergence-accounting
+      - review-loop-as-calibration-surface
+    cross_refs:
+      - feedback_review_loop_calibration_surface.md
+    tele_alignment:
+      - tele-2
+      - tele-6
+
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
 #   title                       string; human-readable pattern name
@@ -891,7 +926,8 @@ patterns:
       Lineage: mission-64 cleanup-arc review-loop surface; co-discovered with engineer
       in thread-415 round 4. Folded inline into mission-64 retrospective + bedded as
       durable architect feedback memory.
-    surfaced_by_calibrations: []
+    surfaced_by_calibrations:
+      - 46
 
   - id: review-loop-as-calibration-surface
     title: "Review-loop-as-calibration-surface"
@@ -935,6 +971,7 @@ patterns:
     surfaced_by_calibrations:
       - 42
       - 44
+      - 46
 
   - id: post-event-narration-aest-utc-discipline
     title: "Post-event narration AEST/UTC date conflation discipline"
