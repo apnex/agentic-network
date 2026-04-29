@@ -1,6 +1,6 @@
-# M-Shim-Observability-Phase-2 — Design v0.1 (architect-draft pre-Director-review)
+# M-Shim-Observability-Phase-2 — Design v1.0 BILATERAL RATIFIED
 
-**Status:** v0.1 architect-draft (pre-Director-review per mission-65 cadence precedent: Director Phase 4 review pre-engineer-audit; non-standard cadence for substantive missions). Following Director ratification, opens engineer round-1 audit thread for v0.2 → v1.0 ratification.
+**Status:** **v1.0 BILATERAL RATIFIED** (thread-422 round 4 engineer close-of-bilateral 2026-04-29T06:14Z + round 5 architect-side commit 2026-04-29T06:15Z). v0.1 architect-draft → v0.1+ Director Phase 4 review folds → v0.2 engineer round-1 audit folds → v1.0 BILATERAL RATIFIED. See §8 Status for full version history.
 **Mission name:** M-Shim-Observability-Phase-2 (mission-66 candidate; idea-220 Phase 2)
 **Mission-class:** structural-inflection + substrate-introduction sub-class (ADR-031 event taxonomy) + tooling-introduction sub-class (CLI script); L mid-scope (~3-4 eng-days)
 **Source idea:** idea-220 Phase 2 (Shim Observability — Structured Telemetry Sinks; composite scope per `reference_idea_219_220_post_mission_62.md`)
