@@ -150,6 +150,68 @@ Each phase produces exactly one durable artifact. Phases are sequential within t
 
 **Convergence:** ratified mission set is achievable within the next mission cycle; anti-goals list is non-empty and specific.
 
+## Idea Triage Protocol
+
+Strategic Review is the heavy-event for collection-reasoning over the backlog. Between events, individual ideas are filed continuously. The Idea Triage Protocol routes each newly-filed idea to one of three paths based on triage characteristics; the protocol applies to all `create_idea` activations regardless of source role.
+
+### Three routing paths
+
+| Route | When | Mechanism |
+|---|---|---|
+| **(a) Skip-direct-to-Survey** | All 5 skip-criteria met | `update_idea(status="triaged")` directly; proceed to `mission-lifecycle.md` Phase 3 Survey |
+| **(b) Triage thread** | Bilateral negotiation needed | Open thread; bilateral converge; `close_no_action` + summary; status flip via `update_idea` or cascade staged action |
+| **(c) Queue-for-next-Strategic-Review** | Collection-reasoning warranted | Status remains `open`; idea surfaces in next Strategic Review Phase 1 Cartography |
+
+### (a) Skip-criteria
+
+ALL 5 must hold:
+
+1. **Source ratification** — Director-originated OR Director-ratified-to-proceed (architect-relayed Director directive counts per `mission-lifecycle.md` §1.5.1)
+2. **Scope concrete** — idea text declares in-scope, out-of-scope, anti-goals; not a vague concept-stub
+3. **No contest** — no engineer/peer pushback; not under-specified at scope boundaries
+4. **Tele-aligned** — Tele alignment self-evident OR explicitly stated in idea text
+5. **Single-mission-shape** — not part of an idea-cluster requiring cross-idea consolidation
+
+When all 5 hold: architect calls `update_idea(status="triaged")` directly; capture skip-rationale in the update commit message OR architect-session note. Forward-mechanise: `idea.triageBypassReason` field captures rationale at status-flip time.
+
+### (b) Triage thread (bilateral negotiation needed)
+
+When any skip-criterion fails:
+- Engineer-surfaced idea needing architect ratification (criterion 1 fails)
+- Under-specified scope (criterion 2 fails)
+- Engineer/peer contesting or pushback (criterion 3 fails)
+- Tele alignment ambiguous (criterion 4 fails)
+
+Mechanism:
+- Open thread with `correlationId=idea-XX`, `semanticIntent=seek_approval` or `collaborative_brainstorm`
+- Bilateral converge → `close_no_action` staged action + non-empty `summary`
+- Cascade flips `idea.status` OR architect calls `update_idea` post-seal
+
+### (c) Queue-for-next-Strategic-Review
+
+When collection-reasoning warranted (criterion 5 fails or signals cluster):
+- **Idea-cluster** — overlapping scope with N other ideas (consolidation candidate)
+- **Cross-mission scope-flex** — could fold into multiple existing missions; warrants prioritization-pass
+- **Stale** — idea open >90 days without disposition
+- **Multi-architecture** — references multiple competing target-state architectures
+
+Architect leaves `status=open`; idea surfaces in next Strategic Review Phase 1 Cartography clustering. Architect captures queue-rationale via tag (e.g., `pending-strategic-review`) or thread on the idea.
+
+### Anti-patterns
+
+- **Architect-unilateral skip on engineer-surfaced idea** — engineer-source defaults to (b) triage thread for bilateral ratification; architect-judgment-bypass is constrained to architect-originated OR Director-originated ideas
+- **Triage thread on Director-ratified well-scoped idea** — adds bookkeeping overhead with zero bilateral-negotiation value; route via (a) skip-direct
+- **Indefinite queue-for-Strategic-Review** — ideas queued >90 days without surfacing in actual Strategic Review event accumulate as backlog rot; trigger Strategic Review when (c)-queue exceeds N=10 OR oldest queued idea exceeds 90 days
+
+### Forward-mechanise hooks
+
+This protocol is documented + codified at v1.x. Future ideas/missions can mechanise the runtime layer:
+
+- **`idea.triageBypassReason` field** — captures (a)-route skip-rationale at status-flip time; idea-129/130/131 vocabulary-chain composes
+- **Cascade trigger on Strategic Review thread convergence** — bulk-status-flip across queued (c)-route ideas
+- **Stale-idea trigger** — periodic check; >90 days open → architect inbox-item per `mission-lifecycle.md` §A row 1.1
+- **Idea-cluster detection** — Hub-side similarity heuristic flags new (c)-route candidates at filing time
+
 ## Cold-Start Handover Pattern
 
 Review spans sessions. New sessions must pick up cold. Every review instance document includes a **Cold-Start Checklist** at the top: the exact list of Hub entities + documents + local files the incoming agent must load before any phase work.

@@ -48,6 +48,8 @@ Phase 10 — Retrospective     Architect-authored retrospective; Director-ratifi
 
 ### §1.x Per-phase detail (v1.1 enrichment)
 
+**Phase 2 — Idea:** Filed via `create_idea`; status flips `open → triaged` to gate Phase 3 Survey entry. Triage mechanism + skip-criteria + 3-route protocol (skip-direct / triage-thread / queue-for-Strategic-Review) per `strategic-review.md` §Idea Triage Protocol. Architect-Responsibility per RACI §1.5; Director-Accountable for ratifying triage outcome at Phase 3 entry. Skip-direct route requires ALL 5 skip-criteria (Source-ratified + Scope-concrete + No-contest + Tele-aligned + Single-mission-shape); triage thread used when bilateral negotiation needed; queue-for-Strategic-Review used when collection-reasoning warranted.
+
 **Phase 5 — Manifest:** Architect calls `create_mission` with `plannedTasks[]` array binding the W0-Wn wave plan + `missionClass` field per §3 taxonomy. Mission entity status flips to `proposed`. plannedTasks remain `unissued` until first wave dispatch (cascade auto-issuance OR architect-direct dispatch via thread per `multi-agent-pr-workflow.md` cross-approval pattern). Architect also flips source `Idea.status` → `incorporated` + sets `Idea.missionId` for traceability.
 
 **Phase 7 — Release-gate:** Architect surfaces preflight verdict + release-gate ratification ask to Director (categorised: HOLD-point gate per §5 categorised-concerns table). Director ratifies (or redirects); architect calls `update_mission(status="active")` per autonomous-arc-driving authority (Director may also signal directly). Mission moves to `Phase 8 Execution`.

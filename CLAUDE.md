@@ -28,7 +28,9 @@ When authoring audits / retrospectives / methodology references that cite calibr
 
 Other repo-specific conventions live in the methodology docs:
 
+- `docs/methodology/mission-lifecycle.md` — formal lifecycle phases (Concept → Retrospective) + RACI matrix + engineer-runtime decision-routing rules; canonical reference for full Mission RACI + per-phase responsibilities
+- `docs/methodology/idea-survey.md` — Director-intent Survey methodology (3+3 pick-list); canonical for Idea→Design transition
+- `docs/methodology/strategic-review.md` — backlog triage + mission prioritization; carries §Idea Triage Protocol (per-idea routing: skip-direct / triage-thread / queue-for-Strategic-Review)
 - `docs/methodology/multi-agent-pr-workflow.md` — per-PR integration gate (v1.0 DRAFT; supersedes sovereign-branch model)
 - `docs/methodology/mission-preflight.md` — activation gate (proposed → active)
-- `docs/methodology/strategic-review.md` — backlog triage + mission prioritization
 - `.github/CODEOWNERS` — directory-ownership map; mechanized review routing via `@apnex-org/architect` + `@apnex-org/engineer`
