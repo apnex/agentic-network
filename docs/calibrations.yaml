@@ -30,7 +30,351 @@ schema_version: 1
 #   pattern_membership    list of pattern ids (optional); references patterns[].id
 #   cross_refs            list of strings (optional); memory-doc paths or other refs
 #   tele_alignment        list of tele ids (optional); e.g. [tele-3, tele-7]
-calibrations: []
+calibrations:
+  - id: 1
+    class: methodology
+    title: "FSM-orthogonality finding (round-1 critical)"
+    origin: mission-62-W1
+    surfaced_at: thread-387-round1
+    status: closed-folded
+    closure_mechanism: |
+      Engineer round-1 audit on thread-387 surfaced that Hub already shipped a 4-state
+      liveness FSM (ADR-017 INV-AG6) and the proposed 5-state FSM was an orthogonal
+      activity FSM. Architect counter-proposal kept both as named fields (livenessState +
+      activityState) — first canonical execution of "rename-only-what-needs-renaming"
+      discipline post-mission-57 idea-206. Folded into Design v1.0 §2 ratified bilaterally
+      on thread-387 round 10.
+    closure_pr: 110
+    cross_refs:
+      - docs/designs/m-agent-entity-revisit-design.md
+    tele_alignment:
+      - tele-3
+
+  - id: 2
+    class: methodology
+    title: "Survey + Design + thread-387 cycle methodology"
+    origin: mission-62-W0
+    status: closed-folded
+    closure_mechanism: |
+      Director-question inline refinement codified §G; rename-only-what-needs-renaming
+      discipline (counter-proposed activityState not renaming livenessState); first
+      canonical execution was idea-206/mission-57; mission-62 is the second canonical
+      execution of the cycle. Methodology ratified by mission-62 Design v1.0 ship.
+    closure_pr: 110
+
+  - id: 3
+    class: methodology
+    title: "Substrate-self-dogfood discipline application"
+    origin: mission-62-W4
+    status: closed-folded
+    closure_mechanism: |
+      Substrate-self-dogfood discipline applied observation-only per anti-goal #12 in W4
+      dogfood. Pattern reused successfully from mission-61 substrate-self-dogfood
+      precedent. Verdict GREEN with 4 known follow-ons (calibrations #20–#23). thread-395
+      converged bilaterally. Open question flagged on whether routing-refactor follow-on
+      lands under idea-121 or fresh idea.
+    cross_refs:
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-6
+
+  - id: 4
+    class: methodology
+    title: "Spike-class outcome pattern callout"
+    origin: mission-62-W0
+    status: closed-folded
+    closure_mechanism: |
+      Note-kind primitive surface gap surfaced via thread-382 (mission-60 spike-class
+      outcome) → fix-forward bundled into mission-62 (parallel to mission-61 fix-forward
+      of mission-60 verification spike). Mission-class taxonomy refined: spike-class
+      outcomes legitimately produce fix-forward bundles consumed by next
+      structural-inflection mission.
+    closure_pr: 110
+
+  - id: 5
+    class: methodology
+    title: "Architect-direct-create-mission bypass ONE-TIME"
+    origin: mission-62-W0
+    status: closed-folded
+    closure_mechanism: |
+      Cascade propose_mission blocked on engineer-side role-gate (task-303 Phase 2a
+      commit-authority); architect direct-create via create_mission was the workaround
+      per Director instruction 2026-04-27. ONE-TIME bypass — task-303 Phase 2a still
+      owns the durable fix.
+    cross_refs:
+      - task-303
+
+  - id: 6
+    class: substrate
+    title: "TS5055 SDK self-overwrite (rm -rf dist) rebuild protocol gap"
+    origin: mission-62-W2
+    status: closed-folded
+    closure_mechanism: |
+      Greg's finding: SDK rebuild failed because stale dist .d.ts files were in tsc
+      inputs AND outputs simultaneously (TS5055). Rebuild protocol §7.1 fix-forward:
+      add `rm -rf dist` as first step. Clustered with calibration #12 under "rebuild
+      protocol shipping gaps". Folded into idea-217 (Adapter compile/update/re-install
+      streamline).
+    cross_refs:
+      - idea-217
+
+  - id: 7
+    class: methodology
+    title: "maxRounds=10 thread limit calibration"
+    origin: mission-62-W1
+    status: closed-folded
+    closure_mechanism: |
+      Fresh-thread-on-round-limit codified as default transition pattern (or bump 15
+      for L+ missions; either valid). Captured as thread-config baseline.
+
+  - id: 8
+    class: substrate
+    title: "Pass 7 root cause re-framing (render-layer ≠ delivery-layer)"
+    origin: mission-62-W2
+    status: closed-folded
+    closure_mechanism: |
+      Mission-61 W4.2 PROOF was correct on envelope-delivery; the gap was at the
+      prompt-format scope (buildPromptText missing message_arrived case → generic
+      fallthrough). Architectural insight: render-layer is distinct from delivery-layer.
+      Pass 7 in PR #112 fixed pulse + note paths but NOT thread-message path
+      (re-surfaced as calibration #20). Folded into idea-219 Wire-Entity Envelope
+      Convergence.
+    closure_pr: 112
+    cross_refs:
+      - idea-219
+    tele_alignment:
+      - tele-3
+
+  - id: 9
+    class: methodology
+    title: "CI-hook carve-out scope discipline"
+    origin: mission-62-W2
+    status: closed-folded
+    closure_mechanism: |
+      Pragmatic narrow-only-when-needed carve-out: start with docs/ whole-tree carve-out
+      + test/README.md; narrow only when needed (greg's pragmatic call ratified).
+      Codified into rebuild protocol §9.
+    closure_pr: 112
+
+  - id: 10
+    class: substrate
+    title: "Engineer pulse-miss escalation false-positive"
+    origin: mission-62-W2
+    status: open
+    closure_mechanism: |
+      Hub considers engineer "silent" if pulse Message isn't claim_message+ack'd, but
+      engineer can be highly active (thread replies, commits, PR opens) without acking
+      pulse Messages. Result: false-positive escalation Messages flood architect queue.
+      Multiple solution options; PR #112 buildPromptText fix may resolve via auto-ack on
+      receipt — open pending validation in subsequent missions. Tracked under
+      bug-tracking workstream.
+
+  - id: 11
+    class: methodology
+    title: "Adapter local cache scope-narrowing (Design §4.3)"
+    origin: mission-62-W3
+    status: closed-folded
+    closure_mechanism: |
+      Adapter local cache substantive infra deferred from W3 (PR #114) per "ship infra
+      without consumer is anti-pattern". Filed as idea-218; W5 captures the Design
+      over-scope methodology lesson — substantive infra without an emerging consumer
+      should be deferred until the consumer surfaces. Potential absorption into idea-102
+      Universal Port.
+    cross_refs:
+      - idea-218
+      - idea-102
+
+  - id: 12
+    class: substrate
+    title: "Canonical-tree shim rebuild gap"
+    origin: mission-62-W5
+    status: closed-folded
+    closure_mechanism: |
+      Pass 10 rebuild protocol covered worktree-side npm run build, but the running
+      plugin loads its shim only from the canonical-tree dist
+      (~/.claude/plugins/cache/agentic-network/agent-adapter). Worktree builds produced
+      dist files the runtime never saw. Discovered 2026-04-28 ~08:00 AEST when
+      fresh-lily-#1 hit agent_thrashing_detected because both lily + greg resolved to
+      the same Agent identity (pre-fix shim missing per-OIS_INSTANCE_ID isolation).
+      Director-approved canonical-tree shim rebuild + reinstall ~08:18 AEST. Clustered
+      with calibration #6 under "rebuild protocol shipping gaps". Pass 10 protocol
+      extended; folded into idea-217.
+    cross_refs:
+      - idea-217
+
+  - id: 15
+    class: substrate
+    title: "Cognitive pipeline modular-config gap"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: open
+    closure_mechanism: |
+      P0-triage 2026-04-28 surfaced no per-component bypass knob for the cognitive
+      pipeline; defensive measure required adding OIS_COGNITIVE_BYPASS=1 env var ad-hoc
+      during the P0 stall investigation. ADR-018 cognitive pipeline modular contract
+      needs durable per-stage config knobs. Scoped to idea-220 (Shim Observability
+      Phase 2).
+    cross_refs:
+      - idea-220
+      - reference_idea_219_220_post_mission_62.md
+    tele_alignment:
+      - tele-7
+
+  - id: 16
+    class: substrate
+    title: "Shim observability invisibility-at-P0"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: closed-structurally
+    closure_mechanism: |
+      P0-triage 2026-04-28: claim_session stalled with no observability beyond Hub-side
+      logs. Director-approved tactical Phase 1 shim observability landed architect-direct
+      ~10:00 AEST: FileBackedLogger + structured NDJSON events + dispatcher CallTool
+      instrumentation + handshake parse-failure diagnostic + cognitive bypass knob +
+      redaction discipline + naive timestamp-suffix rotation. Phase 1 immediately
+      surfaced root cause (calibration #19). Phase 2 formalization scoped to idea-220.
+    cross_refs:
+      - idea-220
+      - reference_shim_observability.md
+    tele_alignment:
+      - tele-7
+
+  - id: 17
+    class: substrate
+    title: "Hub-rebuild gap in Pass 10 protocol"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: closed-folded
+    closure_mechanism: |
+      P0 smoking gun layer 1: Pass 10 rebuild protocol covers SDK pkg + claude-plugin
+      canonical-tree but does NOT extend to Hub container rebuild when Hub source
+      changes. 2026-04-28 ~07:49 AEST Hub container restarted on stale image (created
+      ~8h before PR #112 merged), causing handshake parse_failed because Hub still
+      emitted engineerId. Recovery action: Hub rebuild via scripts/local/build-hub.sh +
+      restart at ~10:25 AEST. Memory feedback_pass10_rebuild_hub_container.md captured
+      for future-session discipline. Fix-forward: Pass 10 protocol extension mandates
+      build-hub.sh + restart for any PR touching hub/src/**. Folded into idea-219
+      Schema-Migration Discipline companion.
+    cross_refs:
+      - idea-219
+      - feedback_pass10_rebuild_hub_container.md
+    tele_alignment:
+      - tele-7
+
+  - id: 18
+    class: substrate
+    title: "Wire-shape drift (entity-vs-wire convergence)"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: open
+    closure_mechanism: |
+      P0-triage 2026-04-28: 3 different render behaviors observed for 3 event types
+      (pulse, note, thread-message) — clean reproducer for O(N) per-event-type if-ladder
+      vs canonical envelope O(1). Director-prompted architectural framing ~10:10 AEST:
+      "Agent{} is now first-class managed state object — shouldn't message structure
+      reflect this?" Architectural follow-on; the wire envelope must be a projection of
+      the entity state. Scoped to idea-219 Wire-Entity Envelope Convergence
+      (mission-class L).
+    cross_refs:
+      - idea-219
+      - reference_idea_219_220_post_mission_62.md
+    tele_alignment:
+      - tele-3
+
+  - id: 19
+    class: substrate
+    title: "Schema-rename PR without state migration"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: closed-folded
+    closure_mechanism: |
+      P0 smoking gun layer 2: PR #112 (engineerId → agentId) and PR #113 (Agent.agentId
+      → Agent.id) shipped code-only renames with NO state migration script. Persisted
+      local-fs Agent records had legacy engineerId field; new Hub code reads agent.id
+      (undefined); response builder dropped the field via JSON.stringify
+      undefined-omission. Hub had been writing records as agents/<agent.id>.json =
+      agents/undefined.json since the rename. Recovery action 2026-04-28 ~10:35 AEST:
+      state migration renamed engineerId → id in 5 primary key files + 4 by-fingerprint
+      index files; salvage of undefined.json; backup at
+      /tmp/agents-pre-migration-20260428-103504.tar.gz. Memory
+      feedback_schema_rename_requires_state_migration.md captured. Discipline folded
+      into idea-219 Schema-Migration Discipline companion.
+    closure_pr: 112
+    cross_refs:
+      - idea-219
+      - feedback_schema_rename_requires_state_migration.md
+    tele_alignment:
+      - tele-3
+
+  - id: 20
+    class: substrate
+    title: "Thread-message envelope render-layer gap"
+    origin: mission-62-W4
+    surfaced_at: thread-395-round2
+    status: open
+    closure_mechanism: |
+      W4 dogfood thread-395 round-2 + round-3 verbatim envelope quotes: PR #112 Pass 7
+      buildPromptText covers pulses + notes inline, but the event=thread_message
+      notification path was NOT covered — generic [Author] sent ... fallthrough
+      preserved. thread-382 ghost-envelope reopens for that event type. Symmetric fail
+      captured bilaterally. Scoped to idea-219 Wire-Entity Envelope Convergence as
+      first concrete defect surface.
+    cross_refs:
+      - idea-219
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-3
+
+  - id: 21
+    class: substrate
+    title: "Engineer Agent-record read-surface gap"
+    origin: mission-62-W4
+    surfaced_at: thread-395
+    status: open
+    closure_mechanism: |
+      W4 dogfood: get_agents not surfaced in engineer's MCP catalog — engineer
+      read-surface limited to lean projection (list_available_peers) without full Agent
+      records. Architect side has it; engineer side does not — asymmetric coverage of
+      new substrate. Scoped to idea-220 for symmetric coverage.
+    cross_refs:
+      - idea-220
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-2
+
+  - id: 22
+    class: substrate
+    title: "Pulse-template stale-content"
+    origin: mission-62-W4
+    surfaced_at: thread-395
+    status: open
+    closure_mechanism: |
+      W4 dogfood: pulse fired with W1+W2 text on a W4-era pulse — pulse template
+      content was stale relative to current mission state. Render-time template
+      hydration gap. Scoped to idea-219 (template content as projection of canonical
+      mission state).
+    cross_refs:
+      - idea-219
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-3
+
+  - id: 23
+    class: substrate
+    title: "Pulse-template not role-aware"
+    origin: mission-62-W4
+    surfaced_at: thread-395
+    status: open
+    closure_mechanism: |
+      W4 dogfood: pulse-template suggested architect-only verbs to engineer recipients —
+      template not role-aware at render time. Recipient-role parameterization missing.
+      Scoped to idea-220 for role-aware rendering as part of symmetric Agent-record
+      surface formalization.
+    cross_refs:
+      - idea-220
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-2
 
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
