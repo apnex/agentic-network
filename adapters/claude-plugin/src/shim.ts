@@ -302,6 +302,16 @@ function pushChannelNotification(
   if (data.taskId) meta.taskId = data.taskId;
   if (data.threadId) meta.threadId = data.threadId;
   if (data.proposalId) meta.proposalId = data.proposalId;
+  // mission-66 commit 6 (#26 marker-protocol; closes calibration #26):
+  // propagate Hub-side truncation flag + full byte-length to `<channel>`
+  // attributes per Design §2.1.2 architect-lean (b) `<channel>`-attribute
+  // approach (out-of-band metadata; render-template-registry in
+  // packages/network-adapter/src/prompt-format.ts consumes). Hub envelope-
+  // builder at thread-policy.ts sets truncated/fullBytes when body exceeds
+  // THREAD_MESSAGE_PREVIEW_CHARS threshold (constant 200 chars; Phase 2
+  // stable per architect SPEC §2.4).
+  if (data.truncated === true) meta.truncated = "true";
+  if (typeof data.fullBytes === "number") meta.fullBytes = String(data.fullBytes);
 
   server
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

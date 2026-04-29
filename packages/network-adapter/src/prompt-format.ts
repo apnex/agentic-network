@@ -72,15 +72,28 @@ type RenderTemplate = (data: Record<string, unknown>, cfg: PromptFormatConfig) =
 function renderThreadMessage(data: Record<string, unknown>, cfg: PromptFormatConfig): string {
   // calibration #20 retire (mission-63 W3): surface the body inline so the
   // LLM has the actual message content, not just the envelope-shell. The
-  // Hub-side dispatch payload pre-truncates to 200 chars (thread-policy.ts);
-  // adapter renders that preview verbatim. Full body still requires get_thread.
+  // Hub-side dispatch payload pre-truncates to THREAD_MESSAGE_PREVIEW_CHARS
+  // chars (thread-policy.ts; mission-66 commit 6 ratified at 200 chars);
+  // adapter renders that preview + truncation marker (mission-66 #26).
+  // Full body still requires get_thread.
+  //
+  // mission-66 commit 6 (#26 marker-protocol; closes calibration #26):
+  // Hub-side envelope-builder surfaces `truncated: true` + `fullBytes: <n>`
+  // on dispatchPayload when body exceeds preview threshold. Adapter
+  // render-template appends marker per Design §2.1.2 architect-lean (b):
+  // `[…<N> bytes truncated; query thread for full content]`.
   const p = cfg.toolPrefix;
   const authorLabel = data.author === "architect" ? "Architect"
     : data.author === "engineer" ? "Engineer peer"
     : "Peer";
   const title = (data.title as string) || (data.threadId as string) || "(unknown)";
   const body = (data.message as string) || "";
-  const bodyLine = body ? `\n\nMessage preview: ${body}` : "";
+  const truncated = data.truncated === true;
+  const fullBytes = typeof data.fullBytes === "number" ? data.fullBytes : undefined;
+  const truncationMarker = truncated && fullBytes !== undefined
+    ? ` […${fullBytes} bytes truncated; query thread for full content]`
+    : "";
+  const bodyLine = body ? `\n\nMessage preview: ${body}${truncationMarker}` : "";
   return (
     `[${authorLabel}] Replied to thread "${title}".${bodyLine} ` +
     `\n\nIt is your turn. Call ${p}get_thread with threadId="${data.threadId}" ` +
