@@ -1,37 +1,39 @@
 # tpl/agents.jq — verbose Agent projection template for get-agents.sh
 #
-# Mission-66 W1+W2 commit 7a (architect-portion).
+# Mission-66 W1+W2 commit 7a (architect-portion) + post-M66 fix-forwards
+# (HUB_API_TOKEN rename / 2-step session handshake / SNAKE_CASE headings /
+# version-column refactor / name field).
 #
-# Input: raw JSON-RPC response from /mcp tools/call get_agents
+# Input: post-unwrap array of Agent records from .result.content[0].text.
 # Pipeline:
-#   1. Engineer commit 7b unwraps result.content[0].text (JSON-stringified
-#      Agent projection); this template projects the resulting array
-#   2. Returns array-of-objects with column-friendly fields
+#   1. Engineer commit 7b unwraps result.content[0].text (JSON-stringified);
+#      this template projects the resulting array to column-friendly fields
+#   2. Field names use camelCase; buildTable() in get-agents.sh transforms
+#      camelCase → SNAKE_CASE for headings (e.g. activityState → ACTIVITY_STATE)
 #
-# Verbose projection per Director's 2026-04-29 ask: clientMetadata +
-# advisoryTags + labels + lastSeenAt + status. Ergonomic frontend that ALSO
-# surfaces #40 projection gaps to operator visibility immediately.
+# Version columns rationale (Director ratified post-#138 live-test):
+#   - shimPlugin = clientMetadata.proxyVersion (claude-plugin shim version)
+#   - adapter    = clientMetadata.sdkVersion stripped of @apnex/network-adapter@
+#                  prefix (network-adapter SDK version)
+#   - Useful for determining if 2 different clients have the same underlying
+#     adapter code
 #
 # Reference: /home/apnex/taceng/table/tpl/*.jq pattern (memory:
 # reference_prism_table_pattern.md).
-
-# Engineer commit 7b unwraps .result.content[0].text first; this template
-# expects the post-unwrap array of Agent records as input.
 
 if type == "array" then
     [
         .[] | {
             id: (.id // .agentId // "?"),
+            name: (.name // "?"),
             role: (.role // "?"),
-            status: (.status // .livenessState // "?"),
-            activity: (.activityState // "?"),
-            adapterVersion: (.advisoryTags.adapterVersion // "?"),
+            livenessState: (.livenessState // .status // "?"),
+            activityState: (.activityState // "?"),
+            shimPlugin: (.clientMetadata.proxyVersion // "?"),
+            adapter: ((.clientMetadata.sdkVersion // "?") | split("@") | last),
             llmModel: (.advisoryTags.llmModel // "?"),
-            proxyVersion: (.clientMetadata.proxyVersion // "?"),
-            sdkVersion: (.clientMetadata.sdkVersion // "?"),
             pid: (.clientMetadata.pid // "?"),
-            labels: (.labels // {} | to_entries | map("\(.key)=\(.value)") | join(",") | if . == "" then "-" else . end),
-            lastSeenAt: (.lastSeenAt // "?")
+            labels: (.labels // {} | to_entries | map("\(.key)=\(.value)") | join(",") | if . == "" then "-" else . end)
         }
     ]
 else
