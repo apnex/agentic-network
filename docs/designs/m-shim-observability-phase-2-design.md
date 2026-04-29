@@ -37,15 +37,15 @@
 
 **Surface:** `get_agents` MCP tool currently architect-pool-only; engineer cannot call it for substrate-self-check workflows.
 
-**Closure path:** Hub MCP tool registry exposes `get_agents` to engineer role-pool with same read-only semantics architect has today. No new tool-surface verbs (idea-121 deferral preserved); existing `get_agents` is the surface — only authority-boundary changes.
+**Closure path:** Engineer adapter dispatcher includes `get_agents` in its tool catalog. No new tool-surface verbs (idea-121 deferral preserved); existing `get_agents` is the surface.
 
-**Scope:**
-- Hub-side: extend role-filter on `get_agents` MCP tool to allow engineer role
+**Scope (engineer round-1 audit Q1 fold; greg thread-422):** Hub-side `get_agents` is **already declared `[Any]` role-callable** at the MCP tool surface (`hub/src/policy/session-policy.ts`); no role-filter restricts it today. Closure is engineer-adapter-side:
 - Engineer-side: dispatcher inclusion in engineer's tool catalog; cognitive-layer authority-check passes
-- Test surface: engineer-pool integration test exercising `get_agents` from engineer adapter
+- Test surface: engineer-pool integration test exercising `get_agents` from engineer adapter end-to-end
 - No state migration needed (read-only; no persisted state changes)
+- **Hub-side change conditional:** if W1+W2 implementation discovery surfaces a quiet role-gate not visible in current source-check, extend role-filter; otherwise no Hub-side change
 
-**Risk:** none material; symmetric extension of existing tool-surface authority pattern.
+**Risk:** none material; symmetric self-introspection semantics for read-only [Any]-callable shape.
 
 #### §2.1.2 Calibration #26 closure — thread_message marker-protocol (tele-3 sub-scope)
 
@@ -68,6 +68,8 @@
 - Vertex-cloudrun adapter (Phase 3 mission) adopts marker-protocol at Phase 3 with stable v1 contract — Hub-side always emits marker; consumers ignore unknown `<channel>` attributes if not yet upgraded (forward-compat preserved at Hub-side)
 - No interim state where Hub emits marker but adapter doesn't render — single-PR W1+W2 atomic ships both
 
+**Truncation threshold (engineer round-1 audit Q2 sub-ask fold; greg thread-422):** Hub envelope-builder uses constant threshold (current ~250 chars per #26 origin) documented in event-taxonomy doc. Phase 2 stable; configurable via env var if Phase 3 surfaces need.
+
 **Risk:** R2 in §5 risk register.
 
 #### §2.1.3 Calibration #40 closure — Hub-side projection audit + version-source-of-truth consolidation (tele-3 sub-scope)
@@ -89,7 +91,9 @@
 - **(β) Comprehensive** — systematic audit of Hub projection class (every field that flows from agent record → wire envelope → operator-visible state); fix all surfaced divergences. Higher scope; substrate-cleanup-wave class signature.
 
 **Architect-lean closure path:** **(β) Comprehensive but bounded by methodology** — systematic audit DOES happen (Hub projection-fidelity is foundational substrate); but bounded by:
-- Audit scope = Hub `get_agents` MCP tool projection + `agent_state_changed` SSE event + `list_available_peers` projection + handshake response. NOT every Hub MCP tool surface; just the Agent-state-bearing projections.
+- **Audit scope** (engineer round-1 audit Q3 fold; greg thread-422) = Hub `get_agents` MCP tool projection + `agent_state_changed` SSE event + `list_available_peers` projection + handshake response + **`get_engineer_status`** (cited in #40-(b) symptom — `advisoryTags` missing `adapterVersion` projection)
+- **Phase 3 deferral (explicit):** `claim_session` response Agent projection is session-lifecycle (not Agent-state-bearing in steady state); deferred to Phase 3 mission scope
+- NOT every Hub MCP tool surface; just the 5 Agent-state-bearing projections above
 - Audit produces (i) divergence inventory + (ii) fix plan per divergence + (iii) test surface per fix
 - Phase 4 Design ratifies the audit-scope-boundary list above; W1+W2 atomic ships fixes with test surface
 
@@ -113,26 +117,36 @@
 
 **Surface:** `kind=note` payload-rendering at Hub expects flat-body shape; structured payload silently degrades to `(empty note body)` with no caller-side feedback (bilateral-blind class).
 
-**Closure path:** Architect-lean **option (b) — schema-validate at `create_message` entry-point** so caller gets immediate feedback on render-incompatible payload (per `reference_idea_219_220_post_mission_62.md` 2026-04-29 architect-lean ratification + mission-64 PR #130 §2c.X anti-pattern fold).
+**Closure path (v0.2 fold per engineer round-1 audit Q8 — LOAD-BEARING; greg thread-422):** **Schema-validate anchored at the canonical repository write-path** (`messageRepository.create()` or equivalent canonical write entry-point), NOT only at the public-API `create_message` MCP entry-point.
+
+**Why anchor at write-path (engineer round-1 surface):** schema-validate at MCP entry-point catches LLM-callers but **does NOT catch Hub-internal emit paths** that call repository write directly:
+- `hub/src/policy/director-notification-helpers.ts` — Hub-internal director-notification helper
+- `hub/src/policy/downstream-actors.ts` — `mission_activation_inbox` + `mission_completion_director_inbox` + `review_submitted_inbox` triggers
+- `hub/src/policy/notification-helpers.ts` — Hub-internal helper
+- `hub/src/policy/message-policy.ts` — Hub-internal write path
+
+These emitters bypass `create_message` MCP entry. MCP-entry-only validation closes LLM-caller bilateral-blind class but **persists Hub-internal-emitter bilateral-blind class** — exactly the surface Director sees most (trigger-fired notifications). Repository-write-path anchor catches BOTH classes at the same canonical substrate gate. **Architect-lean concur on greg's option (a)** — single substrate gate, no enumeration drift, structural closure.
 
 **Architectural commitments:**
-- Hub-side `create_message` MCP tool entry-point applies schema-validation per `kind` value
-- For `kind=note`: validate payload conforms to flat-body schema (whatever the canonical shape is — to be specified by Hub team in `hub/src/policy/note-schema.ts` or similar)
-- On validation failure: return error response to caller (architect-side `create_message` returns nack instead of clean messageId)
-- **Reject-mode default ratified by Director Phase 4 review 2026-04-29:** no warn-then-reject grace period; bilateral-blind class is structural-defect class; reject-mode is canonical
+- Schema-validate dispatched at canonical write-path per `kind` value (engineer-domain implementation: `hub/src/policy/note-schema.ts` or repository-layer hook)
+- For `kind=note`: validate payload conforms to canonical flat-body schema
+- **LLM-caller failure mode:** `create_message` MCP tool returns error nack (validation error propagates back through MCP layer with diagnostic message)
+- **Hub-internal-emitter failure mode:** emitter throws / log-and-skips on validation failure — correct invincibility-class behavior (a defective Hub-internal emitter does NOT silently degrade; it loudly fails and is caught at log)
+- **Reject-mode default ratified by Director Phase 4 review 2026-04-29:** no warn-then-reject grace period; bilateral-blind class is structural-defect class; reject-mode canonical
 - **Coordinated upgrade scope (per anti-goal #8 + Director ratification 2026-04-29):**
-  - ALL `kind=note` callers upgraded to canonical flat-body schema in same W1+W2 atomic PR
-  - Caller pool to enumerate (engineer round-1 audit Q8): primary caller is architect-side LLM via `create_message` (per multi-agent-pr-workflow.md §2c.X anti-pattern fold mission-64 PR #130); engineer-side does not call `create_message` (authority-boundary role-filter); Director-side does not call directly
-  - If any architect-side `kind=note` call sites use non-flat payload, they ship corrected payload alongside Hub-validate commit in W1+W2
-  - No interim state where Hub has reject-mode but architect-side still emits old payload structures
+  - ALL `kind=note` callers (LLM + Hub-internal) upgraded to canonical schema in same W1+W2 atomic PR
+  - **Hub-internal emitter pool** (engineer-side enumerated; pre-W1+W2 grep confirmed): 4 sites listed above; W1+W2 atomic ships canonical-payload corrections at all 4 alongside write-path validate commit
+  - **LLM-caller pool** (W1+W2 implementation cycle enumerates via grep): architect-side `create_message` call sites in agentic-network-lily/ + agentic-network-greg/ + canonical-tree adapter shim; bilateral pre-W1+W2 grep + mission-64-style 5-cycle iteration handles emergent caller surfaces
+  - No interim state where write-path validates but emitter still produces non-canonical payload
 
 **Scope:**
-- Hub-side: `create_message` entry-point dispatches to per-kind schema-validate function; reject-mode for `kind=note` non-flat payload
-- Architect-side: any `kind=note` call sites in agentic-network-lily/ + agentic-network-greg/ + canonical-tree adapter shipped in same PR with corrected payload structure (engineer round-1 audit Q8 enumerates caller pool)
-- Test surface: deliberately-malformed kind=note payload integration test; verify caller receives error nack with diagnostic message
-- **Bilateral PR review surface:** engineer round-1 audit Q8 confirms ALL `kind=note` callers enumerated + upgraded; coordinated-upgrade discipline structurally enforced via single-PR W1+W2 atomic merge
+- Hub-side: canonical write-path dispatches to per-kind schema-validate function; reject-mode for `kind=note` non-flat payload at the canonical gate (catches MCP-entry callers AND Hub-internal emitters)
+- Hub-internal emitters: 4 sites enumerated above ship canonical-payload corrections in same W1+W2 atomic
+- LLM-caller sites: pre-W1+W2 grep enumeration + corrected payload ship in same atomic
+- Test surface: (i) deliberately-malformed kind=note via MCP entry-point — verify error nack with diagnostic message; (ii) deliberately-malformed kind=note via Hub-internal emitter — verify throw/log-skip behavior; (iii) canonical-shape integration tests for all 4 Hub-internal emit sites
+- **Bilateral PR review surface:** engineer round-1 audit Q8 confirmed Hub-internal emitter enumeration; coordinated-upgrade discipline structurally enforced via single-PR W1+W2 atomic merge + write-path-anchor closes the class symmetrically
 
-**Risk:** R4 in §5 risk register **RESOLVED** by Director ratification 2026-04-29 (coordinated upgrade discipline closes the class).
+**Risk:** R4 in §5 risk register **RESOLVED** by Director ratification 2026-04-29 + greg round-1 audit anchor-discipline fold (coordinated upgrade discipline + write-path anchor closes the class structurally for ALL emitters).
 
 ### §2.2 Observability formalization
 
@@ -212,18 +226,28 @@ Implementation pattern per **prism.sh reference at `/home/apnex/taceng/table/pri
 - `scripts/local/tpl/agents-lean.jq` — lean projection (id + role + status; for terse view)
 - `~/.config/apnex-agents/<role>.env` (NOT committed; per-operator credential file with `HUB_TOKEN=...`)
 
-**API target:** `http://localhost:8080/api/agents` (Hub MCP read endpoint; final URL TBD at engineer round-1 audit since Hub MCP HTTP surface naming is engineer-domain)
+**API target (engineer round-1 audit Q5 fold; greg-lean (ii); greg thread-422):** `http://localhost:8080/mcp` (Hub MCP-over-HTTP JSON-RPC envelope; existing `/mcp` POST endpoint with `requireAuth` Bearer-token gate). Hub does NOT currently expose a REST `/api/agents` endpoint; CLI script wraps the existing JSON-RPC `tools/call` envelope:
+
+```
+POST http://localhost:8080/mcp
+Authorization: Bearer ${HUB_TOKEN}
+Content-Type: application/json
+
+{"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_agents","arguments":{}}}
+```
+
+`tpl/agents.jq` template unwraps `result.content[0].text` (which is JSON-stringified Agent projection) then projects to columns. Anti-goal #2 alignment strengthened — no new HTTP REST endpoint added; CLI dogfoods the existing MCP-over-HTTP path adapters use. New REST endpoints can land in Phase 3 IF future operator surfaces justify.
 
 **Architectural commitments:**
 - Auth via env file source: `source "${HOME}/.config/apnex-agents/${ROLE}.env"` → `HUB_TOKEN` available; `Authorization: Bearer ${HUB_TOKEN}` curl header
 - Multi-role: `--role architect|engineer|director` flag (default `director` since Director is primary CLI consumer)
 - Output: defaults to `buildTable()` rendering with `tpl/agents.jq` template; `--json` flag bypasses to raw `jq .`
 - `--lean` flag uses `tpl/agents-lean.jq` for terse output
-- `--host <url>` flag overrides default `http://localhost:8080` (e.g., `--host https://prod-hub.apnex.io`)
+- `--host <url>` flag overrides default `http://localhost:8080` (e.g., `--host https://prod-hub.apnex.io`); `/mcp` path appended automatically
 - Exit codes: 0 success / 1 API error / 2 auth missing / 3 invalid args
 - Error rendering: red `[ ERROR ]` prefix per prism.sh pattern
 
-**Anti-goal locked:** NO new MCP tool-surface verbs (CLI script consumes existing Hub MCP read API; doesn't introduce new verbs).
+**Anti-goal locked:** NO new MCP tool-surface verbs AND NO new HTTP REST endpoints (CLI script consumes existing Hub MCP-over-HTTP JSON-RPC; doesn't introduce new surface).
 
 #### §2.3.3 Bilateral co-execution
 
@@ -243,6 +267,8 @@ Per Q5=C bilateral co-execution + Director RACI note:
 
 **Aggregate sizing:** ~3-4 engineer-days bilateral (L mid-scope baseline holds; no upper-bound flag from Q4 since D excluded). Mission-class L matches mission-64 sizing; W1+W2 atomic execution is substantial but bounded.
 
+**Commit-message discipline (engineer round-1 audit Q6 sub-note fold; greg thread-422):** Each commit message in W1+W2 atomic explicitly calls out the coordinated-upgrade discipline anchor (which consumers it upgrades atomically per anti-goal #8). PR-review surface verifies anti-goal #8 closure per-commit.
+
 **Substrate-self-dogfood discipline:** W3 dogfood gate exercises all 4 substrate-fix surfaces + observability formalization + CLI script. Calibration #34 (W3-collapse-into-W1+W2-fix retry pattern) likely activates if W1+W2 substrate fixes surface defects via dogfood.
 
 ### §2.5 Calibration ledger discipline (M65 substrate landing operationally)
@@ -257,9 +283,10 @@ Per CLAUDE.md `Calibration ledger discipline` (mission-65 ADR-030 substrate): al
 
 **Calibrations LIKELY-NEW at W4 closing audit (anticipated; TBD-W4):**
 - **Methodology-class #48 (planned filing):** "Coordinated upgrade discipline — controlled-substrate substrate-introduction class default; partial-upgrade is anti-goal; backward-compat is W1+W2 upgrade-discipline not Design-time commitment" — surfaced via Director Phase 4 review 2026-04-29; closure_path = methodology-doc fold to `docs/methodology/mission-lifecycle.md` OR new methodology subsection on substrate-introduction-class upgrade discipline (TBD W4 closing fold); tele_alignment [tele-3, tele-7]; this is the load-bearing M6-origin methodology nugget worth durable codification beyond just M6 ADR
+- **Methodology-class #49 (planned filing — engineer round-1 audit Q8 sister-fold; greg thread-422):** "Schema-validate substrate gates land at the canonical write-path, NOT only at the public-API entry-point — Hub-internal emit paths bypass MCP-entry validation; only repository-write-path anchor closes bilateral-blind class for ALL emitters under coordinated-upgrade discipline" — structural-anchor-discipline; sister to #48 (different tele-alignment + methodology-doc placement); closure_path = methodology-doc fold to `docs/methodology/mission-lifecycle.md` substrate-introduction-class subsection OR dedicated structural-anchor-discipline doc; tele_alignment [tele-3, tele-6, tele-7] (invincibility-class structural anchor + ops-resilience); pattern-membership candidate: review-loop-as-calibration-surface (this calibration emerged FROM the round-1 audit reviewing the bilateral-blind-class closure path)
 - Methodology-class: Q5-RACI-redundancy nugget (idea-survey.md Q5-class questions defer to mission-lifecycle.md RACI rather than re-asking; surfaced via Director Q5 note)
 - Methodology/substrate-class: any partial-upgrade misses surfaced during W1+W2 (#41 caller-pool incompletely enumerated; #40 audit-scope-bounded missed sister-divergences); these would be substrate-class
-- Methodology-class: review-loop-as-calibration-surface pattern application (substantive PR review surfaces typically yield 1-3 review-loop calibrations)
+- Methodology-class: review-loop-as-calibration-surface pattern application (substantive PR review surfaces typically yield 1-3 review-loop calibrations; #49 itself IS such an application)
 
 ---
 
@@ -405,8 +432,17 @@ If GREEN-with-folds, engineer ratifies on round-N thread close → Design v1.0 �
   7. §4.2 Engineer audit Q8 added (consumer-pool enumeration ask; load-bearing under coordinated-upgrade discipline)
   8. §5.3 W3 dogfood Gate-7 added (consumer-upgrade verification)
   9. §2.5 Calibration ledger discipline — #48 NEW planned filing for coordinated upgrade discipline methodology nugget at W4 closing audit
-- **v0.2** architect-revision (post-engineer round-1 audit folds; structural concerns absorbed)
-- **v1.0** BILATERAL RATIFIED (engineer + architect ratify on round-1 audit thread close; Manifest+Preflight bundle PR follows)
+- **v0.2** architect-revision (this commit; post-engineer round-1 audit folds — greg thread-422 GREEN-with-folds verdict): 4 substantive folds + 2 sub-asks + 1 sister-calibration planned-filing absorbed:
+  1. §2.1.1 #21 closure scope **restated** — Hub `get_agents` already `[Any]`-callable; closure is engineer-adapter-dispatcher-inclusion + e2e (engineer round-1 Q1 fold); Hub-side change conditional on W1+W2 discovery
+  2. §2.1.2 #26 marker-protocol — truncation threshold as constant in Hub envelope-builder + documented in event-taxonomy doc; configurable via env var only if Phase 3 surfaces need (Q2 sub-ask)
+  3. §2.1.3 #40 audit-scope **extended** — added `get_engineer_status` (cited in #40-(b) symptom); explicit Phase 3 deferral note for `claim_session` response (Q3 fold)
+  4. **§2.1.4 #41 closure path STRUCTURAL ANCHOR change (LOAD-BEARING; Q8 fold):** anchor moved from `create_message` MCP entry-point → canonical repository write-path (`messageRepository.create()` or equivalent). Catches BOTH MCP-entry callers AND Hub-internal emit paths (4 sites enumerated: director-notification-helpers / downstream-actors mission_activation_inbox+mission_completion_director_inbox+review_submitted_inbox / notification-helpers / message-policy). Single substrate gate; no enumeration drift; structural closure of bilateral-blind class for ALL emitters
+  5. §2.3.2 CLI script API target = `/mcp` JSON-RPC envelope (greg-lean (ii); Q5 fold) — wraps existing Hub MCP-over-HTTP path; no new HTTP REST endpoint; tpl/agents.jq unwraps `result.content[0].text`
+  6. §2.4 Wave plan — commit-message discipline note added (Q6 sub-note): each W1+W2 commit explicitly calls out coordinated-upgrade anchor (which consumers it upgrades atomically)
+  7. §2.5 Calibration #49 NEW planned-filing — sister to #48; structural-anchor-discipline (write-path > MCP-entry); tele-3 + tele-6 + tele-7; methodology-doc fold to mission-lifecycle.md substrate-introduction-class subsection
+  8. §4.2 engineer round-1 audit Q1+Q3+Q5+Q8 folded; Q2+Q6 sub-asks folded
+  9. NO CHANGE on Q4 (#41 reject-mode default already ratified; coordinated-upgrade closes class) + Q7 (sizing baseline holds); engineer concur
+- **v1.0** BILATERAL RATIFIED (engineer + architect ratify on round-2 thread close; Manifest+Preflight bundle PR follows)
 - **W0 bundle PR** opens (Survey + Design v1.0 + ADR-031 SCAFFOLD + Preflight artifact)
 
 ---
