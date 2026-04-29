@@ -244,7 +244,7 @@ calibrations:
     title: "Hub-rebuild gap in Pass 10 protocol"
     origin: mission-62-W5
     surfaced_at: P0-triage-2026-04-28
-    status: closed-folded
+    status: retired
     closure_mechanism: |
       P0 smoking gun layer 1: Pass 10 rebuild protocol covers SDK pkg + claude-plugin
       canonical-tree but does NOT extend to Hub container rebuild when Hub source
@@ -255,6 +255,12 @@ calibrations:
       for future-session discipline. Fix-forward: Pass 10 protocol extension mandates
       build-hub.sh + restart for any PR touching hub/src/**. Folded into idea-219
       Schema-Migration Discipline companion.
+
+      Retired by mission-63 W4 (thread-403 converged 2026-04-28T05:08Z): build-hub.sh
+      discipline executed throughout M63 (W0/W1+W2/W3) with zero deployment-skew
+      parse_failed events. Subsequently codified into Pass 10 §A by mission-63 W5
+      closing PR #120.
+    closure_pr: 120
     cross_refs:
       - idea-219
       - feedback_pass10_rebuild_hub_container.md
@@ -266,7 +272,7 @@ calibrations:
     title: "Wire-shape drift (entity-vs-wire convergence)"
     origin: mission-62-W5
     surfaced_at: P0-triage-2026-04-28
-    status: open
+    status: retired
     closure_mechanism: |
       P0-triage 2026-04-28: 3 different render behaviors observed for 3 event types
       (pulse, note, thread-message) — clean reproducer for O(N) per-event-type if-ladder
@@ -275,6 +281,15 @@ calibrations:
       reflect this?" Architectural follow-on; the wire envelope must be a projection of
       the entity state. Scoped to idea-219 Wire-Entity Envelope Convergence
       (mission-class L).
+
+      Retired structurally by mission-63 W1+W2 (PR #118): canonical envelope
+      `{ok, agent: AgentProjection, session: SessionBindingState, wasCreated?}` ships
+      across all Agent-state-bearing wire surfaces (handshake response,
+      agent_state_changed SSE, list_available_peers projection); projectAgent helper
+      at hub/src/policy/agent-projection.ts is single point-of-truth Agent →
+      AgentProjection. PR #119 lands the adapter-side parser. ADR-028 RATIFIED at
+      mission-63 W5 close (PR #120).
+    closure_pr: 118
     cross_refs:
       - idea-219
       - reference_idea_219_220_post_mission_62.md
@@ -286,7 +301,7 @@ calibrations:
     title: "Schema-rename PR without state migration"
     origin: mission-62-W5
     surfaced_at: P0-triage-2026-04-28
-    status: closed-folded
+    status: retired
     closure_mechanism: |
       P0 smoking gun layer 2: PR #112 (engineerId → agentId) and PR #113 (Agent.agentId
       → Agent.id) shipped code-only renames with NO state migration script. Persisted
@@ -299,7 +314,15 @@ calibrations:
       /tmp/agents-pre-migration-20260428-103504.tar.gz. Memory
       feedback_schema_rename_requires_state_migration.md captured. Discipline folded
       into idea-219 Schema-Migration Discipline companion.
-    closure_pr: 112
+
+      Retired structurally by mission-63 W3 (PR #119) shipping
+      scripts/migrate-canonical-envelope-state.ts (248 lines; Hub-stopped self-check via
+      ECONNREFUSED, idempotent, backup-before-mutation tarball, name=id fallback for
+      legacy records, clientMetadata/advisoryTags malformed-default) — first canonical
+      execution of state-migration script discipline. Migration scanned 8 records /
+      mutated 4. Subsequently codified into Pass 10 §C protocol step by mission-63 W5
+      closing PR #120.
+    closure_pr: 119
     cross_refs:
       - idea-219
       - feedback_schema_rename_requires_state_migration.md
@@ -311,7 +334,7 @@ calibrations:
     title: "Thread-message envelope render-layer gap"
     origin: mission-62-W4
     surfaced_at: thread-395-round2
-    status: open
+    status: retired
     closure_mechanism: |
       W4 dogfood thread-395 round-2 + round-3 verbatim envelope quotes: PR #112 Pass 7
       buildPromptText covers pulses + notes inline, but the event=thread_message
@@ -319,6 +342,17 @@ calibrations:
       preserved. thread-382 ghost-envelope reopens for that event type. Symmetric fail
       captured bilaterally. Scoped to idea-219 Wire-Entity Envelope Convergence as
       first concrete defect surface.
+
+      Retired (PARTIAL → main RED retired) by mission-63 W3 (PR #119) render-template
+      registry replacing per-event-type if-ladder in
+      packages/network-adapter/src/prompt-format.ts buildPromptText
+      (Map<event, RenderTemplate> dispatch with 4 mandatory templates:
+      message_arrived/pulseKind, thread_message, thread_convergence_finalized,
+      agent_state_changed; +215/-119 net). Body IS inline now;
+      thread_convergence_finalized full ~1900 chars verbatim per W4 test #6. AMBER
+      residual narrowed empirically to thread_message-event-type-specific silent
+      ~250-char truncation, surfaced as NEW calibration #26.
+    closure_pr: 119
     cross_refs:
       - idea-219
       - docs/audits/m-agent-entity-revisit-w4-validation.md
@@ -347,12 +381,20 @@ calibrations:
     title: "Pulse-template stale-content"
     origin: mission-62-W4
     surfaced_at: thread-395
-    status: open
+    status: retired
     closure_mechanism: |
       W4 dogfood: pulse fired with W1+W2 text on a W4-era pulse — pulse template
       content was stale relative to current mission state. Render-time template
       hydration gap. Scoped to idea-219 (template content as projection of canonical
       mission state).
+
+      Retired structurally by mission-63 W4 — pulse-template absorbed by canonical
+      envelope discipline (PRs #118 + #119); W4 dogfood verified pulses rendered
+      current-mission-phase content inline (architectPulse 05:03:46Z lily ~440 chars;
+      engineerPulse 05:04:07Z greg ~440 chars; symmetric verbatim). No W1+W2 leakage.
+      Forward-consequence captured in ADR-028: "pulse-template synthesis becomes
+      natural extension of envelope-state-projection principle."
+    closure_pr: 119
     cross_refs:
       - idea-219
       - docs/audits/m-agent-entity-revisit-w4-validation.md
@@ -375,6 +417,65 @@ calibrations:
       - docs/audits/m-agent-entity-revisit-w4-validation.md
     tele_alignment:
       - tele-2
+
+  - id: 25
+    class: substrate
+    title: "Pass 10 protocol gap on SDK tgz rebuild"
+    origin: mission-63-W3
+    surfaced_at: thread-403-round0
+    status: closed-structurally
+    closure_mechanism: |
+      Surfaced 2026-04-28T04:55Z UTC during §6.3 9-step adapter-restart gate
+      post-PR-#119 merge: fresh-lily handshake hit parse_failed events in
+      .ois/shim-events.ndjson. Root cause via shim-observability Phase 1 log capture
+      (<1min surfacing time): install.sh rebuilds claude-plugin/dist but does NOT
+      rebuild network-adapter SDK or refresh ois-network-adapter-2.0.0.tgz; adapter
+      restart on stale SDK tgz ran old flat-field parseHandshakeResponse. Recovery
+      sequence (~17min total time-to-recovery, ~10x faster than mission-62 P0):
+      rebuild SDK + npm pack + cp tgz + reinstall + adapter restart. Closed by
+      mission-63 W5 PR #120 codifying Pass 10 §B (SDK rebuild step) — symmetric
+      extension mirroring Hub-source rebuild. Architectural framing: mission-61's
+      Layer-3 SDK-tgz-stale was canonical-tree variant; #25 is SDK-package variant,
+      same architectural class one tier up. Subsequently structurally superseded by
+      mission-64 ADR-029 RATIFIED + Pass 10 §B/§D deprecation to "Removed; npm package
+      + script is canonical" + .mcp.json bundling — manual recipe deprecated entirely
+      once npm-publish channel landed.
+    closure_pr: 120
+    cross_refs:
+      - mission-61 Layer-3 SDK-tgz-stale lesson
+      - mission-62 W4-followon PR #115 shim observability Phase 1
+      - ADR-029
+      - docs/audits/m-adapter-streamline-closing-audit.md
+      - docs/methodology/multi-agent-pr-workflow.md
+    tele_alignment:
+      - tele-7
+
+  - id: 26
+    class: substrate
+    title: "Silent thread_message body truncation marker missing"
+    origin: mission-63-W4
+    surfaced_at: thread-403-round1
+    status: open
+    closure_mechanism: |
+      Surfaced empirically at W4 substrate-self-dogfood test #5 (thread-403 round-1,
+      2026-04-28T05:05Z UTC). thread_message body renders inline (improvement from
+      mission-62 W4 calibration #20 RED) but with ~250-char silent truncation and no
+      marker. Empirically narrowed: pulse + thread_convergence_finalized event types
+      render verbatim full content (per W4 tests #4, #6); only event=thread_message
+      exhibits silent cutoff. Architectural framing: Hub-side thread_message
+      envelope-builder applies the truncation; render-template at adapter-side has no
+      knowledge. Marker-protocol options sketched:
+      (a) Hub embeds marker token at truncation boundary;
+      (b) Hub adds <channel> attribute truncated="true" fullBytes="<n>";
+      (c) marker-protocol design at idea-220 Phase 2.
+      Low-pri marker-spec recommendation included as forward-pointer in mission-63 W5
+      PR #120 Pass 10 §"thread_message truncation marker"; design + implementation
+      deferred to idea-220 Phase 2.
+    cross_refs:
+      - idea-220
+      - docs/audits/m-wire-entity-convergence-w4-validation.md
+    tele_alignment:
+      - tele-3
 
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
