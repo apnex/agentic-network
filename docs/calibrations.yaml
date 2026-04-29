@@ -1,0 +1,42 @@
+# Calibration ledger — canonical schema-versioned source-of-truth
+#
+# ADR-030: Calibration ledger is first-class versioned repo data; audits +
+# retrospectives + methodology become VIEWS over the canonical ledger.
+#
+# Two first-class entity types:
+#   - calibrations[]  — per-incident discipline records (id + class + status + closure)
+#   - patterns[]      — named architectural-pathology patterns (slug + description + members)
+#
+# Schema spec: docs/designs/m-calibration-codification-design.md §2.1
+# ADR:         docs/decisions/030-calibration-ledger-mechanization.md
+# Discipline:  see CLAUDE.md "Calibration ledger discipline" section
+#
+# Phase 1 (mission-65) ships read-only Skill scaffolding (3 verbs:
+# list / show <id-or-slug> / status). Write authority + validate operations
+# defer to Phase 2+. Cross-link discipline enforced at edit-time (manual);
+# Phase 2+ adds mechanized validate.
+
+schema_version: 1
+
+# calibrations[] — per-entry schema:
+#   id                    integer; unique; monotonic across missions
+#   class                 enum: substrate | methodology
+#   title                 string; concise human-readable summary
+#   origin                string; "mission-X-WN" or "mission-X-W4-followon"
+#   surfaced_at           string (optional); "thread-NNN-roundN" if applicable
+#   status                enum: open | closed-structurally | closed-folded | retired | superseded
+#   closure_mechanism     string (multiline); required if status != open
+#   closure_pr            integer (optional); PR # delivering closure
+#   pattern_membership    list of pattern ids (optional); references patterns[].id
+#   cross_refs            list of strings (optional); memory-doc paths or other refs
+#   tele_alignment        list of tele ids (optional); e.g. [tele-3, tele-7]
+calibrations: []
+
+# patterns[] — per-entry schema:
+#   id                          string slug; stable kebab-case
+#   title                       string; human-readable pattern name
+#   origin                      string; "mission-X-WN" where pattern was first named
+#   description                 string (multiline); pattern definition + diagnostic signature
+#   surfaced_by_calibrations    list of calibration ids; non-empty
+#   methodology_doc_subsection  string (optional); path + anchor to methodology-doc explanation
+patterns: []
