@@ -742,6 +742,85 @@ calibrations:
     tele_alignment:
       - tele-3
 
+  - id: 43
+    class: methodology
+    title: "Architect drift from strict multi-round Survey methodology (single-round aggregation anti-pattern)"
+    origin: mission-65-W0
+    surfaced_at: mission-65-Phase-2-Survey-authoring
+    status: closed-folded
+    closure_mechanism: |
+      Surfaced 2026-04-29T01:30Z UTC during Phase 2 Survey authoring for mission-65
+      itself: architect drafted 7 questions in single round (Q1–Q7) instead of strict
+      2-round × 3-orthogonal-Q format mandated by docs/methodology/idea-survey.md v1.0
+      §3. Director-corrected: "You didnt follow the strict survey process. Please
+      re-reread the survey methodology. Further supports mechanisation". Architect
+      re-read methodology + re-authored Survey per strict format (Round 1: Q1=A,B,C,D
+      / Q2=A,B,C / Q3=B; Round 2: Q4=B / Q5=C / Q6=C); composite intent envelope §14.
+
+      Closure path: ledger-mechanization-as-substrate-foundation-for-future-Survey-
+      mechanization (truthful-but-indirect; full closure requires Survey-Skill at
+      later mission per engineer round-1 audit structural concern 1 fold). Self-
+      referential meta-evidence for idea-223 mechanization premise: the LLM-state-
+      fidelity drift class extends from calibration-state to methodology-state itself.
+    closure_pr: 131
+    cross_refs:
+      - docs/methodology/idea-survey.md
+      - docs/surveys/m-calibration-codification-survey.md
+    tele_alignment:
+      - tele-3
+      - tele-6
+
+  - id: 44
+    class: methodology
+    title: "Bilateral pre-alignment thoroughness in design-state ratify cycle correlates inversely with round-2 PR-review fold count"
+    origin: mission-65-W0
+    surfaced_at: thread-418-round-2
+    status: open
+    closure_mechanism: |
+      Greg-surfaced observation thread-418 round-2 (2026-04-29T03:03Z UTC): mission-65
+      W0 bundle PR #131 was the first PR in the M62→M65 mission arc to converge
+      round-2 with zero post-fold refinements (round-1 design-state audit = 9 folds;
+      round-2 PR-review = 0 folds; total 9 across both surfaces).
+
+      Architect-side concur: strong methodology-class signal that bilateral
+      pre-alignment thoroughness in design-state ratify cycle correlates inversely
+      with round-2 PR-review fold count. If folds slip from design-state to PR-review
+      surface, total round-count grows; consolidating folds at design-state ratify
+      reduces PR-review surface.
+
+      Discipline pattern (no structural closure needed); ledger-entry surfaces it for
+      future mission-arc applicability. Folds into review-loop-as-calibration-surface
+      pattern (M64-origin) — extends the pattern across review surfaces.
+    pattern_membership:
+      - review-loop-as-calibration-surface
+    cross_refs:
+      - feedback_review_loop_calibration_surface.md
+    tele_alignment:
+      - tele-2
+      - tele-6
+
+  - id: 45
+    class: methodology
+    title: "Methodology-vs-practice gap on Survey persist-path (idea-survey.md §5 vs canonical docs/surveys/)"
+    origin: mission-65-W0
+    surfaced_at: Director-Phase-4-review-2026-04-29
+    status: open
+    closure_mechanism: |
+      Surfaced during Director Phase 4 review of Design v0.1 (~02:30Z UTC):
+      idea-survey.md §5 specified Survey persist-path differently from established
+      practice (`docs/surveys/<mission>-survey.md`). Director ratified canonical:
+      docs/surveys/.
+
+      R5 risk in Design v0.1+ marked RESOLVED; closure mechanism = methodology-doc
+      fixup of idea-survey.md §5 to read `docs/surveys/<mission>-survey.md`, scheduled
+      for mission-65 W4 closing wave (bundled into closing audit + ADR-030 RATIFIED
+      commit). Pre-W4 status=open; flips to closed-folded post-W4 fixup commit.
+    cross_refs:
+      - docs/methodology/idea-survey.md
+      - docs/designs/m-calibration-codification-design.md
+    tele_alignment:
+      - tele-3
+
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
 #   title                       string; human-readable pattern name
@@ -834,6 +913,10 @@ patterns:
       - thread-415 round 2 → "Shallow-clones aren't a fallback case" doc-discipline
         (sub-discipline of #39 closure)
 
+      Mission-65 extension (calibration #44): bilateral pre-alignment thoroughness in
+      design-state ratify cycle correlates inversely with round-2 PR-review fold count
+      — the pattern extends across review surfaces (design-state + PR-review).
+
       Recursive nugget: methodology calibrations can emerge from the review loop
       reviewing the same discipline class. Review-loops are calibration-surfacing
       surfaces, not just calibration-assessment surfaces.
@@ -851,6 +934,7 @@ patterns:
         inline.
     surfaced_by_calibrations:
       - 42
+      - 44
 
   - id: post-event-narration-aest-utc-discipline
     title: "Post-event narration AEST/UTC date conflation discipline"
