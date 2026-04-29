@@ -105,7 +105,7 @@ buildTable() {
     read -r -d '' JQTABLE <<-'CONFIG' || true
         if type == "array" and (.[0]?) then
             [(
-                [.[0] | to_entries[] | .key | ascii_upcase]
+                [.[0] | to_entries[] | .key | gsub("(?<x>[a-z])(?<y>[A-Z])"; "\(.x)_\(.y)") | ascii_upcase]
             ),(
                 .[] | [to_entries[] | .value]
             )]
