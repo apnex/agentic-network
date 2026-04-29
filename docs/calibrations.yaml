@@ -1,0 +1,1005 @@
+# Calibration ledger — canonical schema-versioned source-of-truth
+#
+# ADR-030: Calibration ledger is first-class versioned repo data; audits +
+# retrospectives + methodology become VIEWS over the canonical ledger.
+#
+# Two first-class entity types:
+#   - calibrations[]  — per-incident discipline records (id + class + status + closure)
+#   - patterns[]      — named architectural-pathology patterns (slug + description + members)
+#
+# Schema spec: docs/designs/m-calibration-codification-design.md §2.1
+# ADR:         docs/decisions/030-calibration-ledger-mechanization.md
+# Discipline:  see CLAUDE.md "Calibration ledger discipline" section
+#
+# Phase 1 (mission-65) ships read-only Skill scaffolding (3 verbs:
+# list / show <id-or-slug> / status). Write authority + validate operations
+# defer to Phase 2+. Cross-link discipline enforced at edit-time (manual);
+# Phase 2+ adds mechanized validate.
+
+schema_version: 1
+
+# calibrations[] — per-entry schema:
+#   id                    integer; unique; monotonic across missions
+#   class                 enum: substrate | methodology
+#   title                 string; concise human-readable summary
+#   origin                string; "mission-X-WN" or "mission-X-W4-followon"
+#   surfaced_at           string (optional); "thread-NNN-roundN" if applicable
+#   status                enum: open | closed-structurally | closed-folded | retired | superseded
+#   closure_mechanism     string (multiline); required if status != open
+#   closure_pr            integer (optional); PR # delivering closure
+#   pattern_membership    list of pattern ids (optional); references patterns[].id
+#   cross_refs            list of strings (optional); memory-doc paths or other refs
+#   tele_alignment        list of tele ids (optional); e.g. [tele-3, tele-7]
+calibrations:
+  - id: 1
+    class: methodology
+    title: "FSM-orthogonality finding (round-1 critical)"
+    origin: mission-62-W1
+    surfaced_at: thread-387-round1
+    status: closed-folded
+    closure_mechanism: |
+      Engineer round-1 audit on thread-387 surfaced that Hub already shipped a 4-state
+      liveness FSM (ADR-017 INV-AG6) and the proposed 5-state FSM was an orthogonal
+      activity FSM. Architect counter-proposal kept both as named fields (livenessState +
+      activityState) — first canonical execution of "rename-only-what-needs-renaming"
+      discipline post-mission-57 idea-206. Folded into Design v1.0 §2 ratified bilaterally
+      on thread-387 round 10.
+    closure_pr: 110
+    cross_refs:
+      - docs/designs/m-agent-entity-revisit-design.md
+    tele_alignment:
+      - tele-3
+
+  - id: 2
+    class: methodology
+    title: "Survey + Design + thread-387 cycle methodology"
+    origin: mission-62-W0
+    status: closed-folded
+    closure_mechanism: |
+      Director-question inline refinement codified §G; rename-only-what-needs-renaming
+      discipline (counter-proposed activityState not renaming livenessState); first
+      canonical execution was idea-206/mission-57; mission-62 is the second canonical
+      execution of the cycle. Methodology ratified by mission-62 Design v1.0 ship.
+    closure_pr: 110
+
+  - id: 3
+    class: methodology
+    title: "Substrate-self-dogfood discipline application"
+    origin: mission-62-W4
+    status: closed-folded
+    closure_mechanism: |
+      Substrate-self-dogfood discipline applied observation-only per anti-goal #12 in W4
+      dogfood. Pattern reused successfully from mission-61 substrate-self-dogfood
+      precedent. Verdict GREEN with 4 known follow-ons (calibrations #20–#23). thread-395
+      converged bilaterally. Open question flagged on whether routing-refactor follow-on
+      lands under idea-121 or fresh idea.
+    cross_refs:
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-6
+
+  - id: 4
+    class: methodology
+    title: "Spike-class outcome pattern callout"
+    origin: mission-62-W0
+    status: closed-folded
+    closure_mechanism: |
+      Note-kind primitive surface gap surfaced via thread-382 (mission-60 spike-class
+      outcome) → fix-forward bundled into mission-62 (parallel to mission-61 fix-forward
+      of mission-60 verification spike). Mission-class taxonomy refined: spike-class
+      outcomes legitimately produce fix-forward bundles consumed by next
+      structural-inflection mission.
+    closure_pr: 110
+
+  - id: 5
+    class: methodology
+    title: "Architect-direct-create-mission bypass ONE-TIME"
+    origin: mission-62-W0
+    status: closed-folded
+    closure_mechanism: |
+      Cascade propose_mission blocked on engineer-side role-gate (task-303 Phase 2a
+      commit-authority); architect direct-create via create_mission was the workaround
+      per Director instruction 2026-04-27. ONE-TIME bypass — task-303 Phase 2a still
+      owns the durable fix.
+    cross_refs:
+      - task-303
+
+  - id: 6
+    class: substrate
+    title: "TS5055 SDK self-overwrite (rm -rf dist) rebuild protocol gap"
+    origin: mission-62-W2
+    status: retired
+    closure_mechanism: |
+      Greg's finding: SDK rebuild failed because stale dist .d.ts files were in tsc
+      inputs AND outputs simultaneously (TS5055). Rebuild protocol §7.1 fix-forward:
+      add `rm -rf dist` as first step. Clustered with calibration #12 under "rebuild
+      protocol shipping gaps". Folded into idea-217 (Adapter compile/update/re-install
+      streamline).
+
+      Retired (full retire upgrades mission-62 partial-retire) by mission-64 W1+W2
+      (PR #122) — tsconfig `"exclude": ["dist"]` pattern landed alongside namespace
+      migration. SDK self-overwrite class structurally closed at compile boundary;
+      manual `rm -rf dist` no longer required.
+    closure_pr: 122
+    cross_refs:
+      - idea-217
+
+  - id: 7
+    class: methodology
+    title: "maxRounds=10 thread limit calibration"
+    origin: mission-62-W1
+    status: closed-folded
+    closure_mechanism: |
+      Fresh-thread-on-round-limit codified as default transition pattern (or bump 15
+      for L+ missions; either valid). Captured as thread-config baseline.
+
+  - id: 8
+    class: substrate
+    title: "Pass 7 root cause re-framing (render-layer ≠ delivery-layer)"
+    origin: mission-62-W2
+    status: closed-folded
+    closure_mechanism: |
+      Mission-61 W4.2 PROOF was correct on envelope-delivery; the gap was at the
+      prompt-format scope (buildPromptText missing message_arrived case → generic
+      fallthrough). Architectural insight: render-layer is distinct from delivery-layer.
+      Pass 7 in PR #112 fixed pulse + note paths but NOT thread-message path
+      (re-surfaced as calibration #20). Folded into idea-219 Wire-Entity Envelope
+      Convergence.
+    closure_pr: 112
+    cross_refs:
+      - idea-219
+    tele_alignment:
+      - tele-3
+
+  - id: 9
+    class: methodology
+    title: "CI-hook carve-out scope discipline"
+    origin: mission-62-W2
+    status: closed-folded
+    closure_mechanism: |
+      Pragmatic narrow-only-when-needed carve-out: start with docs/ whole-tree carve-out
+      + test/README.md; narrow only when needed (greg's pragmatic call ratified).
+      Codified into rebuild protocol §9.
+    closure_pr: 112
+
+  - id: 10
+    class: substrate
+    title: "Engineer pulse-miss escalation false-positive"
+    origin: mission-62-W2
+    status: open
+    closure_mechanism: |
+      Hub considers engineer "silent" if pulse Message isn't claim_message+ack'd, but
+      engineer can be highly active (thread replies, commits, PR opens) without acking
+      pulse Messages. Result: false-positive escalation Messages flood architect queue.
+      Multiple solution options; PR #112 buildPromptText fix may resolve via auto-ack on
+      receipt — open pending validation in subsequent missions. Tracked under
+      bug-tracking workstream.
+
+  - id: 11
+    class: methodology
+    title: "Adapter local cache scope-narrowing (Design §4.3)"
+    origin: mission-62-W3
+    status: closed-folded
+    closure_mechanism: |
+      Adapter local cache substantive infra deferred from W3 (PR #114) per "ship infra
+      without consumer is anti-pattern". Filed as idea-218; W5 captures the Design
+      over-scope methodology lesson — substantive infra without an emerging consumer
+      should be deferred until the consumer surfaces. Potential absorption into idea-102
+      Universal Port.
+    cross_refs:
+      - idea-218
+      - idea-102
+
+  - id: 12
+    class: substrate
+    title: "Canonical-tree shim rebuild gap"
+    origin: mission-62-W5
+    status: closed-folded
+    closure_mechanism: |
+      Pass 10 rebuild protocol covered worktree-side npm run build, but the running
+      plugin loads its shim only from the canonical-tree dist
+      (~/.claude/plugins/cache/agentic-network/agent-adapter). Worktree builds produced
+      dist files the runtime never saw. Discovered 2026-04-28 ~08:00 AEST when
+      fresh-lily-#1 hit agent_thrashing_detected because both lily + greg resolved to
+      the same Agent identity (pre-fix shim missing per-OIS_INSTANCE_ID isolation).
+      Director-approved canonical-tree shim rebuild + reinstall ~08:18 AEST. Clustered
+      with calibration #6 under "rebuild protocol shipping gaps". Pass 10 protocol
+      extended; folded into idea-217.
+    cross_refs:
+      - idea-217
+
+  - id: 15
+    class: substrate
+    title: "Cognitive pipeline modular-config gap"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: open
+    closure_mechanism: |
+      P0-triage 2026-04-28 surfaced no per-component bypass knob for the cognitive
+      pipeline; defensive measure required adding OIS_COGNITIVE_BYPASS=1 env var ad-hoc
+      during the P0 stall investigation. ADR-018 cognitive pipeline modular contract
+      needs durable per-stage config knobs. Scoped to idea-220 (Shim Observability
+      Phase 2).
+    cross_refs:
+      - idea-220
+      - reference_idea_219_220_post_mission_62.md
+    tele_alignment:
+      - tele-7
+
+  - id: 16
+    class: substrate
+    title: "Shim observability invisibility-at-P0"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: closed-structurally
+    closure_mechanism: |
+      P0-triage 2026-04-28: claim_session stalled with no observability beyond Hub-side
+      logs. Director-approved tactical Phase 1 shim observability landed architect-direct
+      ~10:00 AEST: FileBackedLogger + structured NDJSON events + dispatcher CallTool
+      instrumentation + handshake parse-failure diagnostic + cognitive bypass knob +
+      redaction discipline + naive timestamp-suffix rotation. Phase 1 immediately
+      surfaced root cause (calibration #19). Phase 2 formalization scoped to idea-220.
+    cross_refs:
+      - idea-220
+      - reference_shim_observability.md
+    tele_alignment:
+      - tele-7
+
+  - id: 17
+    class: substrate
+    title: "Hub-rebuild gap in Pass 10 protocol"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: retired
+    closure_mechanism: |
+      P0 smoking gun layer 1: Pass 10 rebuild protocol covers SDK pkg + claude-plugin
+      canonical-tree but does NOT extend to Hub container rebuild when Hub source
+      changes. 2026-04-28 ~07:49 AEST Hub container restarted on stale image (created
+      ~8h before PR #112 merged), causing handshake parse_failed because Hub still
+      emitted engineerId. Recovery action: Hub rebuild via scripts/local/build-hub.sh +
+      restart at ~10:25 AEST. Memory feedback_pass10_rebuild_hub_container.md captured
+      for future-session discipline. Fix-forward: Pass 10 protocol extension mandates
+      build-hub.sh + restart for any PR touching hub/src/**. Folded into idea-219
+      Schema-Migration Discipline companion.
+
+      Retired by mission-63 W4 (thread-403 converged 2026-04-28T05:08Z): build-hub.sh
+      discipline executed throughout M63 (W0/W1+W2/W3) with zero deployment-skew
+      parse_failed events. Subsequently codified into Pass 10 §A by mission-63 W5
+      closing PR #120.
+    closure_pr: 120
+    cross_refs:
+      - idea-219
+      - feedback_pass10_rebuild_hub_container.md
+    tele_alignment:
+      - tele-7
+
+  - id: 18
+    class: substrate
+    title: "Wire-shape drift (entity-vs-wire convergence)"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: retired
+    closure_mechanism: |
+      P0-triage 2026-04-28: 3 different render behaviors observed for 3 event types
+      (pulse, note, thread-message) — clean reproducer for O(N) per-event-type if-ladder
+      vs canonical envelope O(1). Director-prompted architectural framing ~10:10 AEST:
+      "Agent{} is now first-class managed state object — shouldn't message structure
+      reflect this?" Architectural follow-on; the wire envelope must be a projection of
+      the entity state. Scoped to idea-219 Wire-Entity Envelope Convergence
+      (mission-class L).
+
+      Retired structurally by mission-63 W1+W2 (PR #118): canonical envelope
+      `{ok, agent: AgentProjection, session: SessionBindingState, wasCreated?}` ships
+      across all Agent-state-bearing wire surfaces (handshake response,
+      agent_state_changed SSE, list_available_peers projection); projectAgent helper
+      at hub/src/policy/agent-projection.ts is single point-of-truth Agent →
+      AgentProjection. PR #119 lands the adapter-side parser. ADR-028 RATIFIED at
+      mission-63 W5 close (PR #120).
+    closure_pr: 118
+    cross_refs:
+      - idea-219
+      - reference_idea_219_220_post_mission_62.md
+    tele_alignment:
+      - tele-3
+
+  - id: 19
+    class: substrate
+    title: "Schema-rename PR without state migration"
+    origin: mission-62-W5
+    surfaced_at: P0-triage-2026-04-28
+    status: retired
+    closure_mechanism: |
+      P0 smoking gun layer 2: PR #112 (engineerId → agentId) and PR #113 (Agent.agentId
+      → Agent.id) shipped code-only renames with NO state migration script. Persisted
+      local-fs Agent records had legacy engineerId field; new Hub code reads agent.id
+      (undefined); response builder dropped the field via JSON.stringify
+      undefined-omission. Hub had been writing records as agents/<agent.id>.json =
+      agents/undefined.json since the rename. Recovery action 2026-04-28 ~10:35 AEST:
+      state migration renamed engineerId → id in 5 primary key files + 4 by-fingerprint
+      index files; salvage of undefined.json; backup at
+      /tmp/agents-pre-migration-20260428-103504.tar.gz. Memory
+      feedback_schema_rename_requires_state_migration.md captured. Discipline folded
+      into idea-219 Schema-Migration Discipline companion.
+
+      Retired structurally by mission-63 W3 (PR #119) shipping
+      scripts/migrate-canonical-envelope-state.ts (248 lines; Hub-stopped self-check via
+      ECONNREFUSED, idempotent, backup-before-mutation tarball, name=id fallback for
+      legacy records, clientMetadata/advisoryTags malformed-default) — first canonical
+      execution of state-migration script discipline. Migration scanned 8 records /
+      mutated 4. Subsequently codified into Pass 10 §C protocol step by mission-63 W5
+      closing PR #120.
+    closure_pr: 119
+    cross_refs:
+      - idea-219
+      - feedback_schema_rename_requires_state_migration.md
+    tele_alignment:
+      - tele-3
+
+  - id: 20
+    class: substrate
+    title: "Thread-message envelope render-layer gap"
+    origin: mission-62-W4
+    surfaced_at: thread-395-round2
+    status: retired
+    closure_mechanism: |
+      W4 dogfood thread-395 round-2 + round-3 verbatim envelope quotes: PR #112 Pass 7
+      buildPromptText covers pulses + notes inline, but the event=thread_message
+      notification path was NOT covered — generic [Author] sent ... fallthrough
+      preserved. thread-382 ghost-envelope reopens for that event type. Symmetric fail
+      captured bilaterally. Scoped to idea-219 Wire-Entity Envelope Convergence as
+      first concrete defect surface.
+
+      Retired (PARTIAL → main RED retired) by mission-63 W3 (PR #119) render-template
+      registry replacing per-event-type if-ladder in
+      packages/network-adapter/src/prompt-format.ts buildPromptText
+      (Map<event, RenderTemplate> dispatch with 4 mandatory templates:
+      message_arrived/pulseKind, thread_message, thread_convergence_finalized,
+      agent_state_changed; +215/-119 net). Body IS inline now;
+      thread_convergence_finalized full ~1900 chars verbatim per W4 test #6. AMBER
+      residual narrowed empirically to thread_message-event-type-specific silent
+      ~250-char truncation, surfaced as NEW calibration #26.
+    closure_pr: 119
+    cross_refs:
+      - idea-219
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-3
+
+  - id: 21
+    class: substrate
+    title: "Engineer Agent-record read-surface gap"
+    origin: mission-62-W4
+    surfaced_at: thread-395
+    status: open
+    closure_mechanism: |
+      W4 dogfood: get_agents not surfaced in engineer's MCP catalog — engineer
+      read-surface limited to lean projection (list_available_peers) without full Agent
+      records. Architect side has it; engineer side does not — asymmetric coverage of
+      new substrate. Scoped to idea-220 for symmetric coverage.
+    cross_refs:
+      - idea-220
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-2
+
+  - id: 22
+    class: substrate
+    title: "Pulse-template stale-content"
+    origin: mission-62-W4
+    surfaced_at: thread-395
+    status: retired
+    closure_mechanism: |
+      W4 dogfood: pulse fired with W1+W2 text on a W4-era pulse — pulse template
+      content was stale relative to current mission state. Render-time template
+      hydration gap. Scoped to idea-219 (template content as projection of canonical
+      mission state).
+
+      Retired structurally by mission-63 W4 — pulse-template absorbed by canonical
+      envelope discipline (PRs #118 + #119); W4 dogfood verified pulses rendered
+      current-mission-phase content inline (architectPulse 05:03:46Z lily ~440 chars;
+      engineerPulse 05:04:07Z greg ~440 chars; symmetric verbatim). No W1+W2 leakage.
+      Forward-consequence captured in ADR-028: "pulse-template synthesis becomes
+      natural extension of envelope-state-projection principle."
+    closure_pr: 119
+    cross_refs:
+      - idea-219
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-3
+
+  - id: 23
+    class: substrate
+    title: "Pulse-template not role-aware"
+    origin: mission-62-W4
+    surfaced_at: thread-395
+    status: open
+    closure_mechanism: |
+      W4 dogfood: pulse-template suggested architect-only verbs to engineer recipients —
+      template not role-aware at render time. Recipient-role parameterization missing.
+      Scoped to idea-220 for role-aware rendering as part of symmetric Agent-record
+      surface formalization.
+    cross_refs:
+      - idea-220
+      - docs/audits/m-agent-entity-revisit-w4-validation.md
+    tele_alignment:
+      - tele-2
+
+  - id: 25
+    class: substrate
+    title: "Pass 10 protocol gap on SDK tgz rebuild"
+    origin: mission-63-W3
+    surfaced_at: thread-403-round0
+    status: retired
+    closure_mechanism: |
+      Surfaced 2026-04-28T04:55Z UTC during §6.3 9-step adapter-restart gate
+      post-PR-#119 merge: fresh-lily handshake hit parse_failed events in
+      .ois/shim-events.ndjson. Root cause via shim-observability Phase 1 log capture
+      (<1min surfacing time): install.sh rebuilds claude-plugin/dist but does NOT
+      rebuild network-adapter SDK or refresh ois-network-adapter-2.0.0.tgz; adapter
+      restart on stale SDK tgz ran old flat-field parseHandshakeResponse. Recovery
+      sequence (~17min total time-to-recovery, ~10x faster than mission-62 P0):
+      rebuild SDK + npm pack + cp tgz + reinstall + adapter restart. Closed by
+      mission-63 W5 PR #120 codifying Pass 10 §B (SDK rebuild step) — symmetric
+      extension mirroring Hub-source rebuild.
+
+      Retired structurally by mission-64 W4 (PR #127) ADR-029 RATIFIED + Pass 10 §B/§D
+      deprecation to "Removed; npm package + script is canonical" + .mcp.json bundling
+      (PR #125). Manual-recipe step-skip-class regression source closed at substrate
+      boundary — consumer can't skip steps because there are no manual steps to skip.
+    closure_pr: 127
+    cross_refs:
+      - mission-61 Layer-3 SDK-tgz-stale lesson
+      - mission-62 W4-followon PR #115 shim observability Phase 1
+      - ADR-029
+      - docs/audits/m-adapter-streamline-closing-audit.md
+      - docs/methodology/multi-agent-pr-workflow.md
+    tele_alignment:
+      - tele-7
+
+  - id: 26
+    class: substrate
+    title: "Silent thread_message body truncation marker missing"
+    origin: mission-63-W4
+    surfaced_at: thread-403-round1
+    status: open
+    closure_mechanism: |
+      Surfaced empirically at W4 substrate-self-dogfood test #5 (thread-403 round-1,
+      2026-04-28T05:05Z UTC). thread_message body renders inline (improvement from
+      mission-62 W4 calibration #20 RED) but with ~250-char silent truncation and no
+      marker. Empirically narrowed: pulse + thread_convergence_finalized event types
+      render verbatim full content (per W4 tests #4, #6); only event=thread_message
+      exhibits silent cutoff. Architectural framing: Hub-side thread_message
+      envelope-builder applies the truncation; render-template at adapter-side has no
+      knowledge. Marker-protocol options sketched:
+      (a) Hub embeds marker token at truncation boundary;
+      (b) Hub adds <channel> attribute truncated="true" fullBytes="<n>";
+      (c) marker-protocol design at idea-220 Phase 2.
+      Low-pri marker-spec recommendation included as forward-pointer in mission-63 W5
+      PR #120 Pass 10 §"thread_message truncation marker"; design + implementation
+      deferred to idea-220 Phase 2.
+    cross_refs:
+      - idea-220
+      - docs/audits/m-wire-entity-convergence-w4-validation.md
+    tele_alignment:
+      - tele-3
+
+  - id: 29
+    class: methodology
+    title: "npm 11.6.2 EUNSUPPORTEDPROTOCOL on workspace:^/* — npm doesn't support yarn workspace protocol"
+    origin: mission-64-W0
+    surfaced_at: mission-64-W0-publish-flow-spike
+    status: closed-folded
+    closure_mechanism: |
+      Folded into multi-agent-pr-workflow.md Pass 10 §B doc note: "use placeholder
+      workspace:* + version-rewrite.js script; do NOT assume workspace: semver-protocol".
+      R2 fallback path executed at design-time; M sizing held without L upsize.
+    closure_pr: 122
+    cross_refs:
+      - feedback_npm_workspace_lifecycle_quirk.md
+    tele_alignment:
+      - tele-7
+
+  - id: 30
+    class: methodology
+    title: "In-arc sizing-recalibration on-same-scope = architect autonomous-ratify + Director-notify-for-visibility"
+    origin: mission-64-W0
+    surfaced_at: mission-64-W0-spike
+    status: open
+    closure_mechanism: |
+      Mission-lifecycle.md housekeeping (deferred follow-on). Discipline: when in-arc
+      spike surfaces same-scope sizing pressure, architect autonomous-ratifies the
+      recalibration + notifies Director for visibility rather than blocking on
+      Director-in. Mission-64 W0 executed this for #29 (R2 fallback ~2h scope add held
+      M sizing).
+    tele_alignment:
+      - tele-2
+
+  - id: 31
+    class: methodology
+    title: "Thread maxRounds=10 hit during W1+W2 + no auto-rollover; pre-push artifact discipline + maxRounds budgeting"
+    origin: mission-64-W1W2
+    surfaced_at: thread-407
+    status: closed-folded
+    closure_mechanism: |
+      Folded into multi-agent-pr-workflow.md mid-mission protocol note:
+      (a) pre-push artifact discipline — push design artifact to remote BEFORE opening
+      round-1 audit thread; (b) maxRounds budgeting for substrate-introduction missions:
+      ~3× expected fix-PR count + 4. Mission-64 thread-409 ran 9/10 rounds across 3
+      publish iterations.
+    closure_pr: 127
+    tele_alignment:
+      - tele-2
+
+  - id: 32
+    class: methodology
+    title: "Active-session 6-step verification-restart wrinkle (Step 3 verification needs restart but breaks coord)"
+    origin: mission-64-W1W2
+    surfaced_at: thread-409
+    status: open
+    closure_mechanism: |
+      Captured in W4 audit §4; verification-via-isolated-shim-test
+      (run packages/network-adapter/dist/cli.js handshake against fresh local state) is
+      a non-blocking alternative — exercises handshake path without full restart.
+      Split-verification design refinement deferred to future substrate-introduction
+      mission.
+    cross_refs:
+      - reference_shim_observability.md
+    tele_alignment:
+      - tele-7
+
+  - id: 33
+    class: substrate
+    title: "Consumer-install-from-registry test surface missing (marketplace.json absent from publish tarball)"
+    origin: mission-64-W1W2-fix
+    surfaced_at: mission-64-cycle-1-active-session-6step-step5
+    status: superseded
+    closure_mechanism: |
+      PR #123 ships file-presence layer (scripts/test/install-from-registry.test.sh);
+      PR #124's full-end-to-end-install.test.sh (calibration #37 closure) supersedes at
+      end-to-end layer. Root cause: claude-plugin/package.json `files` field omitted
+      marketplace.json from npm pack inclusion list.
+    closure_pr: 123
+    tele_alignment:
+      - tele-7
+
+  - id: 34
+    class: methodology
+    title: "W3 dogfood-gate collapse-into-W1+W2-fix when active-session 6-step surfaces substrate defect"
+    origin: mission-64-W1W2-fix-2
+    surfaced_at: thread-409
+    status: closed-folded
+    closure_mechanism: |
+      Mission-lifecycle methodology callout; substrate-introduction-class signature
+      note (W3 collapse pattern). Folded into Pass 10 protocol substrate-introduction
+      mission-class signature subsection in multi-agent-pr-workflow.md. When
+      active-session 6-step protocol surfaces a substrate defect during Step 5 install,
+      the retry IS the dogfood gate. Extended to 5-cycle iteration in mission-64
+      (cycles 4 + 5 from #38 + #39 fix-forward chain).
+    closure_pr: 127
+    tele_alignment:
+      - tele-6
+      - tele-7
+
+  - id: 35
+    class: substrate
+    title: "version-rewrite mechanism not running at workspace publish (npm --workspace=X uses workspace's OWN lifecycle)"
+    origin: mission-64-W1W2-fix-2
+    surfaced_at: mission-64-cycle-2-0.1.1-install-retry
+    status: closed-structurally
+    closure_mechanism: |
+      PR #124 hoists version-rewrite call into scripts/publish-packages.sh orchestration
+      with trap-based revert. Pre-publish: node scripts/version-rewrite.js rewrites
+      workspace:* → ^<sibling-published-version> in each workspace's package.json.
+      Post-publish (or on error): trap restores original package.json files. Workspace
+      lifecycle quirk bypassed structurally.
+    closure_pr: 124
+    cross_refs:
+      - feedback_npm_workspace_lifecycle_quirk.md
+    tele_alignment:
+      - tele-7
+
+  - id: 36
+    class: substrate
+    title: "marketplace.json source format requires './' trailing-slash; '.' or '..' rejected"
+    origin: mission-64-W1W2-fix-2
+    surfaced_at: mission-64-cycle-2-0.1.1-install-retry
+    status: closed-structurally
+    closure_mechanism: |
+      PR #124 sets "source": "./"; trailing slash is the disambiguating signal for
+      Claude Code plugin marketplace parser. Empirically narrowed: "." and ".."
+      rejected; "./" accepted.
+    closure_pr: 124
+    cross_refs:
+      - feedback_marketplace_source_format.md
+    tele_alignment:
+      - tele-7
+
+  - id: 37
+    class: substrate
+    title: "install-from-registry test surface must exercise actual `claude plugin install` end-to-end"
+    origin: mission-64-W1W2-fix-2
+    surfaced_at: mission-64-cycle-2-0.1.2-retry
+    status: closed-structurally
+    closure_mechanism: |
+      PR #124 ships scripts/test/full-end-to-end-install.test.sh; closes calibration
+      #33 supersession. PR #125 retrofits Section 6 to assert post-install .mcp.json
+      delivery + mcpServers.proxy declaration — catches #38 class without requiring
+      Claude Code restart (closes install-time test surface gap that originally masked
+      #38).
+    closure_pr: 124
+    tele_alignment:
+      - tele-7
+
+  - id: 38
+    class: substrate
+    title: "gitignore-root-anchor-leakage into npm-pack of workspace children"
+    origin: mission-64-W1W2-fix-3
+    surfaced_at: mission-64-cycle-4-post-Director-coord-restart-1
+    status: closed-structurally
+    closure_mechanism: |
+      PR #125 ships explicit `files` whitelist in adapters/claude-plugin/package.json
+      listing tarball contents incl .mcp.json. The whitelist bypasses the
+      gitignore-fallback path entirely — npm-packlist uses `files` as source-of-truth
+      and stops consulting .gitignore when set. Surgical fix; structural; permanent.
+      Section 7 in install-from-registry.test.sh (.mcp.json presence assertion) +
+      Section 6 in full-end-to-end-install.test.sh (post-install .mcp.json delivery +
+      mcpServers.proxy declaration) catch class going forward. Defect surfaced ONLY
+      post-Director-coord-restart when Claude Code attempted MCP server spawn.
+    closure_pr: 125
+    cross_refs:
+      - feedback_npm_files_whitelist_bypasses_gitignore.md
+      - feedback_substrate_introduction_publish_iteration.md
+    tele_alignment:
+      - tele-3
+      - tele-7
+
+  - id: 39
+    class: substrate
+    title: "publish bash-session cwd-persistence into version-rewrite.js — MODULE_NOT_FOUND silently swallowed"
+    origin: mission-64-W1W2-fix-4
+    surfaced_at: mission-64-cycle-5-0.1.3-publish
+    status: closed-structurally
+    closure_mechanism: |
+      Two-stage closure. PR #126 fix-forward republishes 0.1.4 from repo-root cwd with
+      version-rewrite correctly applied (deps ^0.1.2 registry-pinned). Cleanup PR #130
+      ships structural closure: scripts/version-rewrite.js resolves REPO_ROOT via
+      `git rev-parse --show-toplevel` instead of path.resolve(__dirname, "..") — closes
+      defect class regardless of caller cwd. Fallback to path.resolve preserved for
+      non-git contexts (CI shallow-clones, tarball-extract testing).
+    closure_pr: 130
+    tele_alignment:
+      - tele-7
+
+  - id: 40
+    class: methodology
+    title: "Composite shim observability + projection-fidelity gaps (FileBackedLogger fd / advisoryTag projection / version-source-of-truth divergence / stale pid)"
+    origin: mission-64-W3
+    surfaced_at: thread-410-round-4
+    status: open
+    closure_mechanism: |
+      OPEN — fold to idea-220 Phase 2. Greg-surfaced incidentally during thread-410
+      Step 6 verification post-Director-coord-restart-2; non-blocking on mission close.
+      Composite of:
+      (a) FileBackedLogger fds not open on fresh shim post-restart (lazy-fd-open
+          dependency on routed events);
+      (b) get_engineer_status advisoryTags missing adapterVersion projection (only
+          llmModel: "unknown" surfaces);
+      (c) version-source-of-truth divergence — 3 different version strings for same
+          artifact (package.json:0.1.4 ≠ .claude-plugin/plugin.json:1.0.0 ≠
+          clientMetadata.proxyVersion:1.2.0); + stale pid in projection across restarts.
+      Defeats version-stamp-as-staleness-detector promise (calibration #25 closure
+      verification surface) in practice; structural closure is shim observability
+      formalization + Hub-side schema audit + version-source-of-truth consolidation.
+    cross_refs:
+      - reference_idea_219_220_post_mission_62.md
+      - reference_shim_observability.md
+    tele_alignment:
+      - tele-3
+
+  - id: 41
+    class: substrate
+    title: "kind=note payload-rendering expects flat-body shape; structured payload silently degrades to '(empty note body)' (bilateral-blind)"
+    origin: mission-64-W4-followon
+    surfaced_at: thread-412-post-mortem
+    status: open
+    closure_mechanism: |
+      OPEN — fold to idea-220 Phase 2; cleanup PR #130 captures formally via §2c.X
+      anti-pattern + named-pattern fold in multi-agent-pr-workflow.md. Architect-lean
+      closure path = option (b) schema-validate at create_message entry-point so caller
+      gets immediate feedback on render-incompatible payload. Closes the bilateral-blind
+      class at the input boundary by surfacing render-incompatible payloads to
+      architect-side caller via Hub error response, breaking the amplification loop's
+      component (4) no-round-trip-detection.
+    closure_pr: 130
+    pattern_membership:
+      - methodology-bypass-becomes-substrate-defect-amplification-loop
+    cross_refs:
+      - feedback_methodology_bypass_amplification_loop.md
+    tele_alignment:
+      - tele-2
+      - tele-3
+
+  - id: 42
+    class: methodology
+    title: "Post-event narration AEST/UTC date conflation discipline"
+    origin: mission-64-W4-followon
+    surfaced_at: thread-414-round-2
+    status: closed-folded
+    closure_mechanism: |
+      Discipline note in multi-agent-pr-workflow.md v1.0 ratified-with calibrations
+      subsection "Post-event narration AEST/UTC date conflation discipline". Post-event
+      docs in docs/audits/, docs/reviews/, docs/decisions/: timeline tables use UTC
+      consistently (Z-suffix attached only to UTC timestamps); never mix AEST calendar
+      date with UTC time-of-day-suffix. Mission-64 retrospective fixup commit pre-merge
+      restored UTC consistency across §2 timeline + §3 commitments + Closing § (canonical
+      fixup example).
+    closure_pr: 129
+    pattern_membership:
+      - post-event-narration-aest-utc-discipline
+      - review-loop-as-calibration-surface
+    cross_refs:
+      - project_session_log_timezone.md
+    tele_alignment:
+      - tele-3
+
+  - id: 43
+    class: methodology
+    title: "Architect drift from strict multi-round Survey methodology (single-round aggregation anti-pattern)"
+    origin: mission-65-W0
+    surfaced_at: mission-65-Phase-2-Survey-authoring
+    status: closed-folded
+    closure_mechanism: |
+      Surfaced 2026-04-29T01:30Z UTC during Phase 2 Survey authoring for mission-65
+      itself: architect drafted 7 questions in single round (Q1–Q7) instead of strict
+      2-round × 3-orthogonal-Q format mandated by docs/methodology/idea-survey.md v1.0
+      §3. Director-corrected: "You didnt follow the strict survey process. Please
+      re-reread the survey methodology. Further supports mechanisation". Architect
+      re-read methodology + re-authored Survey per strict format (Round 1: Q1=A,B,C,D
+      / Q2=A,B,C / Q3=B; Round 2: Q4=B / Q5=C / Q6=C); composite intent envelope §14.
+
+      Closure path: ledger-mechanization-as-substrate-foundation-for-future-Survey-
+      mechanization (truthful-but-indirect; full closure requires Survey-Skill at
+      later mission per engineer round-1 audit structural concern 1 fold). Self-
+      referential meta-evidence for idea-223 mechanization premise: the LLM-state-
+      fidelity drift class extends from calibration-state to methodology-state itself.
+    closure_pr: 131
+    cross_refs:
+      - docs/methodology/idea-survey.md
+      - docs/surveys/m-calibration-codification-survey.md
+    tele_alignment:
+      - tele-3
+      - tele-6
+
+  - id: 44
+    class: methodology
+    title: "Bilateral pre-alignment thoroughness in design-state ratify cycle correlates inversely with round-2 PR-review fold count"
+    origin: mission-65-W0
+    surfaced_at: thread-418-round-2
+    status: open
+    closure_mechanism: |
+      Greg-surfaced observation thread-418 round-2 (2026-04-29T03:03Z UTC): mission-65
+      W0 bundle PR #131 was the first PR in the M62→M65 mission arc to converge
+      round-2 with zero post-fold refinements (round-1 design-state audit = 9 folds;
+      round-2 PR-review = 0 folds; total 9 across both surfaces).
+
+      Architect-side concur: strong methodology-class signal that bilateral
+      pre-alignment thoroughness in design-state ratify cycle correlates inversely
+      with round-2 PR-review fold count. If folds slip from design-state to PR-review
+      surface, total round-count grows; consolidating folds at design-state ratify
+      reduces PR-review surface.
+
+      Discipline pattern (no structural closure needed); ledger-entry surfaces it for
+      future mission-arc applicability. Folds into review-loop-as-calibration-surface
+      pattern (M64-origin) — extends the pattern across review surfaces.
+    pattern_membership:
+      - review-loop-as-calibration-surface
+    cross_refs:
+      - feedback_review_loop_calibration_surface.md
+    tele_alignment:
+      - tele-2
+      - tele-6
+
+  - id: 45
+    class: methodology
+    title: "Methodology-vs-practice gap on Survey persist-path (idea-survey.md §5 vs canonical docs/surveys/)"
+    origin: mission-65-W0
+    surfaced_at: Director-Phase-4-review-2026-04-29
+    status: open
+    closure_mechanism: |
+      Surfaced during Director Phase 4 review of Design v0.1 (~02:30Z UTC):
+      idea-survey.md §5 specified Survey persist-path differently from established
+      practice (`docs/surveys/<mission>-survey.md`). Director ratified canonical:
+      docs/surveys/.
+
+      R5 risk in Design v0.1+ marked RESOLVED; closure mechanism = methodology-doc
+      fixup of idea-survey.md §5 to read `docs/surveys/<mission>-survey.md`, scheduled
+      for mission-65 W4 closing wave (bundled into closing audit + ADR-030 RATIFIED
+      commit). Pre-W4 status=open; flips to closed-folded post-W4 fixup commit.
+    cross_refs:
+      - docs/methodology/idea-survey.md
+      - docs/designs/m-calibration-codification-design.md
+    tele_alignment:
+      - tele-3
+
+  - id: 46
+    class: methodology
+    title: "Two-sided convergence accounting — round-counting diplomatic phrasing for thread closure"
+    origin: mission-64-W4-followon
+    surfaced_at: thread-414-round-2-PR-129-review
+    status: closed-folded
+    closure_mechanism: |
+      Surfaced during thread-414 round-2 review of PR #129 (mission-64 retrospective)
+      by greg: original architect framing "the engineer closed at round N" or
+      "architect closed at round M" understated bilateral convergence — both sides
+      signal convergence at thread-close events even when the structural commit
+      (converged=true flip) is mechanically one-sided.
+
+      Architect lily fixup pre-merge: applied "thread-NNN round N close-of-bilateral
+      (engineer-side converged=true) + round N+1 architect-side commit" diplomatic
+      phrasing across mission-64 retrospective §2 timeline + §3 commitments. PR #129
+      commit body notes the discipline.
+
+      Folded into pattern two-sided-convergence-accounting (M64-W4-followon-origin).
+      Discipline pattern (no further structural closure needed); ledger captures
+      origin signal for future mission-arc applicability.
+
+      Calibration-from-the-review-loop-itself meta-evidence: greg surfaced this
+      during review of M64 retrospective PR #129 — review-loop-as-calibration-surface
+      pattern application.
+    closure_pr: 129
+    pattern_membership:
+      - two-sided-convergence-accounting
+      - review-loop-as-calibration-surface
+    cross_refs:
+      - feedback_review_loop_calibration_surface.md
+    tele_alignment:
+      - tele-2
+      - tele-6
+
+# patterns[] — per-entry schema:
+#   id                          string slug; stable kebab-case
+#   title                       string; human-readable pattern name
+#   origin                      string; "mission-X-WN" where pattern was first named
+#   description                 string (multiline); pattern definition + diagnostic signature
+#   surfaced_by_calibrations    list of calibration ids; non-empty
+#   methodology_doc_subsection  string (optional); path + anchor to methodology-doc explanation
+patterns:
+  - id: methodology-bypass-becomes-substrate-defect-amplification-loop
+    title: "Methodology-bypass-becomes-substrate-defect amplification loop"
+    origin: mission-64-W4-followon
+    description: |
+      Architectural-pathology pattern. When a methodology-prescribed protocol (here:
+      Option A thread for architect→engineer PR-review-request) is bypassed in favor
+      of a "lighter-weight" alternative (here: kind=note), the bypass path can compose
+      with substrate-level rendering + tool-surface gaps to produce silent
+      actionable-content drop with bilateral blind-spot.
+
+      Diagnostic signature (4 components):
+      1. Architect-side believes the action succeeded — create_message returns clean
+         messageId; no error feedback.
+      2. Engineer-side sees content degrade silently — render-template doesn't know
+         the payload shape; "(empty note body)" rendered.
+      3. No return-path — engineer-side create_message is intentionally absent
+         (authority-boundary role-filter); recipient cannot reciprocate even if
+         rendering had succeeded.
+      4. No round-trip detection mechanism — no Hub-side ack-or-nack signaling that
+         lets architect-side discover the failure.
+
+      Amplification: methodology-bypass + render-gap + no-return-path = silent
+      actionable-content drop. None of the three components alone is a defect (each
+      has legitimate non-bypass uses); their composition is the architectural
+      pathology.
+
+      Forward-discipline (3-component test for filing future calibrations):
+      (1) Was a methodology-prescribed protocol bypassed?
+      (2) Does the bypass path interact with a render-template-registry incompleteness
+          or schema-validation gap?
+      (3) Does the bypass path cross a tool-surface authority boundary that breaks
+          return-path?
+      If yes to all three → file as architectural-pathology class (single named
+      calibration). Per-component yes → file as independent calibrations.
+    surfaced_by_calibrations:
+      - 41
+    methodology_doc_subsection: "docs/methodology/multi-agent-pr-workflow.md#methodology-bypass-becomes-substrate-defect-amplification-loop"
+
+  - id: two-sided-convergence-accounting
+    title: "Two-sided convergence accounting (round-counting diplomatic phrasing)"
+    origin: mission-64-W4-followon
+    description: |
+      Discipline pattern surfaced via mission-64 cleanup arc (thread-414 round 4 +
+      thread-415 round 1). When bilateral close-of-thread events occur asymmetrically
+      across architect + engineer rounds, narrative summaries should phrase round-count
+      attribution diplomatically rather than crediting "the architect closed at round
+      N" or "the engineer closed at round M" — both sides participate in convergence.
+
+      Pattern: convergence is two-sided; the round-count framing should acknowledge
+      bilateral close even when the structural commit is mechanically one-sided (e.g.,
+      architect commits the converged=true flip after engineer round-N
+      close-of-bilateral). Avoid round-counting language that implies one party "won"
+      or "drove" closure when both parties signaled convergence.
+
+      Mission-64 example: thread-411 round 4 engineer close-of-bilateral + round 5
+      architect-side commit. Diplomatic phrasing: "thread-411 round 4 close-of-bilateral;
+      round 5 architect-side commit." Avoids asymmetric "architect closed at round 5"
+      framing.
+
+      Lineage: mission-64 cleanup-arc review-loop surface; co-discovered with engineer
+      in thread-415 round 4. Folded inline into mission-64 retrospective + bedded as
+      durable architect feedback memory.
+    surfaced_by_calibrations:
+      - 46
+
+  - id: review-loop-as-calibration-surface
+    title: "Review-loop-as-calibration-surface"
+    origin: mission-64-W4-followon
+    description: |
+      Pattern: review cycles for substantive PRs (audit / retrospective / cleanup /
+      methodology-fold PRs) systematically surface methodology calibrations +
+      sub-discipline refinements that didn't appear in the mission-execution phase.
+      Test for them explicitly during PR review.
+
+      Mission-64 cleanup arc (PRs #127 + #129 + #130) surfaced 4 review-loop
+      refinements that the mission-execution phase never produced:
+      - thread-414 round 2 → Calibration #42 NEW (post-event narration AEST/UTC date
+        conflation)
+      - thread-414 round 4 + thread-415 round 1 → "Two-sided convergence accounting"
+        diplomatic phrasing pattern
+      - thread-415 round 2 → Fresh-install settings.json rollback edge-case
+        (sub-discipline of e2e rollback)
+      - thread-415 round 2 → "Shallow-clones aren't a fallback case" doc-discipline
+        (sub-discipline of #39 closure)
+
+      Mission-65 extension (calibration #44): bilateral pre-alignment thoroughness in
+      design-state ratify cycle correlates inversely with round-2 PR-review fold count
+      — the pattern extends across review surfaces (design-state + PR-review).
+
+      Recursive nugget: methodology calibrations can emerge from the review loop
+      reviewing the same discipline class. Review-loops are calibration-surfacing
+      surfaces, not just calibration-assessment surfaces.
+
+      Forward-discipline:
+      - During review of audit / retrospective / cleanup / methodology PRs, ask: "is
+        the review surfacing calibration-class observations the PR doesn't capture?"
+      - For substantive PRs (>100 lines doc or code-touching), expect 1-3 review-loop
+        calibrations or sub-discipline refinements.
+      - Bilaterally-aligned content (where author + reviewer pre-agreed via threads)
+        often STILL surfaces ~2 review-cycle nits — these aren't gaps in
+        pre-alignment; they're the review surface doing its job.
+      - Capture review-loop calibrations as formal calibrations (not just nits) when
+        they're durable methodology observations; sub-discipline refinements fold
+        inline.
+    surfaced_by_calibrations:
+      - 42
+      - 44
+      - 46
+
+  - id: post-event-narration-aest-utc-discipline
+    title: "Post-event narration AEST/UTC date conflation discipline"
+    origin: mission-64-W4-followon
+    description: |
+      Authoring docs in AEST timezone (UTC+10) leads to timeline entries that mix AEST
+      date with UTC `Z` suffix, producing dates ~1 day forward of actual UTC event
+      time. Diagnostic signature: events that occurred 2026-04-28T22:13Z UTC (=
+      2026-04-29T08:13 AEST) get authored as "2026-04-29 ~22:13Z" in retrospective
+      doc — wrong UTC date with right Z-suffix discipline.
+
+      Discipline (for post-event narration in docs/audits/, docs/reviews/,
+      docs/decisions/):
+      - Timeline tables use UTC consistently — Z-suffix attached only to UTC
+        timestamps.
+      - Never mix AEST calendar date with UTC time-of-day-suffix.
+      - Acceptable alternatives when UTC-only is awkward:
+        (a) explicit AEST qualifier with no Z (e.g., "2026-04-29 ~08:13 AEST")
+        (b) parenthetical conversion ("2026-04-28T22:13Z UTC = 2026-04-29T08:13 AEST")
+        (c) authoring-meta + event-meta separation (header "authored 2026-04-29 AEST";
+            body "events 2026-04-28 UTC").
+
+      Lineage: pre-existing project memory project_session_log_timezone.md notes the
+      same skew applies to work-trace entries (~10h forward AEST vs UTC). Calibration
+      #42 surfaces the discipline applies broadly to post-event docs, not just
+      work-traces. Mission-64 retrospective is the canonical fixup example: UTC-
+      consistency restored across §2 timeline + §3 commitments + Closing § via fixup
+      commit pre-merge.
+    surfaced_by_calibrations:
+      - 42
+    methodology_doc_subsection: "docs/methodology/multi-agent-pr-workflow.md#post-event-narration-aest-utc-date-conflation-discipline"
