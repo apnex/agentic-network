@@ -33,6 +33,8 @@ import {
 import { CognitivePipeline } from "@apnex/cognitive-layer";
 import { readFileSync, existsSync, appendFileSync, statSync, renameSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 import { resolveSourceAttribute, isPulseEvent } from "./source-attribute.js";
 
@@ -107,8 +109,39 @@ const config = loadConfig();
 const WORK_DIR = process.env.WORK_DIR || process.cwd();
 const LOG_FILE = join(WORK_DIR, ".ois", "claude-notifications.log");
 const SHUTDOWN_TIMEOUT_MS = 3000;
-const PROXY_VERSION = "1.2.0";
-const SDK_VERSION = "@apnex/network-adapter@2.1.0";
+
+// mission-66 #40 closure: version-source-of-truth consolidation.
+// PROXY_VERSION reads claude-plugin/package.json; SDK_VERSION reads
+// @apnex/network-adapter/package.json. Pre-mission-66 these were
+// hardcoded ("1.2.0" + "@apnex/network-adapter@2.1.0") and drifted
+// from the npm package.json values (0.1.4 + 0.1.2 respectively).
+// Hub-side canonical projection (agent-repository.ts deriveAdvisoryTags)
+// surfaces these via advisoryTags.adapterVersion to all consumers.
+const __shimDir = dirname(fileURLToPath(import.meta.url));
+const __require = createRequire(import.meta.url);
+
+function readPackageVersion(pkgJsonPath: string, fallback: string): string {
+  try {
+    const raw = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+    return typeof raw.version === "string" ? raw.version : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const CLAUDE_PLUGIN_PKG_VERSION = readPackageVersion(
+  resolve(__shimDir, "..", "package.json"),
+  "unknown",
+);
+const NETWORK_ADAPTER_PKG_VERSION = (() => {
+  try {
+    return readPackageVersion(__require.resolve("@apnex/network-adapter/package.json"), "unknown");
+  } catch {
+    return "unknown";
+  }
+})();
+const PROXY_VERSION = CLAUDE_PLUGIN_PKG_VERSION;
+const SDK_VERSION = `@apnex/network-adapter@${NETWORK_ADAPTER_PKG_VERSION}`;
 
 // OIS_COGNITIVE_BYPASS=1 → pass cognitive=undefined to McpAgentClient.
 // Operator-facing kill-switch for the cognitive pipeline; mcp-agent-client
