@@ -1249,6 +1249,124 @@ calibrations:
       - tele-3
       - tele-7
 
+  - id: 58
+    class: methodology
+    title: "Normative-doc-divergence — two normative docs canonicalize different paths/values for the same artifact/concept; both claim canonicality; practice splits per-implementer reading"
+    origin: mission-67-Phase-4-close
+    surfaced_at: Director-flagged-2026-04-30
+    status: closed-folded
+    closure_pr: 141
+    closure_mechanism: |
+      Director-flagged 2026-04-30 during mission-67 Phase 4 Design opening:
+      docs/surveys vs docs/designs Survey-artifact path discrepancy. idea-survey.md
+      v1.0 §5 specified docs/surveys/<mission>-survey.md; mission-lifecycle.md
+      Phase artifact table row 3 specified docs/designs/<mission>-survey.md.
+      Practice split: 6 surveys existed; 3 at correct docs/surveys/, 3 misplaced
+      at docs/designs/.
+
+      Engineer-reframe (thread-438 round-1; greg): class-level naming
+      "normative-doc-divergence" supersedes architect's surface-instance naming
+      "methodology-doc-internal-contradiction". Class scope is broader than
+      methodology-doc family — applies to ANY two normative docs disagreeing on
+      a value (ADR vs spec doc, methodology vs README, in-doc-comment vs
+      methodology-doc, etc.).
+
+      Sister-class to #42 (LLM-state-fidelity drift) in fidelity-loss family
+      taxonomy:
+      - #42 = LLM recall drifts from single ground truth (recall-side fidelity loss)
+      - #58 = multiple ground truths diverge from each other (source-side fidelity loss)
+
+      Closure path applied (PR #141 housekeeping): mission-lifecycle.md Phase
+      artifact table row 3 fix (docs/designs/<mission>-survey.md → docs/surveys/
+      <mission>-survey.md) + git mv 3 misplaced surveys
+      (m-mission-pulse-primitive-survey.md + m-wire-entity-convergence-survey.md
+      + m-agent-entity-revisit-survey.md → docs/surveys/) preserving git history
+      + 12 cross-ref repair edits (in-repo only per engineer D1 scope-boundary).
+      First-canonical mechanization closes the surveys-folder instance.
+
+      Forward-mechanization candidates (for class-level closure):
+      (a) Doc-graph linting via idea-227 hook scope
+      (b) Cross-reference audit at retrospective gates (manual; near-term)
+      (c) Schema-validate normative-doc cross-references at content-creation time
+      Architect-recommendation: (b) near-term + (a) forward-mechanization.
+
+      Director ratified class-level name "normative-doc-divergence" + ID #58 +
+      delegated ledger-write to architect 2026-04-30 (this entry).
+    cross_refs:
+      - docs/methodology/strategic-review.md
+      - docs/methodology/mission-lifecycle.md
+      - docs/methodology/idea-survey.md
+      - docs/audits/m-claude-md-hardening-closing-audit.md
+    tele_alignment:
+      - tele-2
+      - tele-4
+      - tele-5
+
+  - id: 59
+    class: methodology
+    title: "Bilateral-audit-content-access-gap — Phase 4 Design binding-artifact uncommitted on architect-side blocks bilateral content-level audit; thread-as-only-protocol-surface degrades audit to shape-level only"
+    origin: mission-67-Phase-4
+    surfaced_at: thread-438-round-1-2026-04-30
+    status: closed-folded
+    closure_pr: 142
+    closure_mechanism: |
+      Surfaced live during mission-67 Phase 4 Design bilateral round-1 audit
+      (thread-438 round-1 2026-04-30): engineer (greg) explicitly flagged
+      inability to read Design v0.1 because architect (lily) had only authored
+      to local working tree (uncommitted; un-pushed). Engineer audit was forced
+      to shape-level only (could audit architect's structural description in
+      thread message but not file content itself).
+
+      Engineer audit-recommendation included two paths:
+      (a) Thread-paste content (heavier thread surface; preserves commit-auth gate)
+      (b) Branch-push (architect commits Design v0.1 to feature branch + pushes
+          for engineer fetch; preserves gate intent at PR-merge stage)
+
+      Director directive 2026-04-30 ("ensure greg can read the source document;
+      re-perform brainstorm if necessary for full coverage") triggered path (b)
+      branch-push (commit 003dae4 on agent-lily/idea-226-claude-md-hardening).
+      Thread-438 sealed (round-budget exhausted at 9/10); thread-439 opened
+      with maxRounds=20 for full content-level brainstorm. Engineer round-1
+      content-level audit on thread-439 surfaced 5 CRITICAL + 8 MEDIUM + 3
+      MINOR + 3 PROBE findings + 16 v1.0→v1.1 folds applied.
+
+      Pattern definition: when binding-artifact lives only on architect-side
+      working tree, bilateral audit downgrades from content-level to shape-
+      level. Thread-as-protocol-surface conveys structural description but
+      not content; content-level audit requires file-system access (commit +
+      push to branch OR thread-paste).
+
+      Composition: with idea-227 (hook design) future scope — pre-bilateral-
+      audit branch-push automation OR convention requiring binding-artifact
+      branch-push at Design v0.1 stage. Indirect composition with #42 family
+      (state-fidelity / access-fidelity adjacent).
+
+      Forward-mechanization candidates (for class-level closure):
+      (a) Methodology-doc fold (near-term): "Phase 4 Design v0.1 binding-
+        artifact MUST be branch-pushed before bilateral round-1 audit
+        dispatch" — convention-level closure at mission-lifecycle.md §1.x
+        Phase 4 detail or §1.5 RACI table
+      (b) Pre-bilateral-audit hook (idea-227 mechanization): tool-level
+        enforcement at architect's Phase 4 "audit ready" signal
+      (c) PR-template enforcement: design-PR opened pre-audit (treats v0.1
+        as draft-PR with [DRAFT] label)
+      Architect-recommendation: (a) near-term methodology fold + (b) idea-227
+      forward.
+
+      Director ratified architect-provisional class-level name "bilateral-
+      audit-content-access-gap" (over engineer-reframe candidates "bilateral-
+      binding-artifact-locality-asymmetry" / "pre-bilateral-audit-artifact-
+      isolation") + ID #59 + delegated ledger-write to architect 2026-04-30
+      (this entry).
+    cross_refs:
+      - docs/designs/m-claude-md-hardening-design.md
+      - docs/audits/m-claude-md-hardening-closing-audit.md
+      - docs/reviews/m-claude-md-hardening-retrospective.md
+    tele_alignment:
+      - tele-5
+      - tele-6
+      - tele-12
+
   - id: 47
     class: methodology
     title: "Edit-time manual lint catches broken-ref violations but misses empty-list violations; round-1 audit IS the substrate-validation surface"
