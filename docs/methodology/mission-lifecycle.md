@@ -48,6 +48,8 @@ Phase 10 — Retrospective     Architect-authored retrospective; Director-ratifi
 
 ### §1.x Per-phase detail (v1.1 enrichment)
 
+**Phase 2 — Idea:** Filed via `create_idea`; status flips `open → triaged` to gate Phase 3 Survey entry. Triage mechanism + skip-criteria + 3-route protocol (skip-direct / triage-thread / queue-for-Strategic-Review) per `strategic-review.md` §Idea Triage Protocol. Architect-Responsibility per RACI §1.5; Director-Accountable for ratifying triage outcome at Phase 3 entry. Skip-direct route requires ALL 5 skip-criteria (Source-ratified + Scope-concrete + No-contest + Tele-aligned + Single-mission-shape); triage thread used when bilateral negotiation needed; queue-for-Strategic-Review used when collection-reasoning warranted.
+
 **Phase 5 — Manifest:** Architect calls `create_mission` with `plannedTasks[]` array binding the W0-Wn wave plan + `missionClass` field per §3 taxonomy. Mission entity status flips to `proposed`. plannedTasks remain `unissued` until first wave dispatch (cascade auto-issuance OR architect-direct dispatch via thread per `multi-agent-pr-workflow.md` cross-approval pattern). Architect also flips source `Idea.status` → `incorporated` + sets `Idea.missionId` for traceability.
 
 **Phase 7 — Release-gate:** Architect surfaces preflight verdict + release-gate ratification ask to Director (categorised: HOLD-point gate per §5 categorised-concerns table). Director ratifies (or redirects); architect calls `update_mission(status="active")` per autonomous-arc-driving authority (Director may also signal directly). Mission moves to `Phase 8 Execution`.
@@ -416,6 +418,26 @@ Some sub-execution transitions are Hub-cascade-driven:
 - **Architect proactive ping for recurring case** — retired by pulse primitive (mission-57 substrate); recurring use → pulse, one-off → local ScheduleWakeup per §4.4
 - **Director-led Design walkthrough section-by-section** — retired by Survey-then-Design (per §2 + idea-survey.md v1.0)
 - **Architect aggregate-only Survey interpretation** — retired by per-question multi-dim-context interpretation loop (per idea-survey.md §9)
+
+---
+
+## Phase 10 Retrospective
+
+Canonical anchor for retrospective discipline references (pre-existing detail at §1.x Phase 10 above; this heading provides the discoverable anchor target for cross-references from `architect-runtime.md` + future overlays + cited at `idea-survey.md` retrospective-mode-pick discipline).
+
+**Three-mode taxonomy** (per `feedback_retrospective_modes.md`):
+
+| Mode | When to use | Director time-cost | First canonical |
+|---|---|---|---|
+| **Walkthrough** | Structural-inflection / substrate-introduction class missions; Director-paced section-by-section | ~30-60min Director-time | mission-56 (M-Push-Foundation) |
+| **Summary-review** | Coordination-primitive-shipment / saga-substrate-completion / smaller-scope missions; architect-prepared full doc; Director reviews Closing summary | ~5-10min Director-time | mission-57 (M-Mission-Pulse-Primitive) |
+| **Skip** | Spike / substrate-cleanup-wave / rare bug-fix-as-mission missions; closing audit + mission-class signature suffices | 0min (mode-pick only) | (varies; case-by-case) |
+
+**Architect-Responsibility:** drafts retrospective per chosen mode; surfaces mode-pick options to Director at mission-close moment. **Director-Accountable:** picks mode; reviews retrospective per chosen mode; ratifies.
+
+**Artifact location:** `docs/reviews/<mission>-retrospective.md` (when authored — Skip mode does not produce a separate doc; closing audit at `docs/audits/<mission>-closing-audit.md` carries the Skip-mode summary).
+
+**Cross-references:** §1.x Phase 10 detail (above); §1.5 RACI matrix Phase 10 row; `feedback_retrospective_modes.md` (memory-persisted; mode-pick decision-tree).
 
 ---
 
