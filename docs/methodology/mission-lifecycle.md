@@ -421,6 +421,26 @@ Some sub-execution transitions are Hub-cascade-driven:
 
 ---
 
+## Phase 10 Retrospective
+
+Canonical anchor for retrospective discipline references (pre-existing detail at §1.x Phase 10 above; this heading provides the discoverable anchor target for cross-references from `architect-runtime.md` + future overlays + cited at `idea-survey.md` retrospective-mode-pick discipline).
+
+**Three-mode taxonomy** (per `feedback_retrospective_modes.md`):
+
+| Mode | When to use | Director time-cost | First canonical |
+|---|---|---|---|
+| **Walkthrough** | Structural-inflection / substrate-introduction class missions; Director-paced section-by-section | ~30-60min Director-time | mission-56 (M-Push-Foundation) |
+| **Summary-review** | Coordination-primitive-shipment / saga-substrate-completion / smaller-scope missions; architect-prepared full doc; Director reviews Closing summary | ~5-10min Director-time | mission-57 (M-Mission-Pulse-Primitive) |
+| **Skip** | Spike / substrate-cleanup-wave / rare bug-fix-as-mission missions; closing audit + mission-class signature suffices | 0min (mode-pick only) | (varies; case-by-case) |
+
+**Architect-Responsibility:** drafts retrospective per chosen mode; surfaces mode-pick options to Director at mission-close moment. **Director-Accountable:** picks mode; reviews retrospective per chosen mode; ratifies.
+
+**Artifact location:** `docs/reviews/<mission>-retrospective.md` (when authored — Skip mode does not produce a separate doc; closing audit at `docs/audits/<mission>-closing-audit.md` carries the Skip-mode summary).
+
+**Cross-references:** §1.x Phase 10 detail (above); §1.5 RACI matrix Phase 10 row; `feedback_retrospective_modes.md` (memory-persisted; mode-pick decision-tree).
+
+---
+
 ## §A Lifecycle audit (preserved from v0.1)
 
 (Original v0.1 audit content preserved unchanged below; serves as forward-compat reference for transitions enumerated pre-v1.0 codification.)
