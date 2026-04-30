@@ -1,6 +1,6 @@
-# M-CLAUDE-MD-Hardening — Design v1.2
+# M-CLAUDE-MD-Hardening — Design v1.3
 
-**Status:** v1.2 (architect-authored 2026-04-30; engineer round-1 + content-level round-1 + round-2 audit folds applied; bilateral converge in flight via thread-439)
+**Status:** v1.3 (architect-authored 2026-04-30; engineer round-1 + content-level round-1 + round-2 + Director Phase-4-close tier-restructure ratification folded; ratified pre-Phase-5)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Survey envelope:** `docs/surveys/m-claude-md-hardening-survey.md` (Director-ratified 6 picks; composite intent envelope)
 **Source idea:** idea-226 M-CLAUDE-MD-Hardening (status=triaged via route-(a) skip-direct)
@@ -55,7 +55,9 @@ The hardened-CLAUDE.md surface composes a 3-tier progressive-disclosure hierarch
 2. **Phase-engaged binding** — binding when agent enters the phase/mechanism the doc covers
 3. **Cross-references compose into Tier 2 detail** — Tier 1 doc surfaces cross-links into Tier 2 deep-dives (ADRs, specs, glossaries) rather than carrying full depth inline
 
-**Examples:** `mission-lifecycle.md` · `idea-survey.md` · `multi-agent-pr-workflow.md` · `mission-preflight.md` · `strategic-review.md` · `entity-mechanics.md`
+**Examples (full Tier 1 enumeration; canonical methodology + role-runtime navigation surfaces + methodology-vocabulary decoders):** `mission-lifecycle.md` · `idea-survey.md` · `multi-agent-pr-workflow.md` · `mission-preflight.md` · `strategic-review.md` · `entity-mechanics.md` · `engineer-runtime.md` (NEW; engineer INDEX-overlay) · `architect-runtime.md` (NEW; architect INDEX-overlay) · `tele-glossary.md` (NEW; tele lookup table)
+
+**Director-ratified Phase-4-close tier-rule (v1.3 restructure):** all `docs/methodology/<doc>.md` files = Tier 1. Single rule; operationally testable; non-author reviewer can assign tier from path alone. Role-runtime overlays + tele-glossary are Tier 1 (not Tier 2 as v1.2 specified) because: (i) role-overlay is the role-specific entry-vector to canonical methodology — load-bearing at engineer/architect cold-start; (ii) tele-glossary is load-bearing decoder for inline tele-N references at Tier 0; (iii) physical structure mirrors load semantics (folder = `docs/methodology/` ↔ Tier 1).
 
 ### §1.3 Tier 2 — Deep-dive companions + role-overlays + glossaries
 
@@ -70,7 +72,9 @@ The hardened-CLAUDE.md surface composes a 3-tier progressive-disclosure hierarch
 2. **Navigated-to**, not load-by-default — accessed via one of: (i) Tier 1 cross-link OR (ii) role-overlay TOC entry OR (iii) Tier 0 cold-pickup primary surface direct cross-link (per §4 Cold-pickup primary surfaces — `docs/traces/trace-management.md` is the canonical example); cold-session does NOT load by default
 3. **Composes upward** — content composable into Tier 1 docs (cross-link target) OR role-overlay (INDEX entry) OR Tier 0 cold-pickup surface (direct cross-link target)
 
-**Examples:** `docs/decisions/<adr>.md` · `docs/specs/<spec>.md` · `docs/methodology/entity-mechanics.md` · `engineer-runtime.md` · `architect-runtime.md` · `tele-glossary.md` (if scoped in)
+**Examples (Tier 2 = deep-dive per-artifact content; everything NOT in `docs/methodology/`):** `docs/decisions/<adr>.md` (ADRs) · `docs/specs/<spec>.md` (entity specs) · `docs/audits/<mission>-*-audit.md` (closing audits) · `docs/reviews/<mission>-retrospective.md` (retrospectives) · `docs/surveys/<mission>-survey.md` (Phase 3 artifacts) · `docs/designs/<mission>-design.md` (Phase 4 artifacts) · `docs/traces/trace-management.md` + `docs/traces/<task-or-mission>-work-trace.md` (work-traces) · `docs/calibrations.yaml` (calibration ledger; queried via Skill)
+
+**Director-ratified Phase-4-close tier-rule (v1.3 restructure):** Tier 2 = everything NOT in `docs/methodology/`. Role-runtime overlays + tele-glossary REMOVED from Tier 2 (now Tier 1 per §1.2 restructure). `docs/methodology/entity-mechanics.md` REMOVED from Tier 2 example list (it was always Tier 1 per file location; was example-list inconsistency in v1.2).
 
 ### §1.4 Tier criteria operational test (per engineer audit rubric §1)
 
@@ -375,7 +379,9 @@ Per Q5d "if there are structural improvements available to our protocols/methodo
 
 **Engineer round-1 audit upgrade (NOT parked → IN-SCOPE):** engineer-side parking decision UPGRADED to IN-SCOPE because Tier 0 §4 Cold-pickup primary surfaces + §2 Calibration ledger discipline reference tele-N inline (e.g., "tele-12 attention-ordering"). Per engineer round-1 §6.2 probe: "tele-references inline at Tier 0 → tele-glossary becomes Tier-0-binding-dependency (cold-session can't decode tele-12 without it = tele-4 violation)." Architect-accept: tele-glossary upgrades from "decorative reference" to "load-bearing decoder"; IN-SCOPE for THIS mission's PR 1 binding-artifact.
 
-**Architect-flag for Phase 4 close (still applicable):** Director-confirm at Phase 4 close as final ratification (architect + engineer agree IN-SCOPE; Director-Accountable for Phase 4 ratification gate per RACI §1.5).
+**v1.3 tier-restructure consequence:** tele-glossary classified as Tier 1 (NOT Tier 2 as v1.2 specified). Director Phase-4-close ratification 2026-04-30: load-bearing-decoder semantics + `docs/methodology/` placement → Tier 1 by physical-structure-mirrors-load-semantics rule.
+
+**Architect-flag for Phase 4 close (RESOLVED 2026-04-30):** Director Phase-4-close ratification: tele-glossary IN-SCOPE confirmed; tier-restructure to Tier 1 also ratified (composes with v1.3 restructure).
 
 ### §6.3 Calibration ledger filing — `normative-doc-divergence` class
 
@@ -497,4 +503,4 @@ Per Q5d "if there are structural improvements available to our protocols/methodo
 
 ---
 
-— Architect: lily / 2026-04-30 (Design v1.2; bilateral content-level converge near-final)
+— Architect: lily / 2026-04-30 (Design v1.3; ratified pre-Phase-5 per Director Phase-4-close gate-engagement)
