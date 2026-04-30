@@ -1,6 +1,6 @@
-# M-CLAUDE-MD-Hardening — Design v1.1
+# M-CLAUDE-MD-Hardening — Design v1.2
 
-**Status:** v1.1 (architect-authored 2026-04-30; engineer round-1 + content-level round-1 audit folds applied; bilateral converge in flight via thread-439)
+**Status:** v1.2 (architect-authored 2026-04-30; engineer round-1 + content-level round-1 + round-2 audit folds applied; bilateral converge in flight via thread-439)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Survey envelope:** `docs/surveys/m-claude-md-hardening-survey.md` (Director-ratified 6 picks; composite intent envelope)
 **Source idea:** idea-226 M-CLAUDE-MD-Hardening (status=triaged via route-(a) skip-direct)
@@ -10,7 +10,7 @@
 
 ## §0 Document orientation
 
-This Design v0.1 concretizes the Survey envelope (6 Director picks) into operational decisions. Reading order:
+This Design concretizes the Survey envelope (6 Director picks) into operational decisions; current version v1.2 reflects bilateral architect-engineer converge through threads 438 + 439. Reading order:
 - §1 Tier definitions — establishes the tier-frame Round-1 audit assesses against (per engineer C2)
 - §2 Directive enumeration — what goes in CLAUDE.md after hardening, with tier-assignment + provenance-anchor
 - §3 Cross-link discipline — bidirectional cross-link rules + companion-policies index shape
@@ -253,7 +253,7 @@ Per Q2d + engineer P2 INDEX-overlay-not-content-fork shape: role-runtime overlay
 | Thread-side approval ≠ GitHub-side | Branch protection blocks merge without `gh pr review --approve` | `multi-agent-pr-workflow.md` | `#cross-approval-pattern` |
 | Commit-push thread-heartbeat | Per-commit thread ping for architect visibility (calibrations #54/#55) | `mission-lifecycle.md` | `#15-1-engineer-runtime-decision-moment-routing-calibration-57-codification` |
 | Work-trace discipline | `docs/traces/<task-or-mission>-work-trace.md` per task; engineer-owned | `mission-lifecycle.md` | `#7-2-trace-discipline-engineer-owned` |
-| Cross-package vitest baseline | bug-32 admin-merge per established lineage (35-PR consecutive at mission-57 close) | `mission-lifecycle.md` | `#7-4-cross-approval-pattern-mission-execution-discipline` |
+| Cross-package vitest baseline (admin-merge convention) | Engineer must recognize when cross-package test failures warrant admin-merge per established 35-PR-consecutive lineage (bug-32) vs when test-fix is required; canonical decision criteria + lineage context lives in canonical source | `mission-lifecycle.md` | `#7-4-cross-approval-pattern-mission-execution-discipline` |
 | Commit message format | No `Co-Authored-By:` trailer | `CLAUDE.md` | `#commit-message-policy` |
 | Hub thread protocol | `drain_pending_actions` on session-start; thread maxRounds discipline; bilateral seal via `close_no_action` + summary | `mission-lifecycle.md` | `#7-5-per-wave-bilateral-seal-discipline` |
 
@@ -458,7 +458,7 @@ Per Q5d "if there are structural improvements available to our protocols/methodo
 **Base:** `origin/main` (post-PR-2 merge)
 **Scope:**
 - `docs/surveys/m-claude-md-hardening-survey.md` (Survey artifact; already authored)
-- `docs/designs/m-claude-md-hardening-design.md` (Design v1.0; converged from this v0.1)
+- `docs/designs/m-claude-md-hardening-design.md` (Design v1.x ratified; converged through bilateral threads 438 + 439)
 - `CLAUDE.md` (new hardened version per §2 directive enumeration)
 - `docs/methodology/engineer-runtime.md` (NEW; per §4.2)
 - `docs/methodology/architect-runtime.md` (NEW; per §4.3)
@@ -469,9 +469,9 @@ Per Q5d "if there are structural improvements available to our protocols/methodo
 
 ---
 
-## §9 Open questions for Round-1 audit (engineer Step 3)
+## §9 Round-1 + Round-2 audit summary (engineer responses folded; probes resolved)
 
-Surfaced for engineer round-1 audit per audit-rubric:
+**Historical record** (per engineer round-2 verify R4 fold; preserves Phase 4 Design audit-history for retrospective trace). All 6 probes were surfaced for engineer Step-3 round-1 audit; all received content-level engineer responses + folded into v1.1 + v1.2 architect-revision passes. Probes archived below for retrospective record:
 
 1. **Tier-membership criteria operational test** — §1.4 test cases sufficient? Edge cases that break the criteria? (audit-rubric §1)
 2. **Provenance-anchor format consistency** — §5.3 3-class taxonomy + §5.4 sub-line placement collide / compose cleanly with existing methodology-doc-convention? (audit-rubric §2)
@@ -492,8 +492,9 @@ Surfaced for engineer round-1 audit per audit-rubric:
 - **idea-227** M-Hook-Design-End-to-End (parked) — runtime-mechanism follow-on; composes Phase-N revisit-axes (AG-1, AG-2, AG-3 candidates)
 - **calibration #57 + #55** — Mission RACI directive provenance
 - **calibration #42** — `normative-doc-divergence` composition class (LLM-state-fidelity drift family)
-- **thread-438** — Phase 4 Design bilateral architect-engineer thread (this doc shipped here for Step 3 round-1 audit)
+- **thread-438** — Phase 4 Design bilateral (shape-level audit; sealed; round-budget exhausted at 9/10)
+- **thread-439** — Phase 4 Design bilateral (content-level audit + bilateral converge to ratified v1.x; opened post-Director-directive branch-push 2026-04-30)
 
 ---
 
-— Architect: lily / 2026-04-30 (Design v1.1; bilateral content-level converge in flight)
+— Architect: lily / 2026-04-30 (Design v1.2; bilateral content-level converge near-final)
