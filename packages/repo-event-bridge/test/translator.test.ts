@@ -262,7 +262,7 @@ describe("normalizeGhEvent — pr-review-approved payload", () => {
 });
 
 describe("normalizeGhEvent — commit-pushed payload", () => {
-  it("extracts ref, pusher, commits", () => {
+  it("extracts ref, pusher, commits (webhook shape — payload.pusher.login)", () => {
     const ghEvent = {
       type: "PushEvent",
       repo: { name: "owner/repo" },
@@ -280,6 +280,41 @@ describe("normalizeGhEvent — commit-pushed payload", () => {
     expect(out.pusher).toBe("dave");
     expect(out.commitCount).toBe(2);
     expect(Array.isArray(out.commits)).toBe(true);
+  });
+
+  // bug-44: GH Events API places the user at ghEvent.actor.login (event-level)
+  // and does NOT populate payload.pusher / payload.sender. Translator must fall
+  // back to actor extraction so the bridge's polled events route correctly to
+  // the COMMIT_PUSHED_HANDLER.
+  it("extracts pusher from ghEvent.actor.login when payload.pusher absent (Events API shape)", () => {
+    const ghEvent = {
+      type: "PushEvent",
+      actor: { id: 12345, login: "apnex-greg", display_login: "apnex-greg" },
+      repo: { name: "owner/repo" },
+      payload: {
+        push_id: 999,
+        size: 1,
+        distinct_size: 1,
+        ref: "refs/heads/feature-branch",
+        head: "abc123",
+        before: "def456",
+        commits: [{ sha: "abc123", message: "trivial fix", author: { name: "apnex-greg" } }],
+      },
+    };
+    const out = normalizeGhEvent(ghEvent, "commit-pushed");
+    expect(out.ref).toBe("refs/heads/feature-branch");
+    expect(out.pusher).toBe("apnex-greg");
+    expect(out.commitCount).toBe(1);
+  });
+
+  it("returns undefined pusher when neither payload.pusher nor ghEvent.actor present", () => {
+    const ghEvent = {
+      type: "PushEvent",
+      repo: { name: "owner/repo" },
+      payload: { ref: "refs/heads/orphan", commits: [] },
+    };
+    const out = normalizeGhEvent(ghEvent, "commit-pushed");
+    expect(out.pusher).toBeUndefined();
   });
 });
 
