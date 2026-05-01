@@ -105,3 +105,4 @@ const router = new MessageRouter({ hooks, seenIdCache: cache });
 - **Design:** v1.2 (architect lily); ratified at thread-332 round-3
 - **Engineer:** greg / 2026-04-26
 - **Review:** architect-pool cross-approval per `docs/methodology/multi-agent-pr-workflow.md` calibration B
+
