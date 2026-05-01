@@ -127,8 +127,13 @@ export function normalizeGhEvent(
       return normalizePullRequestReview(payload, repo);
     case "pr-review-comment":
       return normalizePullRequestReviewComment(payload, repo, ghEvent);
-    case "commit-pushed":
-      return normalizePush(payload, repo);
+    case "commit-pushed": {
+      // bug-44: GH Events API places the user at ghEvent.actor.login (event-level),
+      // NOT in payload.pusher / payload.sender (those are webhook-only). Pass actor
+      // so normalizePush can fall back to it when the webhook fields are absent.
+      const actor = isRecord(ghEvent.actor) ? ghEvent.actor : undefined;
+      return normalizePush(payload, repo, actor);
+    }
     case "unknown":
       return { raw: ghEvent };
   }
@@ -235,6 +240,7 @@ function normalizePullRequestReviewComment(
 function normalizePush(
   payload: Record<string, unknown>,
   repo: string | undefined,
+  actor?: Record<string, unknown>,
 ): Record<string, unknown> {
   const commitsRaw = Array.isArray(payload.commits) ? payload.commits : [];
   const commits = commitsRaw.map((c) => {
@@ -249,7 +255,13 @@ function normalizePush(
   return {
     repo,
     ref: payload.ref,
-    pusher: extractLogin(payload.pusher) ?? extractLogin(payload.sender),
+    // bug-44: Events API has no pusher/sender in payload; falls back to actor
+    // (extracted at event level by caller). Webhook deliveries continue to work
+    // via the payload.pusher / payload.sender path.
+    pusher:
+      extractLogin(payload.pusher) ??
+      extractLogin(payload.sender) ??
+      extractLogin(actor),
     commitCount: commits.length,
     commits,
   };
