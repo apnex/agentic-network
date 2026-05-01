@@ -328,6 +328,32 @@ async function updateMission(args: Record<string, unknown>, ctx: IPolicyContext)
         isError: true,
       };
     }
+
+    // Mission-68 W1 (Design v1.0 §7 + §11.1 C3 fold): proposed→active
+    // FSM-handler auto-inject. When a mission flips to active without
+    // explicit `pulses` (neither already on the entity nor passed in
+    // this update), inject unified 10/20/2 defaults via the same
+    // preparePulsesForStorage pathway. Per P8 ratification (option-a):
+    // NOT gated behind missionClass !== undefined — accept post-v1.0
+    // unified semantics override for legacy `proposed` missions lacking
+    // missionClass; legacy missions are an edge case at this point.
+    if (
+      priorStatus === "proposed" &&
+      status === "active" &&
+      pulses === undefined &&
+      !current.pulses
+    ) {
+      const { value: injected, error: injectError } = preparePulsesForStorage(buildDefaultPulses());
+      if (injectError) {
+        // Defensive: shouldn't happen for our own buildDefaultPulses
+        // output; surface as error for engineer diagnosis.
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: `proposed→active auto-inject failed: ${injectError}` }) }],
+          isError: true,
+        };
+      }
+      updates.pulses = injected;
+    }
   }
 
   const mission = await ctx.stores.mission.updateMission(missionId, updates);
