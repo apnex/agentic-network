@@ -33,7 +33,7 @@ If you're picking up cold:
 
 ## In-flight
 
-_(nothing claimed — Phase 4 Design v1.0 RATIFIED + bilateral seal FINALIZED at thread-445 round 6 — Hub-finalized with 2 actions committed + executed (engineer-side `close_no_action` action-1 + architect-side mirror action-2). Engineer-side Phase 4 work complete; awaiting architect Phase 5 Manifest authoring per RACI §1.5.)_
+_(W1 implementation 9/9 deliverables shipped + tests; awaiting Pass 10 Hub container rebuild (operator-deferred — GCP Cloud Build auth blocked + container belongs to architect session) + PR-1 open + bilateral cross-approval gate.)_
 
 ---
 
@@ -54,6 +54,17 @@ _(nothing claimed — Phase 4 Design v1.0 RATIFIED + bilateral seal FINALIZED at
 - ✅ **Engineer-Responsibility from P7 ratification** — work-trace opened (this file) per `engineer-runtime.md` work-trace discipline; Phase 4 start open-point.
 - ✅ **Round-3 verify-quick on Design v1.0 (commit `9c1ec9b`)** — diff-confirmed v0.2→v1.0 deltas (+9/-1 = 8 net): M1 §2.4 two-message-intent paragraph landed verbatim from round-2 reply suggestion; P8 §7 ratification option-(a) accept-post-v1.0-unified-semantics-override; status header v0.2→v1.0. No regressions; no new content-level surfaces. v1.0 ratifiable.
 - ✅ **Bilateral seal at thread-445 round 5** — `converged=true` + `stagedActions: [close_no_action]` (action-1; reason: Phase 4 ratified; downstream actions architect-Responsibility per RACI §1.5) + non-empty summary narrative. Hub gate accepted. Turn returned to architect for mirror-converge at round 6.
+- ✅ **Phase 8 W1 implementation 9/9 deliverables shipped** (D1-D9 commits 5fc6c5a→e0ac347 on `agent-lily/idea-224`):
+  - D1: repo-event-handlers.ts registry (NEW; structurally distinct from triggers.ts; missing handler = WARN log per P1)
+  - D2: repo-event-author-lookup.ts primitive (NEW; AgentLabels `ois.io/github/login` per C4+P2)
+  - D3: dispatch wiring in message-policy.ts createMessage post-create cascade (cascade-bounded; failure-isolated)
+  - D4: COMMIT_PUSHED_HANDLER first handler (terse body + structured payload per M2 + #41 STRUCTURAL ANCHOR; emits ONLY for engineer-pushes per AG-7)
+  - D5: pulse simplification (precondition layer removed; PRESERVED registry + thread-still-active + task-not-completed entries per C2; PRESERVED 3-condition guard INTACT per CRITICAL C1)
+  - D6: unified default cadence 10/20 + missedThreshold reduce-to-2 (DEFAULT_ENGINEER_PULSE_INTERVAL_SECONDS=600; DEFAULT_ARCHITECT_PULSE_INTERVAL_SECONDS=1200; buildDefaultPulses() helper)
+  - D7: update_mission FSM-handler proposed→active auto-inject (P8 ratification; NOT gated behind missionClass)
+  - D8: ADR-027 in-place amendments + mission-lifecycle.md §4.x rewrite + §1.5.1.1 NEW expansion + engineer-runtime.md NEW row
+  - D9: tests (15 NEW + UPDATED across 3 files; 60 affected tests pass; full hub 1064 pass / 0 regressions)
+- ⚠️ **D10 Pass 10 rebuild OPERATOR-DEFERRED** — Cloud Build access denied (GCP org policy); Hub container belongs to architect session per memory. Substantive verification: typecheck clean + 1064 tests pass / 0 regressions. Architect/operator action required at PR review or post-merge gate.
 
 ---
 
@@ -96,6 +107,14 @@ Composable downstream missions:
 - 13:14 AEST — Architect (lily) Design v1.0 (commit `9c1ec9b`) shipped on same branch; thread-445 round 4 reply ratifies M1 §2.4 paragraph landed verbatim + P8 architect-decision option-(a) accept-post-v1.0-unified-semantics-override. Architect invites engineer round-3 verify-quick + bilateral seal at next round.
 - 13:15 AEST — Engineer (greg) round-3 verify-quick at thread-445 round 5: diff-confirmed v0.2→v1.0 deltas clean (+9/-1 = 8 net); no regressions; no new content-level surfaces. Bilateral seal: `converged=true` with `close_no_action` staged (action-1) + summary narrating 5-round bilateral convergence. **Phase 4 Design v1.0 RATIFIED.** Engineer-side Phase 4 work complete; awaiting architect mirror-converge at round 6.
 - 13:16 AEST — Architect (lily) mirror-converge at thread-445 round 6; Hub fired `thread_convergence_finalized` event with `intent: implementation_ready`. **2 actions committed + executed (failed=0)**: engineer-side action-1 + architect-side mirror action-2. Bilateral converge complete. Architect-Responsibility next: Phase 5 Manifest (`docs/missions/m-pulse-mechanism-phase-2-preflight.md` + `create_mission` for mission-68 with `plannedTasks[]` + `missionClass="substrate-introduction"` + `pulses` config 10/20) + idea-224 status flip (`triaged → incorporated` + `missionId=mission-68`) + Phase 6 Preflight + Phase 7 Release-gate Director engagement.
+- 13:24 AEST — Architect (lily) compressed Phase 5/6/7 same-day: mission-68 created (status=active per Director Phase 7 Release-gate "Mission go" 2026-05-01); idea-224 flipped triaged→incorporated; Preflight artifact pushed (`docs/missions/m-pulse-mechanism-phase-2-preflight.md`; commit `ead8f30`; verdict GREEN; 6-category audit). W1 dispatched as task-390 to engineer (greg).
+- 13:25 AEST — Engineer (greg) claimed task-390 (W1 hub binding-artifact). Branch rename per M6 fold: `agent-lily/idea-224-phase-3-survey` → `agent-lily/idea-224` (new ref pushed; old ref left in place non-destructively). First W1 commit (5fc6c5a): work-trace open per P7 ratification.
+- 13:31 AEST — D1+D2+D3+D4 substrate commit (5743d10): `repo-event-handlers.ts` registry + `repo-event-author-lookup.ts` primitive (AgentLabels `ois.io/github/login` reserved-key approach per C4+P2) + `repo-event-commit-pushed-handler.ts` first handler (terse body + structured payload per M2+#41) + `message-policy.ts` createMessage post-create cascade dispatch wiring (cascade-bounded; failure-isolated). Hub tsc clean.
+- 13:36 AEST — D5+D6 commit (1bcc28b): pulse simplification (precondition layer removed; PRESERVED registry + thread-still-active + task-not-completed entries per C2; PRESERVED 3-condition guard INTACT per CRITICAL C1) + unified default cadence (DEFAULT_MISSED_THRESHOLD 3→2; DEFAULT_ENGINEER_PULSE_INTERVAL_SECONDS=600; DEFAULT_ARCHITECT_PULSE_INTERVAL_SECONDS=1200; buildDefaultPulses() helper; createMission auto-injects when pulses omitted). Hub tsc clean.
+- 13:42 AEST — D7 commit (98de098): update_mission FSM-handler at proposed→active flip auto-injects unified 10/20/2 defaults via preparePulsesForStorage reuse; P8 ratification (NOT gated behind missionClass !== undefined). Hub tsc clean.
+- 13:48 AEST — D8 commit (392f454): ADR-027 amendments (in-place §2.1+§2.6+§2.8+§4.5 edits per Design §9; §2.6 PRESERVED INTACT per C1 explicitly noted; mission-68 co-shipping note in §4.5 per MIN1) + mission-lifecycle.md §4.x rewrite for unified-defaults regime + §1.5.1.1 NEW expansion (3-layer mechanization stack) + engineer-runtime.md NEW row for commit-push thread-heartbeat mechanization (separate from existing #57 routing row per MIN3; references 20/40min escalation horizon per M4).
+- 13:53 AEST — D9 commit (e0ac347): tests (15 NEW for repo-event-handlers + author-lookup + COMMIT_PUSHED_HANDLER; UPDATED mission-pulse-schema for mission-68 semantics; UPDATED pulse-sweeper E2 3-condition guard test rewritten for pulseFiredAtLeastOnce path per CRITICAL C1 pinning; NEW FSM-handler proposed→active flip describe block 4 tests). Full hub suite: 1064 pass / 5 pre-existing skip / 0 regressions. tsc --noEmit clean.
+- 13:55 AEST — D10 Pass 10 rebuild ATTEMPTED via `OIS_ENV=prod ./scripts/local/build-hub.sh`; **BLOCKED on GCP Cloud Build auth** (org policy: user lacks serviceusage.services.use permission to access labops-389703_cloudbuild bucket). Direct local `docker build` would require manual replication of build-hub.sh tarball-staging logic AND restart of Hub container which belongs to architect's session per memory. **Operator-deferred:** Pass 10 rebuild + container restart requires architect/user action at PR review or post-merge gate. Substantive verification: typecheck clean + 1064 tests pass / 0 regressions.
 
 ---
 
