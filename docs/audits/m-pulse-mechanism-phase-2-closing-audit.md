@@ -154,31 +154,38 @@ Mission-68 simplified the Hub pulse mechanism (stripped class-defaults + precond
 
 ## §5 Substantive observations + open surfaces
 
-### §5.1 Pass 10 Hub-rebuild GCP-auth blocker (Director-action surface; OPEN)
+### §5.1 Pass 10 Hub-rebuild GCP-auth blocker — RESOLVED via Director SA-key + 3-PR drift-class fix
 
-**Status:** BLOCKED. Both architect + engineer sessions fail at the same point in `build-hub.sh` — Cloud Build access requires `serviceusage.services.use` permission on `labops-389703_cloudbuild` bucket. `build-hub.sh` has NO local-docker fallback; only Cloud Build path.
+**Initial blocker (Director-surfaced 2026-05-01):** Both architect + engineer sessions fail at the same point in `build-hub.sh` — Cloud Build access requires `serviceusage.services.use` permission on `labops-389703_cloudbuild` bucket. `build-hub.sh` has NO local-docker fallback; only Cloud Build path.
 
-**Director-decision options:**
-- (a) Grant GCP role to architect/engineer service accounts (long-term unblock)
-- (b) Director-session manual rebuild for THIS merge (per-mission ad-hoc)
-- (c) Ratify merge-without-rebuild given test verification clean (1064/1064 hub + 60/60 pulse-targeted + tsc clean; mission-68 self-applies pulse config explicitly so live-Hub-running-old-code doesn't break mission-68 itself)
+**Director-resolution:** option (a)-equivalent — Director provided service-account key path `labops-389703.json` (auth approach: `gcloud auth activate-service-account --key-file=labops-389703.json && gcloud config set project labops-389703`).
 
-**Mission-68 specific impact assessment:**
-- mission-68's W1 hub code is correct + fully tested
-- mission-68's pulse config is self-applied (explicit `pulses` at create_mission time)
-- Live Hub running old binaries does NOT break mission-68's pulse coordination
-- Live Hub running old binaries DOES mean: post-W1-merge mission flips proposed→active won't auto-inject new defaults until rebuild (legacy proposed missions stay on legacy semantics)
-- New `repo-event-handlers.ts` registry won't fire commit-pushed handler until rebuild (Layer (c) inert until then)
+**Deeper drift surfaced post-auth-resolution:** First Pass 10 rebuild attempt with Cloud Build access succeeded surfaced **mission-64 namespace migration drift class** with 3 distinct layers:
 
-### §5.2 PR-sequencing observation (OPEN; depends on §5.1 resolution)
+| Layer | Failure | PR fix | Merged |
+|---|---|---|---|
+| 1 | `hub/Dockerfile` references stale `ois-*.tgz`; `npm pack` produces `apnex-*.tgz` post-mission-64 namespace rename | bug-43 PR #148 (Dockerfile rename + initial `prepack` hooks) | 2026-05-01T04:42:48Z |
+| 2 | `prepack` hook only fires on `npm pack`; CI `npm install` path needs `prepare` hook for file: deps | bug-43-followup PR #149 (rename `prepack` → `prepare`) | 2026-05-01T04:52:09Z |
+| 3 | `prepare` hook fires but `tsc` fails because file: deps' devDeps not installed; npm doesn't recurse devDeps for file: deps | bug-43-followup-2 PR #150 (explicit pre-install + build per package; both CI workflow + build-hub.sh) | 2026-05-01T04:59:54Z |
 
-PR #146 branch `agent-greg/mission-68-w2` is built ON TOP OF `agent-lily/idea-224` W1 commits (8 W1 + 1 W2 commit; 22 files in diff). Engineer report said "Branch off main" but actually based on HEAD `7ba3b29`. Sequencing options:
+**bug-43 entity** filed (severity=major; class=drift; tags `dockerfile + pass-10 + build-infrastructure + mission-64-followon + mission-68-blocker + namespace-migration`). All 3 PRs bilaterally cross-approved (threads 446 + 447 + 448 + 449). Subsumes the W1 D10 operator-deferred narrative — mission-68 substrate now self-bootstraps end-to-end.
 
-- **A:** Merge PR #145 (W1 alone; clean per-package boundary) → rebase PR #146 to W2-only delta → merge #146 (cleanest history; preserves Design §11.1 M5 fold semantics)
-- **B:** Merge PR #146 (W1+W2 combined) first → close #145 as superseded (fewest steps; loses per-package PR boundary)
-- **C:** Close PR #146 → greg rebases off post-W1-merge main → reopen W2-only PR
+**Pass 10 outcome:**
+- Image rebuilt + pushed: `australia-southeast1-docker.pkg.dev/labops-389703/cloud-run-source-deploy/hub@sha256:9c4c81456b5499426ba5004a8a538c79189ee7e381dd499bd6e27b90dc668a9e` (W1 + bug-43 chain live)
+- Hub container restarted from main worktree (cutover sentinel preserved): healthy at `localhost:8080/health` (status:ok, version 1.0.0, activeSessions=2)
 
-Architect-recommendation: **A** for clean per-package PR boundary visibility. Director Pass 10 path (§5.1) gates the actual merge action.
+**Calibration-candidate (4th of mission; `pass-10-no-local-fallback-blocks-llm-session-merges`):** `build-hub.sh` having no local-docker fallback path means LLM sessions without GCP auth cannot rebuild Hub; surfaces as merge-blocker for Hub-source PRs. Director SA-key resolution is per-mission ad-hoc; structural fix is either GCP role grant to LLM service accounts OR local-docker fallback path. Architect-flag for closing-audit-followup discussion at mission-close-time.
+
+### §5.2 PR-sequencing — RESOLVED option B-variant (cherry-pick W2 onto fresh branch off main)
+
+**Original observation:** PR #146 branch `agent-greg/mission-68-w2` was built ON TOP OF `agent-lily/idea-224` W1 commits (8 W1 + 1 W2 commit; 22 files in diff). Engineer report said "Branch off main" but actually based on HEAD `7ba3b29`. 3 sequencing options were enumerated (A/B/C); architect-recommended A.
+
+**Actual execution:** **Option-A-variant via cherry-pick** — after W1 PR #145 merged, attempted to rebase PR #146's branch on new main. Rebase hit conflicts (W1 docs duplicated since main now had them via W1 squash-merge). Aborted rebase + cherry-picked just the W2 commit (`4a2003b`) onto a fresh branch off main + force-pushed to `agent-greg/mission-68-w2` to keep PR #146 metadata. This achieves option-A's clean per-package boundary semantics with cherry-pick mechanics rather than rebase.
+
+**PR landing actuals:**
+- PR #145 W1 merged 2026-05-01T05:01:49Z (squash; SHA `a065362`)
+- PR #146 W2 merged 2026-05-01T05:21:27Z (squash; cherry-picked W2 commit `767522c` post-rebase-conflict-resolution)
+- PR #147 W3 (this artifact) merge timestamp pending
 
 ### §5.3 Pre-existing adapter-suite test failures (OPEN; out-of-scope for this mission; backlog candidate)
 
@@ -221,19 +228,33 @@ $ cd adapters/claude-plugin && npx vitest run test/commit-push-hook.test.ts
 
 16 tests: 5 canonical + 3 negative + 2 alias-variant + 3 metadata-extraction + 2 envelope-construction + 1 documented false-positive edge case (`cat <file-with-arrow>`).
 
-### §6.3 Pass 10 rebuild + smoke verify (OPEN)
+### §6.3 Pass 10 rebuild + smoke verify — DISCHARGED
 
-Pending Director Pass 10 resolution (§5.1). Smoke verify post-rebuild target: new mission flipped proposed→active should auto-inject unified 10/20/2 pulses via NEW `update_mission` FSM-handler.
+**Pass 10 rebuild outcomes:**
+- Build #1 (post-Director-SA-key auth fix): surfaced Layer-1 drift (`ois-*` vs `apnex-*` tarball names) → bug-43 PR #148
+- Build #2 (post-bug-43 + greg's local prepack-hook approach): surfaced Layer-2 drift (CI npm install needs `prepare` not `prepack`) → bug-43-followup PR #149
+- Build #3 (post-bug-43-followup with stale local node_modules): surfaced Layer-3 drift (devDeps not installed for file: deps in fresh checkout) → bug-43-followup-2 PR #150
+- Build #4 (post-full-bug-43-chain-merge): SUCCESS; image pushed to Artifact Registry; digest `sha256:8422e94f...` (pre-W1 with bug-43 chain only)
+- Build #5 (post-W1-merge): SUCCESS; image rebuilt with W1 substrate live; digest `sha256:9c4c81456b5499426ba5004a8a538c79189ee7e381dd499bd6e27b90dc668a9e`
+
+**Hub container restart:** Healthy at `localhost:8080/health` (`{"status":"ok","service":"mcp-relay-hub","version":"1.0.0","activeSessions":2,"sseStreams":2}`). Both architect + engineer sessions reconnected post-restart.
+
+**Smoke verify substrate-self-dogfood:** Mission-68 itself runs the post-v1.0 unified cadence regime via explicit pulse config (10/20/2/precondition=null) — pulses fired correctly throughout this session (architect pulse cycle empirical: 1200s; engineer pulse cycle 600s; missedThreshold=2 fired one escalation during rebuild downtime, resolved-by-context per architect-evaluation). NEW `update_mission` FSM-handler auto-inject for proposed→active transitions becomes operationally observable on next mission flip post-this-rebuild — mission-68 itself was created PRE-W1-shipment so didn't exercise the new FSM-handler, but the auto-inject path is exercised in test (`mission-pulse-schema.test.ts` proposed→active flip describe block).
 
 ---
 
-## §7 PR landing chronology (provisional; finalize post-merge)
+## §7 PR landing chronology (final)
 
-| PR | Title | State at audit-time | Final state |
+| PR | Title | Merged at | Squash SHA |
 |---|---|---|---|
-| #145 | mission-68 W1 — Hub binding-artifact | both-side approved; merge BLOCKED on Pass 10 | TBD |
-| #146 | mission-68 W2 — Adapter commit-push hook | both-side approved; merge BLOCKED on Pass 10 + sequencing | TBD |
-| #TBD | mission-68 W3 — Closing audit + retrospective | this commit lands here | TBD |
+| #148 | bug-43 — Hub Dockerfile + initial `prepack` hooks (mission-64 drift Layer 1) | 2026-05-01T04:42:48Z | `611491e` |
+| #149 | bug-43 followup — rename `prepack` → `prepare` (drift Layer 2) | 2026-05-01T04:52:09Z | `d5d3566` |
+| #150 | bug-43 followup-2 — pre-install + build sovereign packages (drift Layer 3) | 2026-05-01T04:59:54Z | `34d64e6` |
+| #145 | mission-68 W1 — Hub binding-artifact (substrate + handler + pulse simpl + ADR-027 + FSM-handler + methodology) | 2026-05-01T05:01:49Z | `a065362` |
+| #146 | mission-68 W2 — Adapter commit-push hook (Layer (b) cadence-discipline scaffold) | 2026-05-01T05:21:27Z | `767522c`-cherry-picked |
+| #147 | mission-68 W3 — Closing audit + retrospective (this artifact) | TBD post-this-update | TBD |
+
+**Total elapsed Phase 7 → Phase 9 (Director "Mission go" → all PRs merged):** ~85min (4:21Z → ~5:25Z), with 3 unplanned drift-fix PRs surfaced + closed in-flight. Without the bug-43 chain, mission-68 W1+W2 would have merged ~50min faster but landed substrate that couldn't be deployed (Pass 10 broken since mission-64). Net outcome: substrate ships AND infrastructure regression closed — substrate-introduction-class methodology absorbs the in-flight cleanup gracefully.
 
 ---
 
@@ -242,13 +263,14 @@ Pending Director Pass 10 resolution (§5.1). Smoke verify post-rebuild target: n
 - **Survey:** `docs/surveys/m-pulse-mechanism-phase-2-survey.md`
 - **Design v1.0 ratified:** `docs/designs/m-pulse-mechanism-phase-2-design.md` (commit `9c1ec9b`)
 - **Preflight GREEN:** `docs/missions/m-pulse-mechanism-phase-2-preflight.md` (commit `ead8f30`)
-- **Mission entity:** mission-68 (status: `active`; flips → `completed` post-Director-Pass-10-resolution + retrospective)
+- **Mission entity:** mission-68 (status: `active` → `completed` on architect-flip post this audit + retrospective)
 - **Source idea:** idea-224 (status: `incorporated`; missionId=mission-68)
 - **Companion ideas:** idea-191 (incorporated mission-52; substrate-already-shipped 2nd-canonical) + idea-225 (parked; per-agent-idle composes here per tele-8 sequencing) + idea-227 (parked; consumes 224's routing substrate; absorbs §4.2 layer (b) activation scope)
 - **Bilateral thread:** thread-445 (sealed via close_no_action × 2 actions committed; 5 audit rounds + 1 architect mirror-converge round)
-- **PRs landed:** #145 (W1; provisional) + #146 (W2; provisional) + #TBD (W3; this artifact + retrospective)
+- **PRs landed:** #145 (W1) + #146 (W2) + #147 (W3; this artifact + retrospective) + bug-43 chain (#148 + #149 + #150)
+- **Bugs filed (this mission):** bug-43 (severity=major; class=drift; resolved via PR #148 + #149 + #150)
 - **Calibrations cross-referenced:** #58 `normative-doc-divergence` (idea-191 ledger-vs-shipped-reality 2nd-canonical instance via this mission) + #59 `bilateral-audit-content-access-gap` (closure mechanism (a) applied 2nd-canonically via Survey + Design v0.1 branch-pushed BEFORE bilateral round-1 audit)
-- **Calibration candidates surfaced (3; pending Director ratification):** §4.1 `cascade-double-issue-on-direct-create-task-dispatch` + §4.2 `host-tool-vs-mcp-boundary-design-time-blind` + §4.3 `cascade-routing-default-engineer-only-no-architect-pool`
+- **Calibration candidates surfaced (4; pending Director ratification):** §4.1 `cascade-double-issue-on-direct-create-task-dispatch` + §4.2 `host-tool-vs-mcp-boundary-design-time-blind` + §4.3 `cascade-routing-default-engineer-only-no-architect-pool` + §5.1 `pass-10-no-local-fallback-blocks-llm-session-merges`
 - **Engineer reports:** `reports/task-390-v1-report.md` (W1) + `reports/task-391-v1-report.md` (W1-duplicate) + `reports/task-392-v1-report.md` (W2) + `reports/task-393-v1-report.md` (W3-routing-clarification)
 - **Engineer work-trace:** `docs/traces/m-pulse-mechanism-phase-2-work-trace.md`
 - **Architect reviews:** `reviews/task-390-v1-review.md` + `reviews/task-391-v1-review.md` + `reviews/task-392-v1-review.md` + `reviews/task-393-v1-review.md`

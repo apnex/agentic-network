@@ -70,9 +70,13 @@ Greg's W2 report said "Branch off main: Per Design v1.0 §11.1 M5+P6 fold (clean
 
 **Forward investment:** engineer report pre-flight check: `git log --oneline base..HEAD` + state actual base commit hash explicitly (similar to architect's "branch HEAD `XXXXXX`" pattern in dispatch directives).
 
-### §3.4 W3 Phase 9 + Phase 10 docs land pre-merge (provisional state)
+### §3.4 W3 Phase 9 + Phase 10 docs land pre-merge (resolved post-Director-SA-key + bug-43 chain merge)
 
-Closing audit + retrospective authored on `agent-lily/mission-68-w3` branch off main; references PR #145 + #146 by # but provisional content for "what landed via merge" sections (§5.1 + §5.2 + §7 in audit). Final-form requires re-pass post Director Pass 10 resolution + merge sequencing decision + actual merge SHAs. **Mission-67 W3 was clean** because Pass 10 wasn't an issue (doc-substrate; no rebuild required). Mission-68 substrate hits the deployment-coupling surface that doc-substrate avoids.
+Closing audit + retrospective initially drafted with provisional sections for "what landed via merge" (§5.1 + §5.2 + §7 in audit). Director provided SA-key for Cloud Build auth ~30min after W3 docs first pushed; provisional sections then finalized in single edit pass post-merge with actual SHAs + chronology. **Mission-67 W3 was clean** because Pass 10 wasn't an issue (doc-substrate; no rebuild required). Mission-68 substrate hits the deployment-coupling surface that doc-substrate avoids — and surfaced THREE drift layers from mission-64 namespace migration that had silently broken Hub rebuilds for ~3 weeks. Net-positive: mission-68 unblocked Hub Pass 10 for all future Hub-source PRs (bug-43 chain becomes substrate-infrastructure-cleanup deliverable bundled in mission-68's lifecycle).
+
+### §3.5 Three-PR drift-class fix in-flight during mission-68 (substrate-introduction class absorbs cleanup gracefully)
+
+bug-43 + bug-43-followup + bug-43-followup-2 all filed + reviewed + merged WITHIN mission-68's Phase 7-9 window. Each layer surfaced as the previous layer's fix exposed the next. Total drift-class resolution time: ~17min from bug-43 surface (4:42Z) to last-PR-merge (4:59Z); 3 bilateral threads (446 + 447 + 449) + 1 procedural micro-thread (448 GitHub re-approval). Engineer responsiveness was load-bearing — greg's audit + cross-approval cycle compressed each PR to single-round. **Pattern:** substrate-introduction missions can absorb cleanup substrate-fixes mid-execution when (a) bilateral discipline rate is high, (b) drift-class is well-isolated (Dockerfile + 2 package.json files; not Hub-source), (c) test verification is fast (1064 tests in ~13s). Forward-investment candidate: methodology codification of this "in-flight cleanup absorption" pattern as substrate-introduction-class affordance.
 
 ---
 
@@ -90,9 +94,9 @@ Mission-67 had its own engineer round-1 audit catches; mission-68 had CRITICAL C
 
 **Worth folding into methodology:** `multi-agent-pr-workflow.md` §A or `mission-lifecycle.md` §1.5.1 should explicitly enumerate "engineer round-1 audit MUST verify substrate-citation accuracy at file:line level" as a load-bearing audit-rubric element (currently implicit; explicit codification would scale the pattern).
 
-### §4.3 Calibration ledger discipline: 3 candidates per substrate-introduction mission is healthy rate
+### §4.3 Calibration ledger discipline: 4 candidates per substrate-introduction mission with deployment-coupling (revised post-Pass-10-resolution)
 
-Mission-67 surfaced 2 calibration data-points (#58 + #59); mission-68 surfaces 3 candidates. Pattern: substrate-introduction missions surface 2-3 architectural-pathology candidates each (engineer-bounce-detection of cascade-routing + design-time-blindness + procedural drift). **Empirical baseline established:** 2-3 calibration candidates per substrate-introduction mission is the healthy execution-time substrate-discovery rate. Lower count would suggest under-audit; higher count would suggest scope-creep or substrate-fragility.
+Mission-67 surfaced 2 calibration data-points (#58 + #59; doc-substrate; no deployment coupling); mission-68 surfaces 4 candidates (3 cascade-routing + 1 Pass-10-no-local-fallback per §5.1 of closing audit). Pattern: substrate-introduction missions WITH deployment-coupling (Hub-source) surface ~4 architectural-pathology candidates; doc-substrate variants surface ~2. **Revised empirical baseline:** 2-4 calibration candidates per substrate-introduction mission depending on deployment-coupling surface area. Mission-68's 4th candidate (`pass-10-no-local-fallback-blocks-llm-session-merges`) is specifically a deployment-infrastructure pathology — would not have surfaced in a doc-substrate mission.
 
 ### §4.4 Cascade-vs-direct-dispatch trade-off surfaced
 
@@ -125,12 +129,19 @@ Mission-68 ships routing substrate (W1) + first handler (W1) + adapter detection
 
 Per-agent-idle work composes here per tele-8 sequencing AFTER mission-68 ships. Mission-68's pulse simplification (strip precondition layer) clears the way for per-agent-idle as separate concern. idea-225 stays parked until Director-bandwidth.
 
-### §5.4 Pass 10 infrastructure resolution (per §3.1)
+### §5.4 Pass 10 infrastructure resolution — DISCHARGED via Director SA-key + bug-43 chain (3 PRs)
 
-Pending Director resolution at mission-68 close-time. Forward path:
-- (a) GCP role grant to LLM service accounts (long-term unblock; one-time setup)
-- (b) Local-docker fallback in `build-hub.sh` (substrate work; small mission scope)
-- (c) Director-session manual rebuild as canonical pattern for Hub-source merges (status quo)
+**Director resolution path:** option (a)-equivalent; SA-key `labops-389703.json` for Cloud Build auth; LLM session activates via `gcloud auth activate-service-account`. Per-mission ad-hoc; not yet automated.
+
+**Surfaced deeper drift (3-layer mission-64 namespace migration drift class):**
+- Layer 1: Dockerfile tarball-name drift → bug-43 PR #148
+- Layer 2: prepack vs prepare hook → bug-43-followup PR #149
+- Layer 3: file: dep devDeps not installed for prepare hook → bug-43-followup-2 PR #150
+
+**Forward investment** (now post-Pass-10-resolution-via-SA-key; the 3 bug-43 PRs are merged):
+- (a) GCP role grant to LLM service accounts (long-term unblock; eliminates per-mission SA-key juggling) — composes with calibration §5.1 `pass-10-no-local-fallback-blocks-llm-session-merges`
+- (b) Local-docker fallback in `build-hub.sh` (orthogonal infrastructure-resilience; doesn't depend on GCP)
+- (c) idea-186 (npm workspaces) lands → eliminates the file: dep prepare-hook-can't-bootstrap-devDeps class entirely (referenced in test.yml comments + bug-43-followup-2 commit message)
 
 ---
 
@@ -140,11 +151,11 @@ Mission-68 = **second-canonical compressed-lifecycle substrate-introduction** (a
 
 The CRITICAL C1 substrate-bug catch (engineer round-1 audit on Design v0.1) is the load-bearing quality-gate of the bilateral methodology. Without it, mission-68 would have shipped a pulse-responsiveness regression. The bilateral cycle's empirical track record across mission-67 + mission-68 establishes engineer round-1 audit as the substrate-defect-detection layer that design-time-architect-only review consistently misses.
 
-3 calibration candidates surfaced this mission (cascade-double-issue + host-tool-vs-mcp-boundary + cascade-routing-default) become forward-investment substrate for idea-227 composition + Hub schema enhancement + tooling-resolution. The substrate-introduction mission class is clearly the canonical "discover substrate-pathology AT execution-time" surface — substrate-introduction-class missions structurally surface 2-3 architectural-pathology candidates per execution.
+4 calibration candidates surfaced this mission (cascade-double-issue + host-tool-vs-mcp-boundary + cascade-routing-default + pass-10-no-local-fallback) become forward-investment substrate for idea-227 composition + Hub schema enhancement + tooling-resolution + GCP-role/local-docker-fallback work. The substrate-introduction mission class is clearly the canonical "discover substrate-pathology AT execution-time" surface — substrate-introduction-class missions structurally surface 2-4 architectural-pathology candidates per execution depending on deployment-coupling surface area.
 
-Pass 10 GCP-auth blocker is the open Director-action surface. Mission-68 substrate is shipped + cross-approved + tested + audited; merge-deployment is operationally separate.
+Pass 10 GCP-auth blocker resolved via Director SA-key directive ("You can use the labops-389703.json key for Cloud Build...Proceed"); first Pass 10 rebuild attempt then surfaced + closed the 3-layer mission-64 namespace migration drift class via bug-43 + 2 followups. Mission-68 substrate shipped + cross-approved + tested + audited + deployed (Hub container running W1 image; healthy at localhost:8080/health).
 
-**Mission-68 self-applies its own pulse config** (engineerPulse 600s + architectPulse 1200s + missedThreshold=2 + precondition=null) PRE-shipment of those defaults landing in Hub via PR-1. This is **first-canonical mission running post-v1.0 cadence regime** — substrate-self-dogfood at the mission-config-surface level (analogous to mission-67's CLAUDE.md self-dogfood at the cold-pickup-substrate level). Empirical validation of unified 10/20/2 cadence regime begins with this mission's own pulse cycle (architect pulse fired 2× this session; engineer pulse fired ~3×; both at correct cadence; no spurious escalations).
+**Mission-68 self-applies its own pulse config** (engineerPulse 600s + architectPulse 1200s + missedThreshold=2 + precondition=null) PRE-shipment of those defaults landing in Hub via PR-1. This is **first-canonical mission running post-v1.0 cadence regime** — substrate-self-dogfood at the mission-config-surface level (analogous to mission-67's CLAUDE.md self-dogfood at the cold-pickup-substrate level). Empirical validation of unified 10/20/2 cadence regime: architect pulse fired 5× this session (acked 5/5; one short_status response failed schema validation post-Hub-restart due to body-field tightening but re-emitted successfully); engineer pulse fired ~6× (acked all but 2 during Hub-rebuild-downtime, triggering one missed_threshold_escalation at threshold=2 which architect resolved-by-context per categorised-concerns table). Cadence regime empirically validated; the missed-threshold-escalation event during downtime is exactly the design-intent (escalate when Hub can't see acks) — confirms the system fires escalations as expected.
 
 ---
 
@@ -154,14 +165,15 @@ Pass 10 GCP-auth blocker is the open Director-action surface. Mission-68 substra
 - **Survey envelope:** `docs/surveys/m-pulse-mechanism-phase-2-survey.md`
 - **Design v1.0 ratified:** `docs/designs/m-pulse-mechanism-phase-2-design.md`
 - **Preflight verdict GREEN:** `docs/missions/m-pulse-mechanism-phase-2-preflight.md`
-- **Mission entity:** mission-68 (status: `active` → `completed` post-Pass-10-resolution + merge + this retrospective architect-flip)
+- **Mission entity:** mission-68 (status: `active` → `completed` on architect-flip post this retrospective)
 - **Source idea:** idea-224 (status: `incorporated`; missionId=mission-68)
 - **Companion ideas (forward-composition):** idea-225 (parked; per-agent-idle composes per tele-8) + idea-227 (parked; absorbs §4.2 + §4.3 surfaces)
 - **Companion idea (substrate-already-shipped):** idea-191 (incorporated; missionId=mission-52)
 - **Bilateral thread:** thread-445 (sealed; close_no_action × 2 actions committed)
-- **PRs landed (3; provisional pre-merge):** #145 (W1 hub binding-artifact) + #146 (W2 adapter) + #TBD (W3 closing audit + retrospective; this artifact)
+- **PRs landed (6 total):** #145 W1 (5:01:49Z) + #146 W2 (5:21:27Z) + #147 W3 (this artifact; TBD) + bug-43 chain #148 (4:42:48Z) + #149 (4:52:09Z) + #150 (4:59:54Z)
+- **Bugs filed (this mission):** bug-43 (severity=major; class=drift; resolved via PR #148 + #149 + #150)
 - **Calibrations cross-referenced:** #58 + #59 (2nd-canonical instances via this mission)
-- **Calibration candidates surfaced (3; pending Director ratification at mission-close-time):** §4.1 + §4.2 + §4.3 of closing audit
+- **Calibration candidates surfaced (4; pending Director ratification at mission-close-time):** §4.1 + §4.2 + §4.3 of closing audit + §5.1 closing audit `pass-10-no-local-fallback-blocks-llm-session-merges`
 - **Mission-67 precedent:** first-canonical compressed-lifecycle substrate-introduction; same-day Phase 1 → Phase 9 + Phase 10 retrospective
 
 ---
