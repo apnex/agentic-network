@@ -1,6 +1,6 @@
-# M-Survey-Process-as-Skill — Design v0.2
+# M-Survey-Process-as-Skill — Design v1.0
 
-**Status:** v0.2 (architect-revised 2026-05-02; engineer round-1 audit 15 findings folded; pending engineer round-2 verify → v1.0)
+**Status:** v1.0 RATIFIED (architect-revised + engineer-converged 2026-05-02; bilateral via thread-455 across 4 rounds; engineer round-1 audit 15 findings all folded + round-2 verify clean + 3 non-blocking μ-notes captured for Phase 8 execution-time absorption)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Survey envelope:** `docs/surveys/m-survey-process-as-skill-survey.md` (Director-ratified 6 picks; commit `ce5b6c1`)
 **Source idea:** idea-228 M-Survey-Process-as-Skill (status `triaged` via route-(a) skip-direct)
