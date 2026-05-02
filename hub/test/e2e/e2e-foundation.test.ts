@@ -227,7 +227,8 @@ describe("E2E Foundation", () => {
       // mission-62 W1+W2 Pass 3: signal_working_started/completed +
       // signal_quota_blocked/recovered added → 60.
       // mission-62 W1+W2 Pass 4: get_agents added → 61.
-      expect(orch.router.size).toBe(61);
+      // bug-45 (mission-69 W0): get_idea added → 62.
+      expect(orch.router.size).toBe(62);
     });
 
     it("multi-engineer support with distinct sessions", async () => {
