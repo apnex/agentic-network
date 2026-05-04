@@ -87,8 +87,12 @@ for q in Q1 Q2 Q3 Q4 Q5 Q6; do
   if [[ "$pick_value" =~ ^\<.*\>$ || -z "$pick_value" ]]; then
     fail "director-picks $q is unfilled placeholder or empty (got: '$pick_value')"
   fi
-  if [[ ! "$pick_value" =~ ^[a-d]$ ]]; then
-    fail "director-picks $q must be a single letter a-d (got: '$pick_value')"
+  # mission-74: regex permits multi-pick (^[a-d]+$) per idea-survey.md §6
+  # ("Multi-pick is always supported at Director's discretion"). Uniqueness +
+  # sorting + contradictory-detection out-of-scope per AG-1/AG-2/AG-3; defer
+  # to follow-on if those constraints become load-bearing.
+  if [[ ! "$pick_value" =~ ^[a-d]+$ ]]; then
+    fail "director-picks $q must be one or more letters a-d (multi-pick supported per idea-survey.md §6) (got: '$pick_value')"
   fi
 done
 
