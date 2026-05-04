@@ -203,6 +203,51 @@ echo "[validate-envelope.test] Missing required arg → exit 1"
 set +e; bash "$SCRIPT" >/dev/null 2>&1; rc=$?; set -e
 assert_exit 1 "$rc" "missing --envelope-path"
 
+# mission-74 fix: multi-pick regex acceptance (idea-survey.md §6 conformance)
+
+echo "[validate-envelope.test] Multi-pick Q1=cd (orthogonal multi) → exit 0"
+make_valid_envelope "$TMPDIR/multi-cd.md"
+sed -i 's/^    Q1: a$/    Q1: cd/' "$TMPDIR/multi-cd.md"
+set +e; bash "$SCRIPT" --envelope-path="$TMPDIR/multi-cd.md" >/dev/null 2>&1; rc=$?; set -e
+assert_exit 0 "$rc" "multi-pick Q1=cd PASS (mission-74 fix)"
+
+echo "[validate-envelope.test] Multi-pick Q4=abcd (all-of-the-above) → exit 0"
+make_valid_envelope "$TMPDIR/multi-abcd.md"
+sed -i 's/^    Q4: d$/    Q4: abcd/' "$TMPDIR/multi-abcd.md"
+set +e; bash "$SCRIPT" --envelope-path="$TMPDIR/multi-abcd.md" >/dev/null 2>&1; rc=$?; set -e
+assert_exit 0 "$rc" "multi-pick Q4=abcd PASS (mission-74 fix)"
+
+echo "[validate-envelope.test] Multi-pick Q2=bd (subset) → exit 0"
+make_valid_envelope "$TMPDIR/multi-bd.md"
+sed -i 's/^    Q2: b$/    Q2: bd/' "$TMPDIR/multi-bd.md"
+set +e; bash "$SCRIPT" --envelope-path="$TMPDIR/multi-bd.md" >/dev/null 2>&1; rc=$?; set -e
+assert_exit 0 "$rc" "multi-pick Q2=bd PASS (mission-74 fix)"
+
+echo "[validate-envelope.test] Single-pick still PASSES (regression check) → exit 0"
+make_valid_envelope "$TMPDIR/single-pick-regression.md"
+# Default fixture is all single-pick (a/b/c/d/a/b); no mutation needed; just verify still passes
+set +e; bash "$SCRIPT" --envelope-path="$TMPDIR/single-pick-regression.md" >/dev/null 2>&1; rc=$?; set -e
+assert_exit 0 "$rc" "single-pick regression PASS (mission-74 fix)"
+
+echo "[validate-envelope.test] Out-of-range char Q1=e → exit 1"
+make_valid_envelope "$TMPDIR/oor-e.md"
+sed -i 's/^    Q1: a$/    Q1: e/' "$TMPDIR/oor-e.md"
+set +e; bash "$SCRIPT" --envelope-path="$TMPDIR/oor-e.md" >/dev/null 2>&1; rc=$?; set -e
+assert_exit 1 "$rc" "out-of-range char Q1=e FAIL (mission-74 fix; range still enforced)"
+
+echo "[validate-envelope.test] Mixed valid+invalid chars Q1=aef → exit 1"
+make_valid_envelope "$TMPDIR/mixed-aef.md"
+sed -i 's/^    Q1: a$/    Q1: aef/' "$TMPDIR/mixed-aef.md"
+set +e; bash "$SCRIPT" --envelope-path="$TMPDIR/mixed-aef.md" >/dev/null 2>&1; rc=$?; set -e
+assert_exit 1 "$rc" "mixed valid+invalid chars Q1=aef FAIL (mission-74 fix; out-of-range still rejected)"
+
+echo "[validate-envelope.test] Placeholder Q1=<a|b|c|d> still rejected → exit 1"
+make_valid_envelope "$TMPDIR/placeholder-q1.md"
+# Use perl to handle the < > characters in sed (avoids special-char issues)
+perl -i -pe 's/^    Q1: a$/    Q1: <a|b|c|d>/' "$TMPDIR/placeholder-q1.md"
+set +e; bash "$SCRIPT" --envelope-path="$TMPDIR/placeholder-q1.md" >/dev/null 2>&1; rc=$?; set -e
+assert_exit 1 "$rc" "placeholder Q1 FAIL (mission-74 fix; placeholder check pre-empts regex)"
+
 echo
 echo "[validate-envelope.test] Result: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]] || exit 1
