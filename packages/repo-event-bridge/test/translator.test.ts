@@ -153,6 +153,71 @@ describe("dispatchSubkind — review lifecycle", () => {
       }),
     ).toBe("unknown");
   });
+
+  // mission-76 W1 (bug-46 closure substrate-investigation finding):
+  // Events API uses action="created" for new review submissions; webhook
+  // delivery uses action="submitted". Both are equivalent — same shape
+  // as bug-44's PushEvent pusher-vs-actor API-vs-webhook mismatch.
+  it("Events API: created state=approved → pr-review-approved (bug-46 mission-76)", () => {
+    expect(
+      dispatchSubkind({
+        type: "PullRequestReviewEvent",
+        payload: { action: "created", review: { state: "approved" } },
+      }),
+    ).toBe("pr-review-approved");
+  });
+
+  it("Events API: created state=commented → pr-review-comment (bug-46 mission-76)", () => {
+    expect(
+      dispatchSubkind({
+        type: "PullRequestReviewEvent",
+        payload: { action: "created", review: { state: "commented" } },
+      }),
+    ).toBe("pr-review-comment");
+  });
+
+  it("Events API: created state=changes_requested → pr-review-submitted (bug-46 mission-76)", () => {
+    expect(
+      dispatchSubkind({
+        type: "PullRequestReviewEvent",
+        payload: { action: "created", review: { state: "changes_requested" } },
+      }),
+    ).toBe("pr-review-submitted");
+  });
+
+  it("Events API: created state=dismissed → pr-review-submitted (catch-all for non-{approved,commented} states)", () => {
+    // bug-46 mission-76: state "dismissed" on a created review event is
+    // unusual but the catch-all rule (any state other than approved/commented)
+    // routes to pr-review-submitted. Distinct from action="dismissed" which
+    // routes to "unknown" per the next test.
+    expect(
+      dispatchSubkind({
+        type: "PullRequestReviewEvent",
+        payload: { action: "created", review: { state: "dismissed" } },
+      }),
+    ).toBe("pr-review-submitted");
+  });
+
+  it("review action=updated → unknown (review-edit; not new-review-event; mission-76 architect-judgement)", () => {
+    expect(
+      dispatchSubkind({
+        type: "PullRequestReviewEvent",
+        payload: { action: "updated", review: { state: "approved" } },
+      }),
+    ).toBe("unknown");
+  });
+
+  it("review action=dismissed → unknown (review-withdrawn-after-the-fact; would be operator noise; mission-76 architect-judgement)", () => {
+    // Already covered by "review action != submitted → unknown" above; this
+    // test is the explicit positive assertion for the architect-judgement
+    // documented in translator.ts mission-76 comment.
+    expect(
+      dispatchSubkind({
+        type: "PullRequestReviewEvent",
+        payload: { action: "dismissed", review: { state: "approved" } },
+      }),
+    ).toBe("unknown");
+  });
 });
 
 describe("dispatchSubkind — push events", () => {
