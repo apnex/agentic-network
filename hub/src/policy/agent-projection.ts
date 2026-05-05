@@ -25,6 +25,7 @@ import type {
   AgentLivenessState,
   ActivityState as ActivityStateType,
   ClaimSessionTrigger,
+  ComponentState,
 } from "../state.js";
 
 /**
@@ -41,6 +42,14 @@ export interface AgentProjection {
   labels: Record<string, string>;
   clientMetadata?: AgentClientMetadata;
   advisoryTags?: AgentAdvisoryTags;
+  // mission-75 v1.0 §3.6 — component-state surface for the CLI
+  // operator-visibility pull (get_agents tool consumer). Composite
+  // `livenessState` stays UNCHANGED per §3.1 C1 fold; these are
+  // PARALLEL observability surfaces, NOT FSM derivations.
+  cognitiveTTL: number | null;
+  transportTTL: number | null;
+  cognitiveState: ComponentState;
+  transportState: ComponentState;
 }
 
 /**
@@ -74,6 +83,15 @@ export function projectAgent(agent: Agent): AgentProjection {
     livenessState: agent.livenessState,
     activityState: agent.activityState,
     labels: agent.labels ?? {},
+    // mission-75 v1.0 §3.6 — component states surfaced on the wire so
+    // the CLI projection (`scripts/local/tpl/agents.jq`) can render the
+    // COGNITIVE_TTL + TRANSPORT_TTL columns. normalizeAgentShape
+    // (agent-repository.ts) provides defaults for legacy blobs lacking
+    // these fields, so they're always present on the projected object.
+    cognitiveTTL: agent.cognitiveTTL,
+    transportTTL: agent.transportTTL,
+    cognitiveState: agent.cognitiveState,
+    transportState: agent.transportState,
   };
   if (agent.clientMetadata) {
     proj.clientMetadata = agent.clientMetadata;

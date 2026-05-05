@@ -12,6 +12,22 @@ import type { IPolicyContext, PolicyHandler, PolicyResult, DomainEvent } from ".
 type Role = "architect" | "engineer" | "director" | "any";
 export type RoleSet = ReadonlySet<Role>;
 
+/**
+ * mission-75 (M-TTL-Liveliness-Design) v1.0 §3.3 — tool-tier separation.
+ * `adapter-internal` tools are invoked by adapter substrate (e.g.,
+ * poll-backstop's transport_heartbeat timer) and MUST be excluded from the
+ * shim-side LLM tool catalogue (the shim's `list_tools` filter consumes
+ * this annotation). `llm-callable` is the default for backward-compat —
+ * all existing tools register implicitly as llm-callable. Hub remains
+ * passive about LLM-surface (annotates only); shim is the active filter.
+ *
+ * Interim solution; idea-240 Vision (agnostic-transport Adapter↔Hub)
+ * makes this filter structurally unnecessary by changing the wire format
+ * (adapter-internal tools become RPC methods that have no MCP-tool
+ * surface to begin with).
+ */
+export type ToolTier = "adapter-internal" | "llm-callable";
+
 interface RegisteredTool {
   description: string;
   schema: Record<string, ZodType>;
@@ -25,6 +41,12 @@ interface RegisteredTool {
    * admin-shared tools).
    */
   roles: RoleSet;
+  /**
+   * mission-75 v1.0 §3.3 — tool-tier annotation. Defaults to
+   * "llm-callable" when omitted (preserves backward-compat — all
+   * pre-mission-75 tools register implicitly as llm-callable).
+   */
+  tier: ToolTier;
 }
 
 /**
@@ -65,10 +87,11 @@ export class PolicyRouter {
     description: string,
     schema: Record<string, ZodType>,
     handler: PolicyHandler,
-    deprecatedAlias?: string
+    deprecatedAlias?: string,
+    tier: ToolTier = "llm-callable",
   ): void {
     const roles = parseRoleTag(description);
-    this.tools.set(name, { description, schema, handler, deprecatedAlias, roles });
+    this.tools.set(name, { description, schema, handler, deprecatedAlias, roles, tier });
   }
 
   /**
@@ -83,6 +106,7 @@ export class PolicyRouter {
       ...canonical,
       deprecatedAlias: canonicalName,
       roles: canonical.roles,
+      tier: canonical.tier,
       handler: async (args, ctx) => {
         this.log(`[DEPRECATION] Tool '${aliasName}' invoked. Consumers must migrate to '${canonicalName}'.`);
         return canonical.handler(args, ctx);
@@ -291,5 +315,16 @@ export class PolicyRouter {
    */
   getToolRegistration(toolName: string): RegisteredTool | undefined {
     return this.tools.get(toolName);
+  }
+
+  /**
+   * mission-75 v1.0 §3.3 — return the registered tier for a tool, or
+   * undefined when the tool is not registered. Consumed by the shim-side
+   * `list_tools` filter to exclude `adapter-internal`-tier tools from
+   * the LLM catalogue surface. Hub remains passive (annotates only);
+   * shim is the active filter.
+   */
+  getToolTier(toolName: string): ToolTier | undefined {
+    return this.tools.get(toolName)?.tier;
   }
 }

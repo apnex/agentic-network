@@ -76,6 +76,22 @@ const SESSION_INVALID_PATTERNS = [
   "invalid session",
 ];
 
+/**
+ * mission-75 v1.0 §3.3 — adapter-internal-tier marker. Hub prepends
+ * this to tool descriptions for `tier: "adapter-internal"` tools (per
+ * hub/src/policy/mcp-binding.ts:TIER_ANNOTATION_MARKER). The shim
+ * filter below removes any tool whose description carries this prefix
+ * before the LLM-callable catalogue is surfaced. Kept as a literal
+ * string here (not a cross-package import) so this package retains
+ * zero compile-time dependency on hub/. Interim per idea-240 Vision.
+ */
+const ADAPTER_INTERNAL_TIER_MARKER = "[tier:adapter-internal]";
+
+function isAdapterInternalTool(t: CognitiveTool): boolean {
+  const desc = (t as { description?: unknown }).description;
+  return typeof desc === "string" && desc.startsWith(ADAPTER_INTERNAL_TIER_MARKER);
+}
+
 function isSessionInvalidError(err: unknown): boolean {
   const msg = String(err).toLowerCase();
   return SESSION_INVALID_PATTERNS.some((p) => msg.includes(p.toLowerCase()));
@@ -317,7 +333,17 @@ export class McpAgentClient implements IAgentClient {
    */
   async listTools(): Promise<CognitiveTool[]> {
     const raw = await (this.transport as McpTransport).listToolsRaw();
-    const tools = raw as CognitiveTool[];
+    // mission-75 v1.0 §3.3 — shim-side adapter-internal-tier filter.
+    // Hub annotates adapter-internal tools by prepending the
+    // `[tier:adapter-internal]` marker to the description (per
+    // hub/src/policy/mcp-binding.ts:TIER_ANNOTATION_MARKER). The shim
+    // strips these tools from the LLM-exposed catalogue so the LLM
+    // never observes them. Adapter substrate code (e.g.,
+    // poll-backstop's heartbeat timer) calls them by name directly via
+    // agent.call(), bypassing the listTools surface — so this filter
+    // does NOT prevent adapter-side invocation.
+    const filtered = (raw as CognitiveTool[]).filter((t) => !isAdapterInternalTool(t));
+    const tools = filtered;
 
     if (!this.cognitive) return tools;
 
