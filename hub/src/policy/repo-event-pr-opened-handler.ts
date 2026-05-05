@@ -1,5 +1,5 @@
 /**
- * pr-opened handler — mission-76 W1 (bug-46 closure).
+ * pr-opened handler — mission-76 W1 (bug-46 closure) + bug-50 fix.
  *
  * Per Design v1.0 §3.1 + §3.4 symmetric routing — closes the PR-opened
  * notification gap (engineer↔architect bilateral cross-approval surface).
@@ -7,9 +7,10 @@
  * not propagated to PR-events).
  *
  * Thin wrapper around `synthesizePrNotification` per §3.1 P1 DRY concur:
- * supplies subkind-specific opts (extractPayload reads
- * `normalizePullRequest` shape from translator.ts:182-198; bodyTemplate
- * renders "Engineer/Architect opened PR #N: ${title}"; intentValue
+ * supplies subkind-specific opts (extractPayload reads `normalizePullRequest`
+ * shape — translator emits `base`+`head` as `{ref, sha} | undefined` per
+ * `extractRef`; bodyTemplate renders "Engineer/Architect opened PR #N: ${title}"
+ * with trailing-colon dropped when title is empty per bug-50 Class B; intentValue
  * `pr-opened-notification` per §3.5 m1 fold).
  */
 
@@ -18,20 +19,12 @@ import type { IPolicyContext } from "./types.js";
 import type { MessageDispatch, RepoEventHandler } from "./repo-event-handlers.js";
 import {
   synthesizePrNotification,
+  extractRefField,
+  type PrLifecyclePayload,
   type PrNotificationOpts,
 } from "./repo-event-pr-handler-helpers.js";
 
-interface PrOpenedPayload {
-  /** GH login of the PR author (from `pull_request.user.login`). */
-  author: string;
-  number: number;
-  title: string;
-  url: string;
-  base: string;
-  head: string;
-}
-
-const PR_OPENED_OPTS: PrNotificationOpts<PrOpenedPayload> = {
+const PR_OPENED_OPTS: PrNotificationOpts<PrLifecyclePayload> = {
   subkind: "pr-opened",
   intentValue: "pr-opened-notification",
   extractPayload(raw) {
@@ -41,8 +34,8 @@ const PR_OPENED_OPTS: PrNotificationOpts<PrOpenedPayload> = {
       number: raw.number,
       title: typeof raw.title === "string" ? raw.title : "",
       url: typeof raw.url === "string" ? raw.url : "",
-      base: typeof raw.base === "string" ? raw.base : "",
-      head: typeof raw.head === "string" ? raw.head : "",
+      base: extractRefField(raw.base),
+      head: extractRefField(raw.head),
     };
   },
   extractAuthorLogin(p) {
@@ -50,7 +43,11 @@ const PR_OPENED_OPTS: PrNotificationOpts<PrOpenedPayload> = {
   },
   bodyTemplate(authorRole, p) {
     const subject = authorRole === "engineer" ? "Engineer" : "Architect";
-    return `${subject} opened PR #${p.number}: ${p.title}`;
+    // bug-50 Class B: drop trailing colon when title empty (Events API's
+    // pr.title=null is the steady-state path — colon-as-marker no longer holds).
+    return p.title
+      ? `${subject} opened PR #${p.number}: ${p.title}`
+      : `${subject} opened PR #${p.number}`;
   },
   buildPayloadFields(p) {
     return {
@@ -58,8 +55,8 @@ const PR_OPENED_OPTS: PrNotificationOpts<PrOpenedPayload> = {
       prTitle: p.title,
       prAuthor: p.author,
       prUrl: p.url,
-      prBaseRef: p.base,
-      prHeadRef: p.head,
+      prBaseRef: p.base?.ref ?? "",
+      prHeadRef: p.head?.ref ?? "",
     };
   },
 };

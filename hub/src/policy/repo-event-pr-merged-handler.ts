@@ -1,5 +1,5 @@
 /**
- * pr-merged handler — mission-76 W1 (bug-46 closure).
+ * pr-merged handler — mission-76 W1 (bug-46 closure) + bug-50 fix.
  *
  * Per Design v1.0 §3.1 + §3.4 symmetric routing — closes the PR-merged
  * notification gap. Bilateral (engineer-merges → architect; architect-
@@ -8,10 +8,10 @@
  * decline; low peer-coord signal value).
  *
  * Thin wrapper around `synthesizePrNotification` per §3.1 P1 DRY concur:
- * shares pr-opened's `normalizePullRequest` payload shape (translator
- * routes both pr-opened + pr-merged through the same normalizer at
- * translator.ts:182-198); intentValue `pr-merged-notification` per
- * §3.5 m1 fold.
+ * shares pr-opened's `PrLifecyclePayload` shape (translator routes both
+ * pr-opened + pr-merged through the same `normalizePullRequest` normalizer);
+ * intentValue `pr-merged-notification` per §3.5 m1 fold. Body-template drops
+ * trailing colon when title empty per bug-50 Class B.
  */
 
 import type { Message } from "../entities/index.js";
@@ -19,21 +19,12 @@ import type { IPolicyContext } from "./types.js";
 import type { MessageDispatch, RepoEventHandler } from "./repo-event-handlers.js";
 import {
   synthesizePrNotification,
+  extractRefField,
+  type PrLifecyclePayload,
   type PrNotificationOpts,
 } from "./repo-event-pr-handler-helpers.js";
 
-interface PrMergedPayload {
-  /** GH login of the PR author (NOT necessarily the merger; per
-   *  `normalizePullRequest`, this is `pull_request.user.login`). */
-  author: string;
-  number: number;
-  title: string;
-  url: string;
-  base: string;
-  head: string;
-}
-
-const PR_MERGED_OPTS: PrNotificationOpts<PrMergedPayload> = {
+const PR_MERGED_OPTS: PrNotificationOpts<PrLifecyclePayload> = {
   subkind: "pr-merged",
   intentValue: "pr-merged-notification",
   extractPayload(raw) {
@@ -43,8 +34,8 @@ const PR_MERGED_OPTS: PrNotificationOpts<PrMergedPayload> = {
       number: raw.number,
       title: typeof raw.title === "string" ? raw.title : "",
       url: typeof raw.url === "string" ? raw.url : "",
-      base: typeof raw.base === "string" ? raw.base : "",
-      head: typeof raw.head === "string" ? raw.head : "",
+      base: extractRefField(raw.base),
+      head: extractRefField(raw.head),
     };
   },
   extractAuthorLogin(p) {
@@ -52,7 +43,10 @@ const PR_MERGED_OPTS: PrNotificationOpts<PrMergedPayload> = {
   },
   bodyTemplate(authorRole, p) {
     const subject = authorRole === "engineer" ? "Engineer" : "Architect";
-    return `${subject} merged PR #${p.number}: ${p.title}`;
+    // bug-50 Class B: drop trailing colon when title empty.
+    return p.title
+      ? `${subject} merged PR #${p.number}: ${p.title}`
+      : `${subject} merged PR #${p.number}`;
   },
   buildPayloadFields(p) {
     return {
@@ -60,8 +54,8 @@ const PR_MERGED_OPTS: PrNotificationOpts<PrMergedPayload> = {
       prTitle: p.title,
       prAuthor: p.author,
       prUrl: p.url,
-      prBaseRef: p.base,
-      prHeadRef: p.head,
+      prBaseRef: p.base?.ref ?? "",
+      prHeadRef: p.head?.ref ?? "",
     };
   },
 };

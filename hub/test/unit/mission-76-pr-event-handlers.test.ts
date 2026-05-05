@@ -1,7 +1,7 @@
 /**
- * mission-76 W1 — PR-event handler tests (bug-46 closure).
+ * mission-76 W1 — PR-event handler tests (bug-46 closure) + bug-50 fix.
  *
- * Pins per Design v1.0 §6.1:
+ * Pins per Design v1.0 §6.1 + bug-50 test-discipline fold:
  *   - Helper: synthesizePrNotification — extract → resolve-role → emit
  *     across the 3 PR-event handlers via opts (subkind + intentValue +
  *     extractPayload + extractAuthorLogin + bodyTemplate +
@@ -14,9 +14,15 @@
  *     pr-merged-notification / pr-review-notification)
  *   - mission-76 γ fold — null-lookup-skip is EXPECTED behavior
  *     (console.info not console.warn) per bug-47 scenario-B reframing
+ *   - bug-50 fold: per-subkind handler tests feed handlers via
+ *     `translateGhEvent()` to eliminate mock/prod shape divergence at
+ *     structural level. BOTH Events-API + webhook fixtures verified per
+ *     subkind so the bug-49/bug-50 axis is covered in unit tests, not just
+ *     E2E. Composes-with idea-249 methodology fold meta-cause.
  */
 
 import { describe, expect, it } from "vitest";
+import { translateGhEvent } from "@apnex/repo-event-bridge";
 import type { Message } from "../../src/entities/index.js";
 import type { IPolicyContext } from "../../src/policy/types.js";
 import type { Agent, AgentRole } from "../../src/state.js";
@@ -217,29 +223,152 @@ describe("synthesizePrNotification helper (mission-76 W1 P1 DRY concur)", () => 
   });
 });
 
-// ── PR_OPENED_HANDLER tests (Design §6.1) ─────────────────────────────
+// ── translator-truth fixture builders (bug-50 fold) ───────────────────
+//
+// All per-handler tests below feed handlers via `translateGhEvent()` —
+// eliminates mock/prod shape divergence at structural level. Webhook +
+// Events-API fixtures cover both shapes per subkind.
+
+/**
+ * Webhook-delivery shape (legacy/replay path; X-GitHub-Event header value
+ * surfaced as `type`). pr.user populated; pr.html_url populated; pr.title
+ * populated. base + head as full ref objects.
+ */
+function makePullRequestEventWebhookShape(opts: {
+  action: string;
+  authorLogin: string;
+  prNumber: number;
+  prTitle: string;
+  prHtmlUrl: string;
+  baseRef: string;
+  headRef: string;
+  merged?: boolean;
+}): unknown {
+  return {
+    type: "PullRequestEvent",
+    actor: { login: opts.authorLogin },
+    repo: { name: "apnex-org/agentic-network" },
+    payload: {
+      action: opts.action,
+      pull_request: {
+        number: opts.prNumber,
+        title: opts.prTitle,
+        html_url: opts.prHtmlUrl,
+        url: `https://api.github.com/repos/apnex-org/agentic-network/pulls/${opts.prNumber}`,
+        user: { login: opts.authorLogin },
+        merged: opts.merged === true,
+        base: { ref: opts.baseRef, sha: "0000000000000000000000000000000000000000" },
+        head: { ref: opts.headRef, sha: "1111111111111111111111111111111111111111" },
+      },
+    },
+  };
+}
+
+/**
+ * Events-API delivery shape (live GH polling path; bug-50 surface). pr.user
+ * is null; pr.html_url is null; pr.title is null. Author falls back to
+ * event-level actor.login (bug-49 fix); html_url derives from pr.url
+ * (bug-50 Class B fix).
+ */
+function makePullRequestEventEventsApiShape(opts: {
+  action: string;
+  actorLogin: string;
+  prNumber: number;
+  baseRef: string;
+  headRef: string;
+  merged?: boolean;
+}): unknown {
+  return {
+    type: "PullRequestEvent",
+    actor: { login: opts.actorLogin },
+    repo: { name: "apnex-org/agentic-network" },
+    payload: {
+      action: opts.action,
+      pull_request: {
+        number: opts.prNumber,
+        title: null,
+        html_url: null,
+        url: `https://api.github.com/repos/apnex-org/agentic-network/pulls/${opts.prNumber}`,
+        user: null,
+        merged: opts.merged === true,
+        base: { ref: opts.baseRef, sha: "0000000000000000000000000000000000000000" },
+        head: { ref: opts.headRef, sha: "1111111111111111111111111111111111111111" },
+      },
+    },
+  };
+}
+
+function makePullRequestReviewEventWebhookShape(opts: {
+  action: string;
+  reviewerLogin: string;
+  prNumber: number;
+  state: string;
+  body: string;
+}): unknown {
+  return {
+    type: "PullRequestReviewEvent",
+    actor: { login: opts.reviewerLogin },
+    repo: { name: "apnex-org/agentic-network" },
+    payload: {
+      action: opts.action,
+      review: {
+        state: opts.state,
+        body: opts.body,
+        html_url: `https://github.com/apnex-org/agentic-network/pull/${opts.prNumber}#pullrequestreview-1`,
+        user: { login: opts.reviewerLogin },
+      },
+      pull_request: { number: opts.prNumber },
+    },
+  };
+}
+
+function makePullRequestReviewEventEventsApiShape(opts: {
+  action: string;
+  actorLogin: string;
+  prNumber: number;
+  state: string;
+  body: string;
+}): unknown {
+  return {
+    type: "PullRequestReviewEvent",
+    actor: { login: opts.actorLogin },
+    repo: { name: "apnex-org/agentic-network" },
+    payload: {
+      action: opts.action,
+      review: {
+        state: opts.state,
+        body: opts.body,
+        html_url: null,
+        user: null,
+      },
+      pull_request: { number: opts.prNumber },
+    },
+  };
+}
+
+/** Wrap a translated RepoEvent in the inbound-Message envelope handlers
+ *  expect (kind: "external-injection"; payload = the RepoEvent). */
+function wrapAsInboundMessage(repoEvent: unknown): Message {
+  return makeRepoEventMessage(repoEvent);
+}
+
+// ── PR_OPENED_HANDLER tests (Design §6.1 + bug-50 fold) ───────────────
 
 describe("PR_OPENED_HANDLER (mission-76 W1 §3.1)", () => {
-  const baseMsg = (author: string) =>
-    makeRepoEventMessage({
-      kind: "repo-event",
-      subkind: "pr-opened",
-      payload: {
-        repo: "apnex-org/agentic-network",
-        action: "opened",
-        number: 167,
-        title: "[mission-75] M-TTL-Liveliness-Design",
-        url: "https://github.com/apnex-org/agentic-network/pull/167",
-        author,
-        merged: false,
-        base: "main",
-        head: "agent-greg/m-ttl-liveliness-design",
-      },
-    });
-
-  it("engineer-opens-PR → architect notification with full payload", async () => {
+  it("webhook-shape: engineer-opens-PR → architect notification with full payload", async () => {
     const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
-    const dispatches = await PR_OPENED_HANDLER.handle(baseMsg("apnex-greg"), ctx);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventWebhookShape({
+        action: "opened",
+        authorLogin: "apnex-greg",
+        prNumber: 167,
+        prTitle: "[mission-75] M-TTL-Liveliness-Design",
+        prHtmlUrl: "https://github.com/apnex-org/agentic-network/pull/167",
+        baseRef: "main",
+        headRef: "agent-greg/m-ttl-liveliness-design",
+      }),
+    );
+    const dispatches = await PR_OPENED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
     expect(dispatches).toHaveLength(1);
     const d = dispatches[0];
     expect(d.kind).toBe("note");
@@ -256,9 +385,20 @@ describe("PR_OPENED_HANDLER (mission-76 W1 §3.1)", () => {
     expect(payload.sourceMessageId).toBe("01TESTMISSION76");
   });
 
-  it("architect-opens-PR → engineer notification (symmetric routing per §3.4)", async () => {
+  it("webhook-shape: architect-opens-PR → engineer notification (symmetric routing per §3.4)", async () => {
     const ctx = makeCtx([makeAgent("arch-A", "architect", "apnex-lily")]);
-    const dispatches = await PR_OPENED_HANDLER.handle(baseMsg("apnex-lily"), ctx);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventWebhookShape({
+        action: "opened",
+        authorLogin: "apnex-lily",
+        prNumber: 167,
+        prTitle: "[mission-75] M-TTL-Liveliness-Design",
+        prHtmlUrl: "https://github.com/apnex-org/agentic-network/pull/167",
+        baseRef: "main",
+        headRef: "agent-lily/m-ttl-liveliness-design",
+      }),
+    );
+    const dispatches = await PR_OPENED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
     expect(dispatches).toHaveLength(1);
     expect(dispatches[0].target).toEqual({ role: "engineer" });
     expect((dispatches[0].payload as Record<string, unknown>).body).toBe(
@@ -266,15 +406,82 @@ describe("PR_OPENED_HANDLER (mission-76 W1 §3.1)", () => {
     );
   });
 
+  it("Events-API-shape: architect-opens-PR → engineer notification (bug-49 author fallback + bug-50 url derivation + colon-dropped body)", async () => {
+    const ctx = makeCtx([makeAgent("arch-A", "architect", "apnex-lily")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventEventsApiShape({
+        action: "opened",
+        actorLogin: "apnex-lily",
+        prNumber: 175,
+        baseRef: "main",
+        headRef: "agent-lily/m-something",
+      }),
+    );
+    const dispatches = await PR_OPENED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
+    expect(dispatches).toHaveLength(1);
+    const payload = dispatches[0].payload as Record<string, unknown>;
+    // bug-50 Class B: title null → "" → trailing colon dropped from body
+    expect(payload.body).toBe("Architect opened PR #175");
+    expect(payload.prTitle).toBe("");
+    // bug-49: author falls back from event-level actor.login when pr.user=null
+    expect(payload.prAuthor).toBe("apnex-lily");
+    // bug-50 Class B: html_url null → derive from pr.url (deterministic regex)
+    expect(payload.prUrl).toBe("https://github.com/apnex-org/agentic-network/pull/175");
+    // bug-50 Class A: base/head emitted as objects by translator; handler reads .ref
+    expect(payload.prBaseRef).toBe("main");
+    expect(payload.prHeadRef).toBe("agent-lily/m-something");
+  });
+
+  it("Events-API-shape: engineer-opens-PR → architect notification (symmetric)", async () => {
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventEventsApiShape({
+        action: "opened",
+        actorLogin: "apnex-greg",
+        prNumber: 200,
+        baseRef: "main",
+        headRef: "agent-greg/feature",
+      }),
+    );
+    const dispatches = await PR_OPENED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
+    expect(dispatches).toHaveLength(1);
+    expect(dispatches[0].target).toEqual({ role: "architect" });
+    expect((dispatches[0].payload as Record<string, unknown>).body).toBe(
+      "Engineer opened PR #200",
+    );
+  });
+
   it("unknown-author → skip (lookup returns null; mission-76 γ)", async () => {
     const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
-    const dispatches = await PR_OPENED_HANDLER.handle(baseMsg("apnex"), ctx);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventWebhookShape({
+        action: "opened",
+        authorLogin: "apnex",
+        prNumber: 167,
+        prTitle: "test",
+        prHtmlUrl: "https://github.com/x/y/pull/167",
+        baseRef: "main",
+        headRef: "feat/x",
+      }),
+    );
+    const dispatches = await PR_OPENED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
     expect(dispatches).toHaveLength(0);
   });
 
   it("director-author → skip (§3.1 m2 fold)", async () => {
     const ctx = makeCtx([makeAgent("dir-A", "director", "apnex-director")]);
-    const dispatches = await PR_OPENED_HANDLER.handle(baseMsg("apnex-director"), ctx);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventWebhookShape({
+        action: "opened",
+        authorLogin: "apnex-director",
+        prNumber: 167,
+        prTitle: "test",
+        prHtmlUrl: "https://github.com/x/y/pull/167",
+        baseRef: "main",
+        headRef: "feat/x",
+      }),
+    );
+    const dispatches = await PR_OPENED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
     expect(dispatches).toHaveLength(0);
   });
 
@@ -284,31 +491,57 @@ describe("PR_OPENED_HANDLER (mission-76 W1 §3.1)", () => {
     const dispatches = await PR_OPENED_HANDLER.handle(msg, ctx);
     expect(dispatches).toHaveLength(0);
   });
+
+  it("malformed base (empty object) → handler emits empty ref/sha strings (defensive coerce contract; bug-50 Class A)", async () => {
+    // Hand-craft an inbound RepoEvent with malformed base: {} to pin the
+    // extractRefField defensive-coerce contract — translator could in
+    // principle emit {ref: undefined, sha: undefined} for malformed
+    // upstream pr.base; handler must coerce to "" not "undefined".
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const malformedRepoEvent = {
+      kind: "repo-event",
+      subkind: "pr-opened",
+      payload: {
+        repo: "apnex-org/agentic-network",
+        action: "opened",
+        number: 999,
+        title: "test",
+        url: "https://github.com/apnex-org/agentic-network/pull/999",
+        author: "apnex-greg",
+        merged: false,
+        base: {}, // malformed: no ref or sha
+        head: {}, // malformed: no ref or sha
+      },
+    };
+    const dispatches = await PR_OPENED_HANDLER.handle(
+      wrapAsInboundMessage(malformedRepoEvent),
+      ctx,
+    );
+    expect(dispatches).toHaveLength(1);
+    const payload = dispatches[0].payload as Record<string, unknown>;
+    expect(payload.prBaseRef).toBe(""); // NOT "undefined"
+    expect(payload.prHeadRef).toBe(""); // NOT "undefined"
+  });
 });
 
 // ── PR_MERGED_HANDLER tests (Design §6.1) ─────────────────────────────
 
 describe("PR_MERGED_HANDLER (mission-76 W1 §3.1)", () => {
-  const baseMsg = (author: string) =>
-    makeRepoEventMessage({
-      kind: "repo-event",
-      subkind: "pr-merged",
-      payload: {
-        repo: "apnex-org/agentic-network",
-        action: "merged",
-        number: 168,
-        title: "[mission-75] Phase 9 closing audit + Phase 10 retrospective",
-        url: "https://github.com/apnex-org/agentic-network/pull/168",
-        author,
-        merged: true,
-        base: "main",
-        head: "agent-lily/m-ttl-liveliness-design-phase9-10",
-      },
-    });
-
-  it("engineer-merges-PR → architect notification", async () => {
+  it("webhook-shape: engineer-merges-PR → architect notification", async () => {
     const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
-    const dispatches = await PR_MERGED_HANDLER.handle(baseMsg("apnex-greg"), ctx);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventWebhookShape({
+        action: "closed",
+        authorLogin: "apnex-greg",
+        prNumber: 168,
+        prTitle: "[mission-75] Phase 9 closing audit + Phase 10 retrospective",
+        prHtmlUrl: "https://github.com/apnex-org/agentic-network/pull/168",
+        baseRef: "main",
+        headRef: "agent-greg/m-ttl-liveliness-design-phase9-10",
+        merged: true,
+      }),
+    );
+    const dispatches = await PR_MERGED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
     expect(dispatches).toHaveLength(1);
     expect(dispatches[0].target).toEqual({ role: "architect" });
     expect(dispatches[0].intent).toBe("pr-merged-notification");
@@ -317,11 +550,24 @@ describe("PR_MERGED_HANDLER (mission-76 W1 §3.1)", () => {
       "Engineer merged PR #168: [mission-75] Phase 9 closing audit + Phase 10 retrospective",
     );
     expect(payload.prNumber).toBe(168);
+    expect(payload.prBaseRef).toBe("main");
   });
 
-  it("architect-merges-PR → engineer notification (symmetric per §3.4)", async () => {
+  it("webhook-shape: architect-merges-PR → engineer notification (symmetric per §3.4)", async () => {
     const ctx = makeCtx([makeAgent("arch-A", "architect", "apnex-lily")]);
-    const dispatches = await PR_MERGED_HANDLER.handle(baseMsg("apnex-lily"), ctx);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventWebhookShape({
+        action: "closed",
+        authorLogin: "apnex-lily",
+        prNumber: 168,
+        prTitle: "[mission-75] Phase 9 closing audit + Phase 10 retrospective",
+        prHtmlUrl: "https://github.com/apnex-org/agentic-network/pull/168",
+        baseRef: "main",
+        headRef: "agent-lily/m-ttl-liveliness-design-phase9-10",
+        merged: true,
+      }),
+    );
+    const dispatches = await PR_MERGED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
     expect(dispatches).toHaveLength(1);
     expect(dispatches[0].target).toEqual({ role: "engineer" });
     expect((dispatches[0].payload as Record<string, unknown>).body).toBe(
@@ -329,9 +575,45 @@ describe("PR_MERGED_HANDLER (mission-76 W1 §3.1)", () => {
     );
   });
 
+  it("Events-API-shape: action='merged' → engineer-merges PR (bug-50 Class A + B coverage)", async () => {
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    // GH Events API uses action="merged" directly (no nested .merged
+    // discriminator); webhook uses action="closed" + merged=true (covered above).
+    const repoEvent = translateGhEvent(
+      makePullRequestEventEventsApiShape({
+        action: "merged",
+        actorLogin: "apnex-greg",
+        prNumber: 168,
+        baseRef: "main",
+        headRef: "agent-greg/feature",
+        merged: true,
+      }),
+    );
+    const dispatches = await PR_MERGED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
+    expect(dispatches).toHaveLength(1);
+    const payload = dispatches[0].payload as Record<string, unknown>;
+    expect(payload.body).toBe("Engineer merged PR #168"); // colon dropped (title null)
+    expect(payload.prAuthor).toBe("apnex-greg"); // bug-49 actor fallback
+    expect(payload.prUrl).toBe("https://github.com/apnex-org/agentic-network/pull/168"); // bug-50 derived
+    expect(payload.prBaseRef).toBe("main"); // bug-50 Class A
+    expect(payload.prHeadRef).toBe("agent-greg/feature");
+  });
+
   it("unknown-author → skip", async () => {
     const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
-    const dispatches = await PR_MERGED_HANDLER.handle(baseMsg("apnex"), ctx);
+    const repoEvent = translateGhEvent(
+      makePullRequestEventWebhookShape({
+        action: "closed",
+        authorLogin: "apnex",
+        prNumber: 168,
+        prTitle: "test",
+        prHtmlUrl: "https://github.com/x/y/pull/168",
+        baseRef: "main",
+        headRef: "feat/x",
+        merged: true,
+      }),
+    );
+    const dispatches = await PR_MERGED_HANDLER.handle(wrapAsInboundMessage(repoEvent), ctx);
     expect(dispatches).toHaveLength(0);
   });
 });
@@ -339,24 +621,19 @@ describe("PR_MERGED_HANDLER (mission-76 W1 §3.1)", () => {
 // ── PR_REVIEW_SUBMITTED_HANDLER tests (Design §6.1) ───────────────────
 
 describe("PR_REVIEW_SUBMITTED_HANDLER (mission-76 W1 §3.1)", () => {
-  const baseMsg = (reviewer: string, state: string) =>
-    makeRepoEventMessage({
-      kind: "repo-event",
-      subkind: "pr-review-submitted",
-      payload: {
-        repo: "apnex-org/agentic-network",
-        prNumber: 167,
-        reviewer,
-        state,
-        body: "LGTM with one nit",
-        url: "https://github.com/apnex-org/agentic-network/pull/167#pullrequestreview-1",
-      },
-    });
-
-  it("engineer-reviews-PR (changes_requested) → architect notification", async () => {
+  it("webhook-shape: engineer-reviews-PR (changes_requested) → architect notification", async () => {
     const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex-greg",
+        prNumber: 167,
+        state: "changes_requested",
+        body: "LGTM with one nit",
+      }),
+    );
     const dispatches = await PR_REVIEW_SUBMITTED_HANDLER.handle(
-      baseMsg("apnex-greg", "changes_requested"),
+      wrapAsInboundMessage(repoEvent),
       ctx,
     );
     expect(dispatches).toHaveLength(1);
@@ -370,23 +647,74 @@ describe("PR_REVIEW_SUBMITTED_HANDLER (mission-76 W1 §3.1)", () => {
     expect(payload.reviewBody).toBe("LGTM with one nit");
   });
 
-  it("architect-reviews-PR (commented) → engineer notification (symmetric per §3.4)", async () => {
+  it("webhook-shape: architect-reviews-PR (changes_requested) → engineer notification (symmetric per §3.4)", async () => {
+    // state="commented" routes to pr-review-comment subkind (carved out per
+    // Design v1.0 §3.1.1); this handler covers changes_requested + non-
+    // approved/non-commented residual states (translator.ts dispatchPullRequestReview).
     const ctx = makeCtx([makeAgent("arch-A", "architect", "apnex-lily")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex-lily",
+        prNumber: 167,
+        state: "changes_requested",
+        body: "needs adjustment",
+      }),
+    );
     const dispatches = await PR_REVIEW_SUBMITTED_HANDLER.handle(
-      baseMsg("apnex-lily", "commented"),
+      wrapAsInboundMessage(repoEvent),
       ctx,
     );
     expect(dispatches).toHaveLength(1);
     expect(dispatches[0].target).toEqual({ role: "engineer" });
     expect((dispatches[0].payload as Record<string, unknown>).body).toBe(
-      "Architect reviewed PR #167 (commented)",
+      "Architect reviewed PR #167 (changes_requested)",
     );
   });
 
-  it("review without state → omits state clause from body (defensive)", async () => {
+  it("Events-API-shape: action='created' + reviewer fallback (bug-49 + mission-76 W1 dispatch fix)", async () => {
     const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    // GH Events API uses action="created" for new review submissions; webhook
+    // uses action="submitted". Both equivalent — translator routes both.
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventEventsApiShape({
+        action: "created",
+        actorLogin: "apnex-greg",
+        prNumber: 200,
+        state: "changes_requested",
+        body: "live-events-api review",
+      }),
+    );
     const dispatches = await PR_REVIEW_SUBMITTED_HANDLER.handle(
-      baseMsg("apnex-greg", ""),
+      wrapAsInboundMessage(repoEvent),
+      ctx,
+    );
+    expect(dispatches).toHaveLength(1);
+    expect(dispatches[0].target).toEqual({ role: "architect" });
+    const payload = dispatches[0].payload as Record<string, unknown>;
+    expect(payload.body).toBe("Engineer reviewed PR #200 (changes_requested)");
+    expect(payload.reviewer).toBe("apnex-greg"); // bug-49 actor fallback
+  });
+
+  it("review with empty state → omits state clause from body (defensive)", async () => {
+    // Hand-crafted RepoEvent — translator emits state from review.state directly;
+    // a translator-fed empty-state fixture is awkward to construct, so we feed
+    // the handler directly to verify the body-template defensive path.
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const repoEvent = {
+      kind: "repo-event",
+      subkind: "pr-review-submitted",
+      payload: {
+        repo: "apnex-org/agentic-network",
+        prNumber: 167,
+        reviewer: "apnex-greg",
+        state: "",
+        body: "no state",
+        url: "https://github.com/apnex-org/agentic-network/pull/167",
+      },
+    };
+    const dispatches = await PR_REVIEW_SUBMITTED_HANDLER.handle(
+      wrapAsInboundMessage(repoEvent),
       ctx,
     );
     expect(dispatches).toHaveLength(1);
@@ -397,8 +725,31 @@ describe("PR_REVIEW_SUBMITTED_HANDLER (mission-76 W1 §3.1)", () => {
 
   it("unknown-reviewer → skip", async () => {
     const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex",
+        prNumber: 167,
+        state: "approved",
+        body: "ok",
+      }),
+    );
+    // Note: state="approved" routes to pr-review-approved subkind (carved out
+    // per Design v1.0 §3.1.1); but the handler under test would still get
+    // pr-review-submitted-shape if dispatched directly. We use changes_requested
+    // here to keep the dispatch routing aligned.
+    void repoEvent;
+    const altRepoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex",
+        prNumber: 167,
+        state: "changes_requested",
+        body: "ok",
+      }),
+    );
     const dispatches = await PR_REVIEW_SUBMITTED_HANDLER.handle(
-      baseMsg("apnex", "approved"),
+      wrapAsInboundMessage(altRepoEvent),
       ctx,
     );
     expect(dispatches).toHaveLength(0);

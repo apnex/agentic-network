@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { translateGhEvent } from "@apnex/repo-event-bridge";
 import {
   REPO_EVENT_HANDLERS,
   findRepoEventHandler,
@@ -321,5 +322,51 @@ describe("COMMIT_PUSHED_HANDLER (mission-68 W1 §3)", () => {
     expect((dispatches[0].payload as Record<string, unknown>).branch).toBe(
       "agent-lily/idea-224",
     );
+  });
+
+  // bug-50 audit: confirm commit-pushed Class A + Class B scope-clean.
+  //
+  // Class A (type-shape mismatch): normalizePush emits
+  // {repo, ref, pusher, commitCount, commits} — NO base/head object
+  // refs (PushEvent payload has no equivalent surface). Handler reads
+  // string-typed pusher/ref/repo + array commits + numeric commitCount.
+  // No string-vs-object drift possible.
+  //
+  // Class B (Events-API null fields): bug-44 already addressed Events-API
+  // PushEvent shape (payload.pusher/sender absent → fall back to event-level
+  // actor.login). normalizePush at translator.ts:268-296 reads pusher via
+  // chained ?? fallback. Commit fields (sha/message/author) are pass-through
+  // and not used in handler body construction.
+  //
+  // The fixture below feeds an Events-API-shape PushEvent (no pusher /
+  // sender; only event-level actor) through translateGhEvent → handler to
+  // pin the live-runtime contract.
+  it("Events-API-shape PushEvent: pusher falls back to actor (bug-44 + bug-50 audit lock-in)", async () => {
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const ghEvent = {
+      type: "PushEvent",
+      actor: { login: "apnex-greg" }, // Events-API delivers pusher at event-level
+      repo: { name: "apnex-org/agentic-network" },
+      payload: {
+        ref: "refs/heads/agent-greg/feature",
+        // No pusher / sender — Events-API omits these (webhook-only)
+        commits: [
+          {
+            sha: "abc123",
+            message: "first commit",
+            author: { name: "Greg", email: "g@example.com" },
+          },
+        ],
+      },
+    };
+    const repoEvent = translateGhEvent(ghEvent);
+    const inboundMsg = makeRepoEventMessage(repoEvent);
+    const dispatches = await COMMIT_PUSHED_HANDLER.handle(inboundMsg, ctx);
+    expect(dispatches).toHaveLength(1);
+    const payload = dispatches[0].payload as Record<string, unknown>;
+    expect(payload.pusher).toBe("apnex-greg"); // bug-44 actor fallback
+    expect(payload.branch).toBe("agent-greg/feature");
+    expect(payload.commitCount).toBe(1);
+    expect(payload.body).toBe("Engineer pushed 1 commit to agent-greg/feature");
   });
 });

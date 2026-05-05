@@ -205,8 +205,22 @@ function normalizePullRequest(
     repo,
     action: payload.action,
     number: pr.number,
-    title: pr.title,
-    url: pr.html_url,
+    // bug-50 Class B: GH Events API emits pr.title=null + pr.html_url=null;
+    // only pr.url (API URL) is populated. Normalize title to "" at the v1
+    // contract (defensive — handler-side fallback already converts null→"";
+    // this is style-cleanup so the contract is "title is always a string").
+    title: typeof pr.title === "string" ? pr.title : "",
+    // bug-50 Class B: html_url preferred (webhook delivery); derive from
+    // pr.url (API URL) when html_url is null (Events API). Scoped strictly to
+    // PR URLs — review URL has different shape (#pullrequestreview-{R} fragment),
+    // review-comment URL CANNOT be derived from comment.url alone (lacks PR
+    // number); both deferred to a separate fix if/when null observed live.
+    url:
+      typeof pr.html_url === "string"
+        ? pr.html_url
+        : typeof pr.url === "string"
+          ? deriveHtmlUrlFromApiUrl(pr.url)
+          : "",
     // bug-49: GH Events API consistently null on pr.user; webhook delivery
     // populates pr.user. Fall back to event-level actor when pr.user absent.
     // Same pattern as bug-44's PushEvent pusher-vs-actor fallback chain.
@@ -314,6 +328,29 @@ function extractRef(ref: unknown): { ref?: string; sha?: string } | undefined {
     ref: typeof ref.ref === "string" ? ref.ref : undefined,
     sha: typeof ref.sha === "string" ? ref.sha : undefined,
   };
+}
+
+// bug-50 Class B: GH Events API consistently null on pr.html_url; only
+// pr.url (API URL) is populated. The transform is deterministic — no
+// API call needed. Scoped strictly to PR URLs:
+//   api.github.com/repos/{owner}/{repo}/pulls/{N}
+//     → github.com/{owner}/{repo}/pull/{N}
+// Review URL + review-comment URL transforms have different shapes and
+// are deferred to a separate fix if/when null observed live.
+function deriveHtmlUrlFromApiUrl(apiUrl: string): string {
+  const m = apiUrl.match(
+    /^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)$/,
+  );
+  if (!m) {
+    // Calibration log per bug-49 null-lookup-skip discipline — return
+    // apiUrl as-is so downstream consumers have *something* (forks /
+    // GH Enterprise / future shape changes won't silently emit "").
+    console.info(
+      `[translator] deriveHtmlUrlFromApiUrl: pr.url shape unrecognized (${apiUrl}); returning api-url as-is`,
+    );
+    return apiUrl;
+  }
+  return `https://github.com/${m[1]}/${m[2]}/pull/${m[3]}`;
 }
 
 function extractRepo(ghEvent: Record<string, unknown>): string | undefined {

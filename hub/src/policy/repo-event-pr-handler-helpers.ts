@@ -35,6 +35,47 @@ import { lookupRoleByGhLogin } from "./repo-event-author-lookup.js";
 export type PrEventSubkind = "pr-opened" | "pr-merged" | "pr-review-submitted";
 
 /**
+ * Shared payload shape for pr-opened + pr-merged (byte-identical post bug-50
+ * Class A fix). pr-review-submitted has a different shape (prNumber/reviewer/
+ * state) — kept separate to avoid awkward optional-field unions.
+ *
+ * `base` + `head` are objects-or-undefined per translator-truth: the bridge's
+ * `normalizePullRequest` returns `{ref?: string, sha?: string} | undefined`
+ * (translator.ts `extractRef`). Handlers adapt to translator-emitted shape;
+ * the v0 string-shape was a cross-package contract drift (bug-50 Class A).
+ */
+export interface PrLifecyclePayload {
+  /** GH login of the PR author (from `pull_request.user.login` ?? `event.actor.login`; bug-49 fallback). */
+  author: string;
+  number: number;
+  title: string;
+  url: string;
+  base: { ref: string; sha: string } | undefined;
+  head: { ref: string; sha: string } | undefined;
+}
+
+/** Type guard for object-shape extraction at the handler boundary
+ *  (mirrors translator's internal `isRecord`). */
+export function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** Defensive base/head extraction at the handler boundary — translator emits
+ *  `{ref?: string, sha?: string} | undefined`; coerce to fully-populated
+ *  `{ref: string, sha: string}` shape (empty strings for missing fields).
+ *  Returns undefined when raw isn't an object (preserves translator's
+ *  malformed-input contract). bug-50 Class A. */
+export function extractRefField(
+  raw: unknown,
+): { ref: string; sha: string } | undefined {
+  if (!isRecord(raw)) return undefined;
+  return {
+    ref: typeof raw.ref === "string" ? raw.ref : "",
+    sha: typeof raw.sha === "string" ? raw.sha : "",
+  };
+}
+
+/**
  * Per-subkind opts supplied by each thin handler wrapper.
  *
  * @template P typed payload returned by `extractPayload`. Per-subkind

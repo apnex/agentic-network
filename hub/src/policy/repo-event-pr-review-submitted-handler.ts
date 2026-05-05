@@ -27,7 +27,7 @@ import {
 } from "./repo-event-pr-handler-helpers.js";
 
 interface PrReviewSubmittedPayload {
-  /** GH login of the reviewer (from `review.user.login`). */
+  /** GH login of the reviewer (from `review.user.login` ?? `event.actor.login`; bug-49 fallback). */
   reviewer: string;
   prNumber: number;
   state: string;
