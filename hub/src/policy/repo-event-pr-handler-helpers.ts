@@ -29,10 +29,16 @@ import type { IPolicyContext } from "./types.js";
 import type { MessageDispatch } from "./repo-event-handlers.js";
 import { lookupRoleByGhLogin } from "./repo-event-author-lookup.js";
 
-/** PR-event subkinds in scope for this mission (3 of 6 PR-event subkinds;
- *  pr-closed / pr-review-approved / pr-review-comment carved out per
- *  Design v1.0 §3.1.1 + §8 AG-2). */
-export type PrEventSubkind = "pr-opened" | "pr-merged" | "pr-review-submitted";
+/** PR-event subkinds in scope for this mission (4 of 6 PR-event subkinds
+ *  post-bug-51; +1 from mission-76's original 3 since bug-51 closes the
+ *  pr-review-approved carve-out — the original §3.1.1 + §8 AG-2 rationale
+ *  was factually incorrect, see repo-event-pr-review-approved-handler.ts).
+ *  pr-closed + pr-review-comment remain carved out per idea-250. */
+export type PrEventSubkind =
+  | "pr-opened"
+  | "pr-merged"
+  | "pr-review-submitted"
+  | "pr-review-approved";
 
 /**
  * Shared payload shape for pr-opened + pr-merged (byte-identical post bug-50

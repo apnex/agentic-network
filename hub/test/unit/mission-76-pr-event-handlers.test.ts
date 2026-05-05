@@ -34,6 +34,8 @@ import {
 import { PR_OPENED_HANDLER } from "../../src/policy/repo-event-pr-opened-handler.js";
 import { PR_MERGED_HANDLER } from "../../src/policy/repo-event-pr-merged-handler.js";
 import { PR_REVIEW_SUBMITTED_HANDLER } from "../../src/policy/repo-event-pr-review-submitted-handler.js";
+import { PR_REVIEW_APPROVED_HANDLER } from "../../src/policy/repo-event-pr-review-approved-handler.js";
+import { findRepoEventHandler } from "../../src/policy/repo-event-handlers.js";
 
 // ── Helper: minimal IPolicyContext + agent fixtures ──────────────────
 
@@ -767,9 +769,189 @@ describe("PR_REVIEW_SUBMITTED_HANDLER (mission-76 W1 §3.1)", () => {
   });
 });
 
+// ── PR_REVIEW_APPROVED_HANDLER tests (bug-51 closure) ─────────────────
+
+describe("PR_REVIEW_APPROVED_HANDLER (bug-51 closes design-rationale-incorrect carve-out)", () => {
+  it("Events-API-shape: engineer-approves-PR (action='created', state='approved') → architect notification", async () => {
+    // GH Events API: action="created" + state="approved" + review.user=null;
+    // bug-49 fallback fills reviewer from event-level actor.login.
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventEventsApiShape({
+        action: "created",
+        actorLogin: "apnex-greg",
+        prNumber: 200,
+        state: "approved",
+        body: "LGTM",
+      }),
+    );
+    const dispatches = await PR_REVIEW_APPROVED_HANDLER.handle(
+      wrapAsInboundMessage(repoEvent),
+      ctx,
+    );
+    expect(dispatches).toHaveLength(1);
+    const d = dispatches[0];
+    expect(d.kind).toBe("note");
+    expect(d.target).toEqual({ role: "architect" });
+    expect(d.intent).toBe("pr-review-approved-notification");
+    const payload = d.payload as Record<string, unknown>;
+    expect(payload.body).toBe("Engineer approved PR #200");
+    expect(payload.prNumber).toBe(200);
+    expect(payload.reviewer).toBe("apnex-greg"); // bug-49 actor fallback
+    expect(payload.reviewState).toBe("approved"); // explicit shape parity with pr-review-submitted
+    expect(payload.reviewBody).toBe("LGTM");
+    // KNOWN LIMITATION (bug-50 deferral): Events-API review.html_url is null
+    // → reviewUrl will be empty string. Operator navigates via prNumber.
+    expect(payload.reviewUrl).toBe("");
+  });
+
+  it("webhook-shape: architect-approves-PR (action='submitted', state='approved') → engineer notification (symmetric per §3.4)", async () => {
+    const ctx = makeCtx([makeAgent("arch-A", "architect", "apnex-lily")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex-lily",
+        prNumber: 201,
+        state: "approved",
+        body: "approved per audit cycle 2026-05-05",
+      }),
+    );
+    const dispatches = await PR_REVIEW_APPROVED_HANDLER.handle(
+      wrapAsInboundMessage(repoEvent),
+      ctx,
+    );
+    expect(dispatches).toHaveLength(1);
+    expect(dispatches[0].target).toEqual({ role: "engineer" });
+    const payload = dispatches[0].payload as Record<string, unknown>;
+    expect(payload.body).toBe("Architect approved PR #201");
+    expect(payload.reviewer).toBe("apnex-lily");
+    expect(payload.reviewState).toBe("approved");
+    expect(payload.reviewBody).toBe("approved per audit cycle 2026-05-05");
+    // Webhook delivery: review.html_url is populated.
+    expect(payload.reviewUrl).toBe(
+      "https://github.com/apnex-org/agentic-network/pull/201#pullrequestreview-1",
+    );
+  });
+
+  it("empty body (thumbs-up review) → notification still fires; reviewBody empty", async () => {
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex-greg",
+        prNumber: 202,
+        state: "approved",
+        body: "",
+      }),
+    );
+    const dispatches = await PR_REVIEW_APPROVED_HANDLER.handle(
+      wrapAsInboundMessage(repoEvent),
+      ctx,
+    );
+    expect(dispatches).toHaveLength(1);
+    const payload = dispatches[0].payload as Record<string, unknown>;
+    expect(payload.body).toBe("Engineer approved PR #202");
+    expect(payload.reviewBody).toBe("");
+  });
+
+  it("director-author → skip (§3.1 m2 fold; no peer-role for engineer↔architect routing)", async () => {
+    const ctx = makeCtx([makeAgent("dir-A", "director", "apnex-director")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex-director",
+        prNumber: 203,
+        state: "approved",
+        body: "ok",
+      }),
+    );
+    const dispatches = await PR_REVIEW_APPROVED_HANDLER.handle(
+      wrapAsInboundMessage(repoEvent),
+      ctx,
+    );
+    expect(dispatches).toHaveLength(0);
+  });
+
+  it("unknown-reviewer → skip (lookup returns null; mission-76 γ EXPECTED behavior for unregistered authors)", async () => {
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex",
+        prNumber: 204,
+        state: "approved",
+        body: "ok",
+      }),
+    );
+    const dispatches = await PR_REVIEW_APPROVED_HANDLER.handle(
+      wrapAsInboundMessage(repoEvent),
+      ctx,
+    );
+    expect(dispatches).toHaveLength(0);
+  });
+
+  it("missing prNumber → skip (extractPayload null guard)", async () => {
+    const ctx = makeCtx([makeAgent("eng-A", "engineer", "apnex-greg")]);
+    const msg = makeRepoEventMessage({
+      kind: "repo-event",
+      subkind: "pr-review-approved",
+      payload: { reviewer: "apnex-greg", state: "approved" }, // missing prNumber
+    });
+    const dispatches = await PR_REVIEW_APPROVED_HANDLER.handle(msg, ctx);
+    expect(dispatches).toHaveLength(0);
+  });
+
+  it("dispatch boundary: BOTH action='submitted' AND action='created' route to pr-review-approved subkind when state='approved'", () => {
+    // bug-46 paired-closure dispatch test — translator routes both action
+    // variants to the same subkind. This pin catches future translator
+    // regressions at the handler-test boundary (without invoking the handler).
+    const webhookEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex-greg",
+        prNumber: 205,
+        state: "approved",
+        body: "",
+      }),
+    );
+    const eventsApiEvent = translateGhEvent(
+      makePullRequestReviewEventEventsApiShape({
+        action: "created",
+        actorLogin: "apnex-greg",
+        prNumber: 205,
+        state: "approved",
+        body: "",
+      }),
+    );
+    const webhookSubkind = (webhookEvent as { subkind: string }).subkind;
+    const eventsApiSubkind = (eventsApiEvent as { subkind: string }).subkind;
+    expect(webhookSubkind).toBe("pr-review-approved");
+    expect(eventsApiSubkind).toBe("pr-review-approved");
+    // And the registry resolves the handler for that subkind:
+    expect(findRepoEventHandler("pr-review-approved")).not.toBeNull();
+  });
+
+  it("dispatch boundary: state='changes_requested' routes to pr-review-submitted (NOT pr-review-approved)", () => {
+    // Confirms mutual exclusion at translator dispatch boundary — the
+    // pr-review-submitted handler covers non-approved/non-commented states;
+    // pr-review-approved is only invoked for state='approved'.
+    const repoEvent = translateGhEvent(
+      makePullRequestReviewEventWebhookShape({
+        action: "submitted",
+        reviewerLogin: "apnex-greg",
+        prNumber: 206,
+        state: "changes_requested",
+        body: "",
+      }),
+    );
+    const subkind = (repoEvent as { subkind: string }).subkind;
+    expect(subkind).toBe("pr-review-submitted");
+  });
+});
+
 // ── Handler-shape contract assertions ─────────────────────────────────
 
-describe("PR-event handler RepoEventHandler-interface conformance (mission-76 W1)", () => {
+describe("PR-event handler RepoEventHandler-interface conformance (mission-76 W1 + bug-51)", () => {
   it("PR_OPENED_HANDLER conforms to {subkind, name, handle}", () => {
     expect(PR_OPENED_HANDLER.subkind).toBe("pr-opened");
     expect(PR_OPENED_HANDLER.name).toBe("pr_opened_bilateral");
@@ -786,5 +968,11 @@ describe("PR-event handler RepoEventHandler-interface conformance (mission-76 W1
     expect(PR_REVIEW_SUBMITTED_HANDLER.subkind).toBe("pr-review-submitted");
     expect(PR_REVIEW_SUBMITTED_HANDLER.name).toBe("pr_review_submitted_bilateral");
     expect(typeof PR_REVIEW_SUBMITTED_HANDLER.handle).toBe("function");
+  });
+
+  it("PR_REVIEW_APPROVED_HANDLER conforms to {subkind, name, handle} (bug-51)", () => {
+    expect(PR_REVIEW_APPROVED_HANDLER.subkind).toBe("pr-review-approved");
+    expect(PR_REVIEW_APPROVED_HANDLER.name).toBe("pr_review_approved_bilateral");
+    expect(typeof PR_REVIEW_APPROVED_HANDLER.handle).toBe("function");
   });
 });
