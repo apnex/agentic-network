@@ -117,23 +117,28 @@ export function normalizeGhEvent(
   const payload = isRecord(ghEvent.payload) ? ghEvent.payload : {};
   const repo = extractRepo(ghEvent);
 
+  // bug-49 (3rd canonical instance of webhook-vs-Events-API-shape-mismatch
+  // class per idea-249 methodology-fold): Events API consistently null on
+  // nested user fields (pr.user / review.user / comment.user); user info
+  // only available at event-level ghEvent.actor. Pass actor to ALL
+  // normalize-*-with-author functions so they can fall back when nested
+  // user is null. Same pattern as bug-44's PushEvent fix.
+  const actor = isRecord(ghEvent.actor) ? ghEvent.actor : undefined;
   switch (subkind) {
     case "pr-opened":
     case "pr-closed":
     case "pr-merged":
-      return normalizePullRequest(payload, repo);
+      return normalizePullRequest(payload, repo, actor);
     case "pr-review-submitted":
     case "pr-review-approved":
-      return normalizePullRequestReview(payload, repo);
+      return normalizePullRequestReview(payload, repo, actor);
     case "pr-review-comment":
-      return normalizePullRequestReviewComment(payload, repo, ghEvent);
-    case "commit-pushed": {
+      return normalizePullRequestReviewComment(payload, repo, ghEvent, actor);
+    case "commit-pushed":
       // bug-44: GH Events API places the user at ghEvent.actor.login (event-level),
       // NOT in payload.pusher / payload.sender (those are webhook-only). Pass actor
       // so normalizePush can fall back to it when the webhook fields are absent.
-      const actor = isRecord(ghEvent.actor) ? ghEvent.actor : undefined;
       return normalizePush(payload, repo, actor);
-    }
     case "unknown":
       return { raw: ghEvent };
   }
@@ -193,6 +198,7 @@ function dispatchPullRequestReview(
 function normalizePullRequest(
   payload: Record<string, unknown>,
   repo: string | undefined,
+  actor?: Record<string, unknown>,
 ): Record<string, unknown> {
   const pr = isRecord(payload.pull_request) ? payload.pull_request : {};
   return {
@@ -201,7 +207,10 @@ function normalizePullRequest(
     number: pr.number,
     title: pr.title,
     url: pr.html_url,
-    author: extractLogin(pr.user),
+    // bug-49: GH Events API consistently null on pr.user; webhook delivery
+    // populates pr.user. Fall back to event-level actor when pr.user absent.
+    // Same pattern as bug-44's PushEvent pusher-vs-actor fallback chain.
+    author: extractLogin(pr.user) ?? extractLogin(actor),
     merged: pr.merged === true,
     base: extractRef(pr.base),
     head: extractRef(pr.head),
@@ -211,13 +220,17 @@ function normalizePullRequest(
 function normalizePullRequestReview(
   payload: Record<string, unknown>,
   repo: string | undefined,
+  actor?: Record<string, unknown>,
 ): Record<string, unknown> {
   const review = isRecord(payload.review) ? payload.review : {};
   const pr = isRecord(payload.pull_request) ? payload.pull_request : {};
   return {
     repo,
     prNumber: pr.number,
-    reviewer: extractLogin(review.user),
+    // bug-49: GH Events API consistently null on review.user; webhook
+    // delivery populates review.user. Fall back to event-level actor when
+    // review.user absent. Same pattern as bug-44's PushEvent fallback.
+    reviewer: extractLogin(review.user) ?? extractLogin(actor),
     state: review.state,
     body: review.body,
     url: review.html_url,
@@ -228,6 +241,7 @@ function normalizePullRequestReviewComment(
   payload: Record<string, unknown>,
   repo: string | undefined,
   parent: Record<string, unknown>,
+  actor?: Record<string, unknown>,
 ): Record<string, unknown> {
   // Comments may live on either the review-comment event payload or
   // (in 'submitted' state='commented' reviews) on the review payload
@@ -241,7 +255,10 @@ function normalizePullRequestReviewComment(
   return {
     repo,
     prNumber: pr.number,
-    commenter: extractLogin(comment.user),
+    // bug-49: GH Events API consistently null on comment.user; webhook
+    // delivery populates comment.user. Fall back to event-level actor when
+    // comment.user absent. Same pattern as bug-44's PushEvent fallback.
+    commenter: extractLogin(comment.user) ?? extractLogin(actor),
     body: comment.body,
     url: comment.html_url,
     sourceType: parent.type,
