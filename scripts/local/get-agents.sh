@@ -26,7 +26,8 @@ set -euo pipefail
 # --- DEFAULTS ---
 DEFAULT_HOST="http://localhost:8080"
 DEFAULT_ROLE="director"
-TPL_DIR="$(dirname "$(readlink -f "$0")")/tpl"
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+TPL_DIR="${SCRIPT_DIR}/tpl"
 
 # --- COLORS (per prism.sh pattern) ---
 CYAN='\033[0;36m'
@@ -92,38 +93,16 @@ if [[ -z "${HUB_API_TOKEN:-}" ]]; then
     exit 2
 fi
 
-# --- buildTable() — engineer commit 7b ---
+# --- buildTable() — extracted to mod.core (mission-75 v1.0) ------------------
 #
-# Reference: /home/apnex/taceng/table/prism.sh:74-99 (memory:
-# reference_prism_table_pattern.md). Heredoc'd jq filter projects an
-# array-of-objects to a header row (uppercased keys) + value rows;
-# `column -t` aligns the TSV; cyan-color highlights the header line.
-buildTable() {
-    local INPUT="${1:-}"
-    if [[ -z "$INPUT" || "$INPUT" == "[]" || "$INPUT" == "null" ]]; then return; fi
-
-    read -r -d '' JQTABLE <<-'CONFIG' || true
-        if type == "array" and (.[0]?) then
-            [(
-                [.[0] | to_entries[] | .key | gsub("(?<x>[a-z])(?<y>[A-Z])"; "\(.x)_\(.y)") | ascii_upcase]
-            ),(
-                .[] | [to_entries[] | .value]
-            )]
-        elif type == "object" then
-            [[ "KEY", "VALUE" ], (. | to_entries[] | [ .key, .value ])]
-        else . end
-CONFIG
-
-    local HEADER="1"
-    echo "$INPUT" | jq -r "$JQTABLE | .[] | @tsv" 2>/dev/null | column -t -s $'\t' | while read -r LINE; do
-        if [[ -n $HEADER ]]; then
-            echo -e "${CYAN}${LINE}${NC}"
-            HEADER=""
-        else
-            echo "$LINE"
-        fi
-    done
-}
+# `buildTable()` is now hosted in `scripts/local/mod.core` per Director CLI
+# consolidation ask (Design v1.0 §3.6 v1.0 fold; first canonical instance
+# of the lib-extraction discipline pattern per
+# `feedback_design_phase_lib_extraction_for_substrate_bash.md`). idea-243
+# captures the systemic follow-on (migrate all operator CLIs to source
+# mod.core).
+# shellcheck source=./mod.core
+source "${SCRIPT_DIR}/mod.core"
 
 # --- call_get_agents() — engineer commit 7b + post-mission-66 fix-forward ---
 #

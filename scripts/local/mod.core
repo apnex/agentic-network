@@ -1,0 +1,86 @@
+#!/bin/bash
+# mod.core — operator-CLI sourceable bash module (mission-75 v1.0)
+#
+# First canonical instance of the lib-extraction discipline pattern per
+# `feedback_design_phase_lib_extraction_for_substrate_bash.md`. Hosts
+# utility functions extracted from operator scripts (currently:
+# `buildTable()` from `get-agents.sh`). Future operator scripts source
+# this module opportunistically OR systemically (idea-243 captures the
+# systemic CLI-consolidation follow-on).
+#
+# Conventions:
+#   - Pure bash (no python/yq/npm runtime deps per AG-7 substrate
+#     discipline)
+#   - Functions are idempotent; side-effects limited to stdout
+#   - Color-output helpers honor a global $NC sentinel; callers
+#     declare CYAN/GREEN/YELLOW/RED/NC at module scope before sourcing
+#     (matches existing get-agents.sh + prism.sh pattern)
+#   - Unit tests live alongside in `test-mod.core.sh` (mission-75 v1.0
+#     ships round-trip header derivation + alignment edge cases)
+#
+# Usage:
+#   #!/bin/bash
+#   set -euo pipefail
+#   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#   source "${SCRIPT_DIR}/mod.core"
+#   buildTable "$json_array"
+#
+# Reference: /home/apnex/taceng/table/prism.sh (memory:
+# reference_prism_table_pattern.md) — original heredoc-jq + column -t
+# pattern from which buildTable() is extracted.
+
+# --- COLORS — defaults if caller didn't declare ------------------------------
+# Provided as a fallback so direct sourcing for tests works without
+# requiring callers to redefine. Production callers (get-agents.sh)
+# declare these at script scope; bash variable scoping means caller's
+# values win when set, fallback fires only if completely unset (use
+# `=` not `:=` so caller's explicit empty string is preserved — tests
+# pass CYAN="" / NC="" to compare against literal ANSI-stripped output).
+: "${CYAN=\\033[0;36m}"
+: "${NC=\\033[0m}"
+
+# --- buildTable() ------------------------------------------------------------
+#
+# Project a JSON array-of-objects (or single object) to an aligned
+# column table written to stdout.
+#
+# Input: JSON string (typically a jq projection's stdout). Empty / "[]"
+# / "null" inputs render nothing (no header, no rows; no error).
+#
+# Mechanics:
+#   1. Heredoc'd jq filter projects the input to [HEADER, ...ROWS] form
+#      where HEADER derives from the first object's camelCase keys via
+#      the deterministic camelCase → SNAKE_CASE round-trip discipline
+#      (Design v1.0 §3.6 v1.0 fold; e.g., `cognitiveTTL` → `COGNITIVE_TTL`)
+#   2. `column -t` aligns the resulting TSV
+#   3. The first line (header) is colored cyan (sentinel: $CYAN / $NC)
+#
+# Caller invariant: jq must be installed (substrate dependency per
+# AG-7 — bash + standard POSIX utilities only; jq is the one exception
+# already in use by the existing CLI surface).
+buildTable() {
+    local INPUT="${1:-}"
+    if [[ -z "$INPUT" || "$INPUT" == "[]" || "$INPUT" == "null" ]]; then return; fi
+
+    read -r -d '' JQTABLE <<-'CONFIG' || true
+        if type == "array" and (.[0]?) then
+            [(
+                [.[0] | to_entries[] | .key | gsub("(?<x>[a-z])(?<y>[A-Z])"; "\(.x)_\(.y)") | ascii_upcase]
+            ),(
+                .[] | [to_entries[] | .value]
+            )]
+        elif type == "object" then
+            [[ "KEY", "VALUE" ], (. | to_entries[] | [ .key, .value ])]
+        else . end
+CONFIG
+
+    local HEADER="1"
+    echo "$INPUT" | jq -r "$JQTABLE | .[] | @tsv" 2>/dev/null | column -t -s $'\t' | while read -r LINE; do
+        if [[ -n $HEADER ]]; then
+            echo -e "${CYAN}${LINE}${NC}"
+            HEADER=""
+        else
+            echo "$LINE"
+        fi
+    done
+}

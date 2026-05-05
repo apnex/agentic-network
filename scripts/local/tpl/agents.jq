@@ -27,7 +27,8 @@ if type == "array" then
             id: (.id // .agentId // "?"),
             name: (.name // "?"),
             role: (.role // "?"),
-            livenessState: (.livenessState // .status // "?"),
+            cognitiveTTL: (if .cognitiveTTL == null then "?" else .cognitiveTTL end),
+            transportTTL: (if .transportTTL == null then "?" else .transportTTL end),
             activityState: (.activityState // "?"),
             shimPlugin: (
                 ((.clientMetadata.proxyName // "?") | split("/") | last | sub("-plugin$"; ""))
