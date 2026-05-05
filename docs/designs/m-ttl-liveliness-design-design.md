@@ -1,6 +1,6 @@
-# M-TTL-Liveliness-Design — Design v0.2
+# M-TTL-Liveliness-Design — Design v0.3
 
-**Status:** v0.2 (architect-revised 2026-05-05; engineer round-1 audit folded — 3 CRITICAL + 4 MEDIUM + 2 MINOR + 4 PROBE concur, full fold summary §11; pending engineer round-2 verify per `mission-lifecycle.md` Phase 4 audit cycle)
+**Status:** v0.3 (architect-revised 2026-05-05; engineer round-1 + round-2 audits folded — round-2 surfaced 1 NEW finding (N1 substrate-reality gap on C2 fold) + 5 fold-incomplete regressions (R1-R5; matches `feedback_refactor_introduces_regression_during_fold.md` pattern) + 3 §0.5 inventory polish items; full fold summary §11; pending engineer round-3 verify per `mission-lifecycle.md` Phase 4 audit cycle)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Survey envelope:** `docs/surveys/m-ttl-liveliness-design-survey.md` v1.0 (Director-ratified 6 picks; commit `f68e23b`)
 **Source idea:** idea-225 (status `triaged` via route-(a) skip-direct)
@@ -15,46 +15,49 @@
 Substrate-introduction mission spanning multi-substrate scope. NOT a compressed-lifecycle candidate per envelope §7.3 — bilateral round-1 audit warranted (engineer cross-check on schema decomposition + write-amplification + suppression discipline + cadence threshold).
 
 Reading order:
-- §0.5 Existing infrastructure inventory (NEW v0.2 — load-bearing per round-1 audit C1-C3 shared-root-cause finding "prior-substrate-elision")
+- §0.5 Existing infrastructure inventory (load-bearing per round-1 audit C1-C3; v0.3 polish per round-2 §0.5 completeness — 3 additional rows for `applyLivenessRecompute`, `isPeerPresent`, `activityState` auto-clamp)
 - §1 Mission scope summary (Survey envelope §3 + §4 reference)
-- §2 Architecture overview (3-layer composition; revised v0.2 — drop new MCP tool; reuse drain_pending_actions)
+- §2 Architecture overview (3-layer composition; revised v0.3 per round-2 R1 — diagram updated to v0.3 reality with poll-backstop 30s heartbeat timer + transport_heartbeat MCP tool re-introduced per N1)
 - §3 Component designs:
   - §3.1 Hub schema delta (4 NEW fields; 4-state composite preserved per round-1 C1 fold)
-  - §3.2 Hub-side TTL computation (reuse lastSeenAt + lastHeartbeatAt per round-1 C3 fold; eager write-on-event)
-  - §3.3 Transport heartbeat = `drain_pending_actions` (existing primitive per round-1 C2 fold; NOT new tool)
+  - §3.2 Hub-side TTL computation (reuse lastSeenAt + lastHeartbeatAt per round-1 C3 fold; eager write-on-event; v0.3 adds applyLivenessRecompute interaction note per round-2 §0.5 polish)
+  - §3.3 Transport heartbeat = poll-backstop 30s heartbeat timer + new `transport_heartbeat` MCP tool (rewritten v0.3 per round-2 N1 fold; partial C2 revert — drain is queue-driven NOT periodic; new tool fills the periodic gap; NOT a new Adapter Kernel timer)
   - §3.4 PulseSweeper extension (per-agent pulse via NULL mission binding; revised line estimate per round-1 M1 fold)
   - §3.5 Cognitive-staleness collapses to PEER_PRESENCE_WINDOW_MS (per round-1 M4 fold; 1 invariant not 2)
   - §3.6 CLI surface refactor (`get-agents.sh`; clarified wording per round-1 MIN2 fold)
-- §4 Migration sequencing (big-bang single-PR; tight consumer-update scope per round-1 P2 concur)
-- §5 Edge cases + failure modes (F1-F5 from envelope architect-flags; truth-table revised per round-1 MIN1 fold)
-- §6 Test / verification strategy (drop transport_heartbeat tool tests; reuse existing drain tests)
-- §7 PR sequencing + content map (path corrections per round-1 M2 fold)
+- §4 Migration sequencing (big-bang single-PR; tight consumer-update scope per round-1 P2 concur; v0.3 single-PR adds list updated per round-2 R2)
+- §5 Edge cases + failure modes (F1-F5 from envelope architect-flags; v0.3 §5.2 cross-references §3.4 M3 resolution per round-2 R5)
+- §6 Test / verification strategy (v0.3 transport_heartbeat tool tests re-added per N1; verification gates updated per round-2 R3)
+- §7 PR sequencing + content map (path corrections per round-1 M2 fold; v0.3 content map updated per N1 substrate addition)
 - §8 Anti-goals (carry from envelope §5)
-- §9 Architect-flags status (each marked addressed/deferred for round-2 verify)
+- §9 Architect-flags status (each marked addressed/deferred for round-3 verify; v0.3 F4 reframe to component-state truth table per round-2 R4)
 - §10 Cross-references (path corrections per round-1 M2 fold)
-- §11 Round-1 audit fold summary (NEW v0.2; per mission-67/68/69/71 round-2 verify discipline)
+- §11 Round-1 + round-2 audit fold summary (v0.3 — extends mission-67/68/69/71 round-2 verify discipline to multi-round folds; honest accounting of substrate-footprint reduction)
 
 ---
 
-## §0.5 Existing infrastructure inventory (NEW v0.2; load-bearing)
+## §0.5 Existing infrastructure inventory (NEW v0.2; load-bearing; v0.3 polish — 3 added rows + drain/poll-backstop decisions corrected per N1 substrate-reality fold)
 
-Round-1 audit C1/C2/C3 shared-root-cause: **prior-substrate-elision** in v0.1 — Design didn't reference existing infrastructure that this mission overlaps with. v0.2 grounds explicitly via inventory; reuse-vs-replace decisions become explicit per-primitive.
+Round-1 audit C1/C2/C3 shared-root-cause: **prior-substrate-elision** in v0.1 — Design didn't reference existing infrastructure that this mission overlaps with. v0.2 grounds explicitly via inventory; reuse-vs-replace decisions become explicit per-primitive. **v0.3 update:** round-2 N1 substrate-reality fold corrects the v0.2 `drain_pending_actions` reuse claim (drain is queue-driven, not periodic — see §3.3); 3 polish rows added per round-2 §0.5 completeness audit.
 
-| Substrate primitive | Source-of-truth location | v0.2 reuse-vs-replace decision |
+| Substrate primitive | Source-of-truth location | Reuse-vs-replace decision (v0.3) |
 |---|---|---|
 | `livenessState` 4-state enum `{online, degraded, unresponsive, offline}` | `hub/src/state.ts:198` | **REUSE UNCHANGED** (per C1 fold option (a)) — ADR-017 FSM untouched; sticky-offline + degraded-as-intermediate semantics preserved |
 | ADR-017 liveness FSM (online → degraded → unresponsive → offline transitions) | (referenced via state.ts) | **REUSE UNCHANGED** — drives Agent-record liveness; load-bearing for routing + escalation |
+| `applyLivenessRecompute()` (existing FSM transition function) | `hub/src/state.ts` (referenced by ADR-017 FSM) | **REUSE UNCHANGED** (NEW polish v0.3) — composite `livenessState` transitions continue via this function; v0.3 component-state hooks (`recomputeCognitiveTTLAndState` + `recomputeTransportTTLAndState`) are PARALLEL to applyLivenessRecompute, NOT replacements; no call-site changes required for FSM transitions |
 | `lastSeenAt` field | `hub/src/state.ts` | **REUSE** as cognitive-touch primitive; v0.2 derives `cognitiveTTL = now - lastSeenAt` |
 | `touchAgent` (updates lastSeenAt; called from tool-call entry) | `hub/src/state.ts` (line ~1245) | **REUSE UNCHANGED** — already wired across all tool-call sites |
 | `AGENT_TOUCH_MIN_INTERVAL_MS = 30_000` (rate-limit on touchAgent) | `hub/src/agent-repository.ts:172` | **REUSE UNCHANGED** — cognitive-cadence sub-window of 60s threshold; aligns with engagement patterns |
 | `lastHeartbeatAt` field | `hub/src/state.ts:250` | **REUSE** as transport-HB primitive; v0.2 derives `transportTTL = now - lastHeartbeatAt` |
-| `drain_pending_actions` MCP tool (existing) | `hub/src/policy/pending-action-policy.ts:42` | **REUSE AS TRANSPORT-HB** (per C2 fold option (a)) — drop new `transport_heartbeat` tool from v0.1; Adapter Kernel poll-backstop already calls drain regularly; serves as transport-HB by design |
-| `refreshHeartbeat(agent.id)` (Hub-side handler called on every drain) | `hub/src/policy/pending-action-policy.ts:42` | **REUSE UNCHANGED** — drives `lastHeartbeatAt` updates |
+| `drain_pending_actions` MCP tool (existing) | `hub/src/policy/pending-action-policy.ts:42` | **REUSE UNCHANGED** (v0.3 corrects v0.2 claim per N1 fold) — drain remains queue-driven; NOT a transport-HB primitive (queue-driven cadence ≠ periodic). v0.3 introduces NEW `transport_heartbeat` tool driven from poll-backstop substrate per N1 |
+| `refreshHeartbeat(agent.id)` (Hub-side handler called on every drain) | `hub/src/policy/pending-action-policy.ts:42` | **REUSE UNCHANGED** — also invoked by NEW `transport_heartbeat` tool handler in v0.3; drives `lastHeartbeatAt` updates |
+| `isPeerPresent(agent)` helper (existing 60s-window check) | `hub/src/agent-repository.ts:179` | **REUSE UNCHANGED** (NEW polish v0.3) — load-bearing helper for `cognitivelyStale = !isPeerPresent(agent)` collapse per M4 fold; computes `(now - lastSeenAt) < PEER_PRESENCE_WINDOW_MS`; consumers (e.g., orchestrator routing decisions) continue using helper unchanged |
 | `PEER_PRESENCE_WINDOW_MS = 60_000` ("agent active in last 60s" check) | `hub/src/agent-repository.ts:179` | **REUSE AS COGNITIVE-STALE THRESHOLD** (per M4 fold) — `cognitivelyStale = !isPeerPresent(agent)` collapses 60s threshold into existing invariant; net win = 1 invariant not 2 |
-| Adapter Kernel poll-backstop (periodically calls drain) | `packages/network-adapter/src/kernel/poll-backstop.ts` | **REUSE UNCHANGED** — provides transport-HB cadence via existing mechanism; cadence variance absorbed by PEER_PRESENCE_WINDOW_MS |
+| Adapter Kernel poll-backstop | `packages/network-adapter/src/kernel/poll-backstop.ts` (DEFAULT_CADENCE_SECONDS = 300) | **EXTEND** (v0.3 corrects v0.2 claim per N1 fold) — existing 300s message-poll timer (calls `list_messages`) UNCHANGED; v0.3 adds NEW 30s heartbeat timer (calls `transport_heartbeat`) alongside; two-timer poll-backstop. NOT a new Adapter Kernel timer |
 | `PULSE_KEYS = ["engineerPulse", "architectPulse"]` | `hub/src/policy/pulse-sweeper.ts` (or related) | **EXTEND CAREFULLY** (per M1 fold) — agentPulse stays SEPARATE from PULSE_KEYS as new constant `AGENT_PULSE_KIND`; cannot join PULSE_KEYS without breaking `mission.pulses[pulseKey]` invariant in 6-file references |
 | `pulse-sweeper.ts` (mission-driven iteration) | `hub/src/policy/pulse-sweeper.ts` (NOT services/) | **EXTEND** with second iteration pass (iterate-agents-not-missions); explicit second pass per M1 fold |
 | `agent-repository.ts` (Agent record persistence + OCC `putIfMatch`) | `hub/src/entities/agent-repository.ts` | **EXTEND** — Agent record gains 4 new fields; OCC handles concurrent-write contention safely (per P4 concur) |
+| `activityState` (existing per mission-62; auto-clamp behaviour) | `hub/src/state.ts` (mission-62 substrate) | **REUSE UNCHANGED** (NEW polish v0.3) — orthogonal to liveness component states; auto-clamp behaviour preserved per mission-62 (`activityState` represents engagement-side concept, distinct from cognitive/transport TTL freshness). KEPT as separate column in CLI per Q6=a; NOT folded into cognitive/transport state |
 | `tpl/agents.jq` (jq projection for agents column rendering) | `scripts/local/tpl/agents.jq` | **EXTEND** — column projection update for COG_TTL + TRANS_TTL; replace LIVENESS_STATE column |
 | `scripts/local/get-agents.sh` (CLI with in-line `buildTable()` function) | `scripts/local/get-agents.sh` | **EXTEND** — column-header update; in-line buildTable preserved (NOT swapping prism.sh; per MIN2 wording-fold) |
 
@@ -78,44 +81,61 @@ Per Survey envelope §3 composite intent envelope (matrix-solved):
 
 ## §2 Architecture overview
 
-Three-layer composition:
+Three-layer composition (v0.3 — diagram updated per round-2 R1 to reflect v0.3 mechanism: poll-backstop substrate hosts the 30s heartbeat timer; existing tool-call sites bump lastSeenAt; no new Adapter Kernel timer):
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ LAYER 1: Adapter Kernel (packages/network-adapter/src)                  │
+│ LAYER 1: Network-adapter substrate (packages/network-adapter/src)       │
 │                                                                          │
-│   Transport heartbeat timer (30s):                                       │
-│   ┌──────────────┐         ┌─────────────────────────────────────────┐ │
-│   │ Adapter      │  POST   │ Hub `transport_heartbeat` MCP tool      │ │
-│   │ Kernel timer │ ──30s── ▶│  (NEW; lightweight; no payload)         │ │
-│   └──────────────┘         └─────────────────────────────────────────┘ │
+│   poll-backstop.ts (EXISTING; EXTENDED v0.3):                            │
+│   ┌──────────────────────────────────────────────────────────────────┐ │
+│   │ Existing 300s message-poll timer (UNCHANGED):                     │ │
+│   │   calls Hub `list_messages` MCP tool                              │ │
+│   │                                                                    │ │
+│   │ NEW v0.3 30s heartbeat timer:                                     │ │
+│   │   calls Hub `transport_heartbeat` MCP tool (NEW)                  │ │
+│   └──────────────────────────────────────────────────────────────────┘ │
+│   (Two-timer poll-backstop; v0.3 NOT a new Adapter Kernel timer per N1) │
 └─────────────────────────────────────────────────────────────────────────┘
-                                          │
-                                          ▼
+                              │ (30s heartbeat)             │ (cognitive signals)
+                              ▼                              ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ LAYER 2: Hub-side state computation (hub/src)                           │
 │                                                                          │
-│  On signal arrival (transport HB / cognitive signal):                   │
-│    1. Update lastTransportHBTime OR lastCognitiveSignalTime              │
-│    2. Compute cognitiveTTL = now - lastCognitiveSignalTime               │
-│    3. Compute transportTTL = now - lastTransportHBTime                   │
-│    4. Derive cognitiveLivenessState = TTL >= 60s ? unresponsive : alive  │
-│    5. Derive transportLivenessState = TTL >= 60s ? unresponsive : alive  │
-│    6. Derive composite livenessState (rules per §3.1)                    │
-│    7. Atomic write to Agent record (5 fields)                            │
+│  Two existing primitives + 1 new tool handler bump cadence-source        │
+│  timestamps; eager TTL/state recomputation hooked alongside (v0.2):      │
 │                                                                          │
-│  Cognitive signal sources composing freshness:                           │
-│    {pulse-response, tool-call, thread-reply, message-ack}                │
+│  Transport-HB path (v0.3 N1 fold):                                       │
+│    1. NEW `transport_heartbeat` tool handler invokes refreshHeartbeat()  │
+│       (existing function; updates lastHeartbeatAt; rate-limit per spec)  │
+│    2. Eager hook: recomputeTransportTTLAndState(agentId)                 │
+│         transportTTL = now - lastHeartbeatAt                             │
+│         transportState = TTL >= 60s ? unresponsive : alive               │
+│    3. Atomic OCC write (putIfMatch) to Agent record (transport fields)   │
 │                                                                          │
-│  PulseSweeper extended with agentPulse class:                            │
-│    - 60min cadence (configurable per Agent record)                       │
-│    - NULL mission binding (per-agent fire)                               │
+│  Cognitive-touch path (existing primitives; UNCHANGED):                  │
+│    1. touchAgent(agentId) on tool-call entry → lastSeenAt update         │
+│       (rate-limited 30s per AGENT_TOUCH_MIN_INTERVAL_MS)                 │
+│    2. Eager hook: recomputeCognitiveTTLAndState(agentId)                 │
+│         cognitiveTTL = now - lastSeenAt                                  │
+│         cognitiveState = TTL >= PEER_PRESENCE_WINDOW_MS/1000             │
+│           ? unresponsive : alive                                         │
+│    3. Atomic OCC write (putIfMatch) to Agent record (cognitive fields)   │
+│                                                                          │
+│  Composite livenessState (existing 4-state ADR-017 FSM): UNTOUCHED.      │
+│  cognitiveState + transportState are PARALLEL observability surfaces;    │
+│  not derivation inputs to composite livenessState.                       │
+│                                                                          │
+│  PulseSweeper extension (per Q3=c reuse + NULL mission binding):         │
+│    - Second iteration pass (iterate-agents-not-missions; AGENT_PULSE_KIND)│
+│    - 60min default cadence; per-agent override allowed                   │
 │    - Suppression: skip if agent on any active mission                    │
+│    - Per-agent pulse provides death-detection signal between missions    │
 └─────────────────────────────────────────────────────────────────────────┘
                                           │
                                           ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ LAYER 3: CLI surface (scripts/local/get-agents.sh)                      │
+│ LAYER 3: CLI surface (scripts/local/get-agents.sh + tpl/agents.jq)      │
 │                                                                          │
 │  get-agents.sh columns refactored:                                       │
 │    REMOVED: LIVENESS_STATE                                               │
@@ -123,9 +143,19 @@ Three-layer composition:
 │    ADDED:   TRANS_TTL (transportTTL raw seconds)                         │
 │    KEPT:    ACTIVITY_STATE (orthogonal concept)                          │
 │                                                                          │
-│  Pipe-friendly numeric output (raw seconds; matches prism.sh idiom)     │
+│  Pipe-friendly numeric output (raw seconds; per Q6=a; in-line buildTable │
+│  preserved per MIN2 wording-fold; NOT swapping to prism.sh)              │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Net-new substrate items (v0.3; honest accounting per round-2 N1 fold):**
+1. `cognitiveTTL` field (Agent record)
+2. `transportTTL` field (Agent record)
+3. `cognitiveState` field (Agent record)
+4. `transportState` field (Agent record)
+5. `transport_heartbeat` MCP tool (Hub PolicyRouter; driven from poll-backstop substrate; NOT a new Adapter Kernel timer)
+
+(38% reduction from v0.1's 8 net-new items; v0.2's claimed 50% reduction was incorrect — see §11 multi-round fold summary.)
 
 ---
 
@@ -235,36 +265,64 @@ function deriveStateFromTTL(ttl: number | null): ComponentState {
 
 **Architect-flag F1 (audit):** at scale-out (10+ agents under sub-second cognitive activity), eager-write path may need batching. Phase 4 Design notes this as forward-flag per AG-5; v1 ships eager-write-on-event hooks. P4 concur from greg confirms current-scale headroom.
 
-### §3.3 Transport heartbeat = `drain_pending_actions` (existing primitive per round-1 C2 fold)
+### §3.3 Transport heartbeat = poll-backstop 30s timer + new `transport_heartbeat` MCP tool (v0.3 N1 fold; partial C2 revert)
 
-**Per macro-architecture (Adapter Kernel owner) + C2 fold option (a) repurpose existing.**
+**v0.2 → v0.3 architectural change (per round-2 N1 substrate-reality fold):**
 
-**v0.1 → v0.2 architectural change:** v0.1 proposed a NEW `transport_heartbeat` MCP tool + Adapter Kernel timer. **v0.2 drops this entirely** and reuses existing infrastructure: `drain_pending_actions` IS the transport-HB mechanism today.
+v0.2 proposed reusing `drain_pending_actions` as the transport-HB primitive. **Round-2 audit caught the substrate-reality gap:** `drain_pending_actions` is **queue-driven, NOT periodic** — it fires only when the adapter has pending actions to claim (per `pending-action-policy.ts`). Adapter Kernel's poll-backstop default cadence is 300s (per `packages/network-adapter/src/kernel/poll-backstop.ts:37` `DEFAULT_CADENCE_SECONDS = 300`); it calls `list_messages` (NOT drain). `list_messages` does NOT currently invoke `refreshHeartbeat()`. So idle agents (no pending actions queued) would have `lastHeartbeatAt` aging monotonically + `transportState` falsely flipping to unresponsive after 60s.
 
-**Existing mechanism (UNCHANGED in this mission):**
-- Adapter Kernel periodically calls `drain_pending_actions` MCP tool via the existing **poll-backstop pattern** (`packages/network-adapter/src/kernel/poll-backstop.ts`)
-- Each drain call → Hub's `pending-action-policy.ts:42` invokes `refreshHeartbeat(agent.id)` → updates `lastHeartbeatAt`
-- Adapter Kernel cadence is variable (queue-driven; depends on pending-action-pull frequency); existing PEER_PRESENCE_WINDOW_MS = 60_000 absorbs cadence variance
+PEER_PRESENCE_WINDOW_MS = 60_000 doesn't absorb 300s+ cadence variance. The C2 critique's "duplicates drain" framing was wrong — drain isn't periodic; v0.3 partial revert fills the periodic gap WITHOUT a new Adapter Kernel timer.
 
-**v0.2 addition:** §3.2 hook installs eager TTL/state recomputation alongside existing `refreshHeartbeat()` call (no new MCP tool; no new Adapter Kernel timer; no new code path).
+**v0.3 mechanism (option (c) per round-2 N1 fold):**
 
-**Net effect vs v0.1:**
-- 0 new MCP tools (vs +1 in v0.1)
-- 0 new Adapter Kernel timers (vs +1 in v0.1)
-- PolicyRouter snapshot test untouched (mission-72 invariant unaffected)
-- ~70 lines of v0.1 code-surface eliminated (transport-heartbeat.ts + tool handler + tests)
+- **NEW MCP tool `transport_heartbeat`** registered on Hub PolicyRouter (lightweight; no payload; just the call counts as the heartbeat); Hub-side handler invokes existing `refreshHeartbeat(agent.id)` to bump `lastHeartbeatAt`
+- **Poll-backstop substrate** (existing; `packages/network-adapter/src/kernel/poll-backstop.ts`) extended with second timer alongside existing 300s message-poll timer:
+  - Existing 300s message-poll timer: UNCHANGED (calls `list_messages`)
+  - NEW 30s heartbeat timer: invokes `transport_heartbeat` MCP tool
+- **NOT a new Adapter Kernel timer** — preserves C2 directional intent (no new Adapter Kernel timer); the new timer lives in poll-backstop substrate (network-adapter package)
 
-**Cadence consideration (from Q4=b 30s spec):**
-The 30s cadence Director-ratified at Survey was an absolute interval expectation. Existing poll-backstop has variable cadence based on queue activity. The 60s PEER_PRESENCE_WINDOW threshold is 2× the typical poll cadence, providing tolerance for natural queue-quiet periods. **Architect-flag for round-2 verify (NEW from v0.2):** if engineer-substrate observation shows poll-backstop quiescing >60s under no-queue conditions, may need to add a minimum-poll-cadence config to ensure transport-HB freshness even when no pending actions exist. Defer to engineer round-2 verify; not blocking v0.2 ratification.
+**Net effect vs v0.1 + v0.2:**
 
-**Configuration (NEW; minimal):**
-- No new env vars in v0.2 (vs v0.1's transportHeartbeatIntervalSeconds + transportHeartbeatEnabled). Existing poll-backstop config (whatever exists) preserved.
-- IF round-2 verify surfaces poll-quiescence concern: add `MIN_POLL_INTERVAL_MS` env var to poll-backstop (separate concern from this mission; could file as follow-on).
+| Dimension | v0.1 | v0.2 | v0.3 |
+|---|---|---|---|
+| New MCP tools | 1 (`transport_heartbeat`; new tool) | 0 (claimed reuse drain) | **1** (`transport_heartbeat`; via poll-backstop) |
+| New Adapter Kernel timer | 1 | 0 | **0** (poll-backstop substrate, NOT Adapter Kernel) |
+| Periodic transport-HB function | yes (Adapter Kernel timer) | **NO (substrate-reality gap)** | yes (poll-backstop 30s timer) |
+| Net-new substrate items | 8 | 4 | **5** |
 
-**Failure mode:**
-- Drain call fails (network blip): existing poll-backstop retry semantics handle (UNCHANGED)
-- Hub returns error: existing poll-backstop error handling (UNCHANGED)
-- Long-quiescent period (no queue activity, no drain triggered): `lastHeartbeatAt` ages; eventually `transportTTL >= 60s` → `transportState = unresponsive`; ADR-017 FSM may transition `livenessState` to `degraded` if existing logic fires. Acceptable behavior; reflects real transport-stale state.
+**Honest accounting:** v0.3 substrate-footprint = 5 net-new items (38% reduction from v0.1's 8). v0.2's claimed 50% reduction was incorrect — the C2 fold's "drain reuses existing" claim didn't actually deliver periodic transport-HB. v0.3 is the honest endpoint.
+
+**Cadence configuration:**
+- Heartbeat timer cadence: 30s (Director-ratified Q4=b; matches transport-HB threshold derivation)
+- Message-poll timer cadence: 300s (existing; UNCHANGED; per poll-backstop's existing anti-pattern guard "poll cadence MUST be measurably longer than push latency")
+- Two timers in poll-backstop; clean separation of concerns (cadence-vs-poll vs cadence-vs-heartbeat)
+
+**Configuration env vars (NEW in v0.3):**
+- `TRANSPORT_HEARTBEAT_INTERVAL_MS = 30_000` (default 30s; configurable for test environments; minimum 10_000)
+- `TRANSPORT_HEARTBEAT_ENABLED = true` (default; can disable for test scenarios)
+
+**MCP tool registration:**
+- New tool: `transport_heartbeat` registered on Hub PolicyRouter
+- **PolicyRouter snapshot test (mission-72 invariant):** sorted-tool-name list updated with new entry; absorbs cleanly per mission-72 pattern (no count assertion to bump)
+- Per-mission permission: implicit (any registered agent can call it for self)
+
+**Idle-agent semantic clarification (NEW v0.3):**
+
+For idle agents (no active engagement; no tool-calls):
+- transport_heartbeat fires every 30s → `transportState = alive` (adapter is alive)
+- No tool-calls → `lastSeenAt` ages → `cognitiveState = unresponsive` (LLM is idle)
+
+This is **semantically correct, NOT pathological**. Operator visibility shows "agent's adapter reachable; LLM idle." Watchdog escalation logic needs engagement-context to distinguish idle-vs-stuck:
+- Active mission + cognitiveState=unresponsive + duration > X = stuck (escalate)
+- No active mission + cognitiveState=unresponsive = idle (no action)
+- Per-agent pulse responses provide the death-detection signal for between-mission agents (per envelope hybrid γ architecture)
+
+**Architect-flag for Phase 4 Design (forward-flag, NEW v0.3):** watchdog escalation logic update needs to consume engagement-context (active-mission-vs-not) for cognitive-state interpretation. Phase 4 Design v0.3 calls this out; Phase 8 implementation handles in watchdog consumer-update.
+
+**Failure modes:**
+- Heartbeat call fails (network blip): retry once with 5s backoff; if still fails, skip cycle; next cycle attempts (poll-backstop existing retry semantics)
+- Hub returns error (e.g., agent not registered): log warning; do NOT retry indefinitely; suggests re-registration
+- Long-quiescent period: no longer applicable (heartbeat fires every 30s regardless of queue activity)
 
 ### §3.4 PulseSweeper extension (per-agent pulse via NULL mission binding; revised line estimate per round-1 M1 fold)
 
@@ -404,19 +462,23 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 
 ---
 
-## §4 Migration sequencing (big-bang single-PR; consumer-update opportunism)
+## §4 Migration sequencing (big-bang single-PR; consumer-update opportunism; v0.3 single-PR adds list updated per round-2 R2)
 
 **Per Q2=a big-bang additive migration.**
 
-**Single PR adds:**
-- 4 new schema fields (composite retained)
-- 2 supporting fields (lastCognitiveSignalTime, lastTransportHBTime)
-- pulseConfig field on Agent record (for agentPulse)
-- Hub-side TTL computation logic
-- Hub-side `transport_heartbeat` MCP tool
-- Adapter Kernel transport-HB timer
-- PulseSweeper agentPulse extension + suppression
-- CLI column refactor
+**Single PR adds (v0.3):**
+- 4 new schema fields on Agent record (`cognitiveTTL`, `transportTTL`, `cognitiveState`, `transportState`); composite `livenessState` retained UNCHANGED
+- 0 new supporting timestamps (reuse existing `lastSeenAt` + `lastHeartbeatAt` per round-1 C3 fold)
+- `pulseConfig` field on Agent record (for per-agent `agentPulse` cadence override; default 60min per F5 architect-recommendation)
+- Hub-side TTL/state computation hooks: `recomputeCognitiveTTLAndState()` invoked from existing `touchAgent`; `recomputeTransportTTLAndState()` invoked from existing `refreshHeartbeat`
+- **NEW v0.3 (per round-2 N1 fold):** Hub-side `transport_heartbeat` MCP tool (PolicyRouter registration; lightweight no-payload; handler invokes existing `refreshHeartbeat()`)
+- **NEW v0.3 (per round-2 N1 fold):** Network-adapter substrate — extend `poll-backstop.ts` with second 30s heartbeat timer (calls `transport_heartbeat`); existing 300s message-poll timer UNCHANGED. NOT a new Adapter Kernel timer per N1 directional intent
+- 2 new env vars: `TRANSPORT_HEARTBEAT_INTERVAL_MS` (default 30_000), `TRANSPORT_HEARTBEAT_ENABLED` (default true)
+- PulseSweeper `agentPulse` extension: second iteration pass (iterate-agents-not-missions); `AGENT_PULSE_KIND` constant separate from existing `PULSE_KEYS`
+- Suppression rule: skip per-agent pulse when agent is on any active mission (per §3.4)
+- CLI column refactor: `tpl/agents.jq` projection update (REMOVE `LIVENESS_STATE`; ADD `COG_TTL` + `TRANS_TTL`); `get-agents.sh` header refresh; in-line `buildTable()` preserved
+- Watchdog consumer-update: cognitive-vs-transport differentiation in escalation logic (per §4 consumer-update opportunism scope)
+- PolicyRouter snapshot test: sorted-tool-name list updated with new `transport_heartbeat` entry (mission-72 invariant absorbs cleanly; no count assertion to bump)
 
 **Consumer-update opportunism (per round-1 P2 concur; tight scope):**
 
@@ -452,10 +514,11 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 - Agent on multiple active missions (multi-engagement)
 - Agent on completed mission with lingering pulse-config (post-completion)
 - New agent registration with no pulse-config
+- **Suppression-policy strictness** (per round-1 M3 fold): strict-vs-permissive resolution
 
-**§3.4 specifies suppression rule:** `mission.status === 'active' AND (agent.id IN mission.assignedEngineerId OR mission.architectId)`. Multi-engagement → ANY active mission suppresses; completed missions don't suppress; new agents get default pulseConfig at registration.
+**§3.4 specifies suppression rule** (v0.3 R5 cross-reference per round-2 audit): `mission.status === 'active' AND (agent.id === mission.assignedEngineerId OR agent.id === mission.architectId)`. Multi-engagement → ANY active mission suppresses (`OR` semantics across missions); completed missions don't suppress; new agents get default pulseConfig at registration. **§3.4 M3 fold resolves to PERMISSIVE strict-vs-permissive policy** — pre-completion missions still suppress; post-completion lingering pulse-configs DO NOT suppress (mission status drives, not stale config). See §3.4 for full rule text + worked-example matrix.
 
-**Engineer-audit ask (F2):** validate suppression rule semantics; flag edge cases §3.4 missed.
+**Engineer-audit ask (F2):** validate suppression rule semantics per §3.4 (M3-resolved permissive policy); flag any edge cases §3.4 missed.
 
 ### §5.3 F3 (MEDIUM) — Cognitive-stale threshold against engagement patterns
 
@@ -485,32 +548,34 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 
 ## §6 Test / verification strategy
 
-### §6.1 Hub-side tests (vitest; revised v0.2 per round-1 folds)
+### §6.1 Hub-side tests (vitest; revised v0.3 per round-1 folds + round-2 N1 fold)
 
 - `hub/test/entities/agent-repository.test.ts` (path correction per M2) — extend with 4-field schema delta tests (cognitiveTTL/transportTTL eager-computation; cognitiveState/transportState derivation against PEER_PRESENCE_WINDOW_MS; truth-table edges incl. registration-instant `(unknown, alive)` per MIN1)
 - `hub/test/policy/pulse-sweeper.test.ts` (path correction per M2) — NEW tests for agentPulse class + AGENT_PULSE_KIND second-iteration-pass + NULL mission binding suppression rule (strict; multi-engagement edge; completed mission edge; permissive-rule explicitly-rejected case per M3)
 - `hub/test/policy/pending-action-policy.test.ts` — extend `refreshHeartbeat()` tests to verify `recomputeTransportTTLAndState()` hook fires post-bump (eager-write semantic)
 - `hub/test/state.test.ts` — extend `touchAgent()` tests to verify `recomputeCognitiveTTLAndState()` hook fires post-bump (eager-write semantic; 30s rate-limit preserved)
-- ~~`hub/test/policy/transport-heartbeat-tool.test.ts` (DROPPED v0.2)~~ — no new MCP tool per C2 fold; existing `drain_pending_actions` tests cover transport-HB path
-- `hub/test/e2e/e2e-foundation.test.ts` — UNCHANGED (no new MCP tool per C2 fold; sorted-tool-name snapshot does NOT need update)
+- **`hub/test/policy/transport-heartbeat-tool.test.ts` (RE-ADDED v0.3 per N1 fold)** — NEW tests for `transport_heartbeat` MCP tool handler: invokes `refreshHeartbeat(agent.id)`; non-registered-agent rejection; rate-limit preserved (delegated to existing handler); registration-required-context propagated correctly
+- **`hub/test/e2e/e2e-foundation.test.ts` snapshot update (RE-ADDED v0.3 per N1 fold)** — sorted-tool-name list snapshot updated for new `transport_heartbeat` entry; mission-72 invariant absorbs cleanly (no count assertion to bump per mission-72 pattern)
 
-### §6.2 Adapter Kernel tests (revised v0.2 — drop new transport-HB timer tests per C2 fold)
+### §6.2 Network-adapter substrate tests (revised v0.3 — re-add 30s heartbeat-timer tests per N1 fold)
 
-- ~~`packages/network-adapter/test/kernel/transport-heartbeat.test.ts` (DROPPED v0.2)~~ — no new client-side timer per C2 fold; existing poll-backstop tests cover transport-HB cadence
-- `packages/network-adapter/test/kernel/poll-backstop.test.ts` — UNCHANGED (existing tests; transport-HB cadence is poll-backstop's existing concern)
+- **`packages/network-adapter/test/kernel/poll-backstop.test.ts` (EXTENDED v0.3 per N1 fold)** — existing 300s message-poll timer tests UNCHANGED; NEW tests for second 30s heartbeat timer: cadence verification (30s default; honors `TRANSPORT_HEARTBEAT_INTERVAL_MS` env var); calls `transport_heartbeat` MCP tool; failure handling (retry once with 5s backoff; skip on second failure; resume next cycle); `TRANSPORT_HEARTBEAT_ENABLED=false` disables timer cleanly
+- ~~`packages/network-adapter/test/kernel/transport-heartbeat.test.ts` (NOT created)~~ — heartbeat lives in poll-backstop substrate per N1; no separate file
 
 ### §6.3 CLI smoke-test
 
-- `scripts/local/test-get-agents-cli.sh` — extend OR new; verify columns COG_TTL + TRANS_TTL render correctly with prism.sh + buildTable
+- `scripts/local/test-get-agents-cli.sh` — extend OR new; verify columns COG_TTL + TRANS_TTL render correctly via in-line `buildTable()` + `tpl/agents.jq` projection
 
-### §6.4 Verification gates (Phase 6 + Phase 7)
+### §6.4 Verification gates (Phase 6 + Phase 7; v0.3 update per round-2 R3)
 
 - §6.1 + §6.2 + §6.3 all pass on PR branch
-- `git grep -c "livenessState" hub/src/` → ≥1 (composite still referenced; not removed)
-- `git grep -c "cognitiveLivenessState" hub/src/` → ≥1 (NEW field referenced)
-- Hub `transport_heartbeat` tool registered (validated via PolicyRouter snapshot test)
-- Adapter Kernel transport-HB fires on agent-startup (validated via test-skill-bootstrap.sh-style smoke-test)
-- `scripts/local/get-agents.sh` outputs COG_TTL + TRANS_TTL columns
+- `git grep -c "livenessState" hub/src/` → ≥1 (composite still referenced; UNCHANGED per C1 fold)
+- `git grep -c "cognitiveState" hub/src/` → ≥1 (NEW field referenced; v0.3 corrects v0.2 reference of `cognitiveLivenessState` — renamed per C1 non-conflicting-naming fold)
+- `git grep -c "transportState" hub/src/` → ≥1 (NEW field referenced)
+- **Hub `transport_heartbeat` tool registered** (v0.3 RE-ADDED per N1) — validated via PolicyRouter snapshot test (mission-72 invariant): sorted-tool-name list contains `transport_heartbeat` entry
+- **Network-adapter poll-backstop fires 30s heartbeat timer** (v0.3 RE-ADDED per N1) — validated via §6.2 cadence test + integration smoke-test (verify Hub-side `lastHeartbeatAt` updates within ~30s of adapter startup, idle agent)
+- **Idle-agent transport-state stability** (NEW v0.3 verification per N1) — start adapter, no tool-calls, no pending actions; verify `transportState` remains `alive` for ≥120s (covers 4× heartbeat cycle)
+- `scripts/local/get-agents.sh` outputs COG_TTL + TRANS_TTL columns (LIVENESS_STATE removed)
 
 ---
 
@@ -532,29 +597,28 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 
 **Architect-recommendation:** Phase 4 Design picks Option A OR B at engineer-audit time based on scope feel. Default lean: Option A (mission-71 precedent for medium-large architect+engineer-bilateral substrate-introduction).
 
-### §7.3 Content map (single mega-PR; Option A default; revised v0.2 per round-1 M2 path corrections + scope reductions)
+### §7.3 Content map (single mega-PR; Option A default; revised v0.3 per round-2 N1 fold — transport_heartbeat MCP tool + poll-backstop heartbeat timer re-added)
 
 | File | Change | Lines (est.) |
 |---|---|---|
 | `docs/surveys/m-ttl-liveliness-design-survey.md` | Phase 3 envelope (already committed `f68e23b`) | +359 |
-| `docs/designs/m-ttl-liveliness-design-design.md` | This Design v0.1 → v0.2 → v1.0 | +750 |
+| `docs/designs/m-ttl-liveliness-design-design.md` | This Design v0.1 → v0.2 → v0.3 → v1.0 | +900 |
 | `hub/src/state.ts` (path correction per M2) | Type extensions: cognitiveTTL/transportTTL/cognitiveState/transportState fields + AGENT_PULSE_KIND constant + pulseConfig type + touchAgent post-bump hook | +35 / -2 |
 | `hub/src/entities/agent-repository.ts` (path correction per M2; was entities/agent.ts) | Schema delta application: 4 NEW fields persistence; OCC-safe writes for new fields | +40 |
 | `hub/src/policy/pulse-sweeper.ts` (path correction per M2; was services/pulse-sweeper.ts) | agentPulse SECOND iteration pass (iterate-Agents-not-missions) + AGENT_PULSE_KIND constant + NULL mission binding suppression (strict per M3) + lastFiredAt persistence | +80-120 (per M1 fold; revised from v0.1's +60) |
 | `hub/src/policy/pending-action-policy.ts` | `refreshHeartbeat()` post-bump hook → `recomputeTransportTTLAndState(agentId)` | +10 |
-| ~~`hub/src/policy/router.ts` — Register `transport_heartbeat` MCP tool~~ | **DROPPED v0.2 per C2 fold** — no new MCP tool | 0 |
-| ~~`hub/src/handlers/transport-heartbeat-handler.ts` (NEW)~~ | **DROPPED v0.2 per C2 fold** — no new handler | 0 |
+| **`hub/src/policy/router.ts` — Register `transport_heartbeat` MCP tool (RE-ADDED v0.3 per N1 fold)** | Tool registration entry; sorted-tool-name list snapshot will absorb cleanly per mission-72 pattern | +5 |
+| **`hub/src/handlers/transport-heartbeat-handler.ts` (NEW v0.3 per N1 fold)** | Handler invokes existing `refreshHeartbeat(agent.id)`; lightweight no-payload; rejects unregistered agents | +30 |
 | `hub/src/policy/message-policy.ts` | agentPulse-ack hook (per M1 fold; pulse-ack lifecycle extension) | +20 |
 | `hub/test/entities/agent-repository.test.ts` (path correction per M2) | Schema delta tests + eager TTL + truth-table edges (incl. registration-instant) | +130 |
 | `hub/test/policy/pulse-sweeper.test.ts` (path correction per M2) | agentPulse + AGENT_PULSE_KIND + suppression strict-rule edge cases (multi-engagement, completed-mission, permissive-rejection) | +90 |
 | `hub/test/policy/pending-action-policy.test.ts` | `refreshHeartbeat` post-bump hook fires `recomputeTransportTTLAndState` | +30 |
 | `hub/test/state.test.ts` | `touchAgent` post-bump hook fires `recomputeCognitiveTTLAndState`; 30s rate-limit preserved | +30 |
-| ~~`hub/test/policy/transport-heartbeat-tool.test.ts`~~ | **DROPPED v0.2 per C2 fold** | 0 |
-| ~~`hub/test/e2e/e2e-foundation.test.ts` snapshot update~~ | **UNCHANGED v0.2 per C2 fold** | 0 |
-| ~~`packages/network-adapter/src/kernel/transport-heartbeat.ts` (NEW)~~ | **DROPPED v0.2 per C2 fold** | 0 |
-| ~~`packages/network-adapter/src/kernel/index.ts` — wire HB timer~~ | **DROPPED v0.2 per C2 fold** | 0 |
-| ~~`packages/network-adapter/test/kernel/transport-heartbeat.test.ts` (NEW)~~ | **DROPPED v0.2 per C2 fold** | 0 |
-| `hub/src/state.ts` (watchdog consumer-update per P2 concur tight-scope) | watchdog escalation-on-unresponsive update to use cognitiveState vs transportState differentiation (different remediation paths) | +25 / -10 |
+| **`hub/test/policy/transport-heartbeat-tool.test.ts` (NEW v0.3 per N1 fold)** | Handler tests: invokes refreshHeartbeat; non-registered rejection; rate-limit preserved | +60 |
+| **`hub/test/e2e/e2e-foundation.test.ts` (UPDATED v0.3 per N1 fold)** | Snapshot update for new `transport_heartbeat` tool entry in sorted-tool-name list | +1 / -0 |
+| **`packages/network-adapter/src/kernel/poll-backstop.ts` (EXTENDED v0.3 per N1 fold)** | Add second 30s heartbeat timer alongside existing 300s message-poll timer; calls `transport_heartbeat` MCP tool; honors `TRANSPORT_HEARTBEAT_INTERVAL_MS` + `TRANSPORT_HEARTBEAT_ENABLED` env vars; failure handling (5s backoff retry, skip cycle) | +50 / -5 |
+| **`packages/network-adapter/test/kernel/poll-backstop.test.ts` (EXTENDED v0.3 per N1 fold)** | New tests for 30s heartbeat timer cadence + env-var honor + failure handling + idle-agent stability | +80 |
+| `hub/src/state.ts` (watchdog consumer-update per P2 concur tight-scope) | watchdog escalation-on-unresponsive update to use cognitiveState vs transportState differentiation (different remediation paths); idle-vs-stuck disambiguation per §3.3 idle-agent semantic clarification | +25 / -10 |
 | `hub/src/state.ts` (agent-projection consumer-update per P2 concur tight-scope) | agent-projection update for new fields surface in get_agents tool response | +15 |
 | `scripts/local/get-agents.sh` | Column refactor (COG_TTL + TRANS_TTL replace LIVENESS_STATE; in-line buildTable update per MIN2 wording-fold) | +10 / -5 |
 | `scripts/local/tpl/agents.jq` | Column projection update | +5 / -3 |
@@ -562,11 +626,12 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 | `docs/missions/m-ttl-liveliness-design-preflight.md` | Phase 6 preflight | +120 |
 | `docs/traces/m-ttl-liveliness-design-architect-trace.md` | Phase 8/9/10 work-trace | +200 |
 
-**Total est.** ~1700 lines net addition (revised down from v0.1's ~2050; ~17% reduction per substrate-reuse). Single squash-merge PR (Option A; per round-1 P3 concur — Option A right after v0.2 resolves C1-C3).
+**Total est.** ~1900 lines net addition (revised up from v0.2's ~1700 by ~12% per N1 transport_heartbeat tool + poll-backstop timer re-introduction; still 7% below v0.1's ~2050). Single squash-merge PR (Option A; per round-1 P3 concur).
 
-**Net-new-substrate count comparison:**
+**Net-new-substrate count comparison (v0.3 honest accounting):**
 - v0.1: 5 new liveness fields + 2 supporting timestamps + 1 new MCP tool = **8 net-new substrate items**
-- v0.2: 4 new liveness fields + 0 supporting timestamps + 0 new MCP tools = **4 net-new substrate items** (50% reduction per architectural-tension signal greg flagged)
+- v0.2: 4 new liveness fields + 0 supporting timestamps + 0 new MCP tools = **4 net-new substrate items** (claimed 50% reduction; **incorrect** — drain isn't periodic, so v0.2 didn't actually deliver periodic transport-HB)
+- v0.3: 4 new liveness fields + 0 supporting timestamps + 1 new MCP tool (`transport_heartbeat` driven from poll-backstop substrate) = **5 net-new substrate items** (38% reduction from v0.1; honest endpoint per round-2 N1 fold)
 
 ---
 
@@ -585,15 +650,16 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 
 ---
 
-## §9 Architect-flags for round-1 audit (carry from Survey envelope §6)
+## §9 Architect-flags status (v0.3 per round-2 R4 — addressed/deferred markers added; F4 reframe to component-state truth table)
 
-| # | Flag | Architect-recommendation |
-|---|---|---|
-| F1 (CRITICAL) | Write-amplification at scale — eager TTL writes mean every transport HB + cognitive signal triggers Agent-record write | Per §5.1 + §3.2: ship eager-write v1; instrument; AG-5 anti-goal blocks batching. **Engineer-audit ask:** validate write-amp doesn't trip Agent-record contention or storage-provider throughput at current scale |
-| F2 (MEDIUM) | Suppression-discipline correctness — agentPulse "skip if any active mission" edge cases (multi-engagement; completed mission lingering config) | Per §3.4 + §5.2: suppression rule = `mission.status === 'active' AND agent IN engineerId\|architectId`; multi-engagement = ANY active mission suppresses; completed don't. **Engineer-audit ask:** validate semantics; flag missed edges |
-| F3 (MEDIUM) | Cognitive-stale threshold against engagement patterns — 60s may false-positive on long-thinking-no-tool-call | Per §3.5 + §5.3: ship 60s v1; instrument false-positive rate; raise to 120s in follow-on if needed. **Engineer-audit ask:** validate threshold; suggest empirical observation strategy |
-| F4 (MINOR) | Composite derivation rules — edge case truth table | Per §3.1 + §5.4: conservative `unknown` rule when either component is unknown. **Engineer-audit ask:** validate truth table; flag missed edges |
-| F5 (PROBE) | Per-agent pulse cadence specific number — Survey-deferred | Per §3.4 + §5.5: 60min default; configurable per Agent record. **Engineer-audit ask:** what cadence does engineer-substrate intuition support; 30/60/120min trade-off |
+| # | Flag | Status (v0.3) | Architect-recommendation |
+|---|---|---|---|
+| F1 (CRITICAL) | Write-amplification at scale — eager TTL writes mean every transport HB + cognitive signal triggers Agent-record write | **DEFERRED** to engineer round-3 verify (P4 round-1 concur — current-scale OCC headroom; AG-5 anti-goal blocks batching this mission; forward-flag for scale-out) | Per §5.1 + §3.2: ship eager-write v1; instrument; AG-5 anti-goal blocks batching. **Engineer-audit ask (round-3):** validate write-amp doesn't trip Agent-record contention or storage-provider throughput at current scale; verify v0.3 N1 fold's 30s heartbeat timer doesn't compound write-amp meaningfully (heartbeat → refreshHeartbeat → recomputeTransportTTLAndState; ~2 writes/min/agent for transport path alone) |
+| F2 (MEDIUM) | Suppression-discipline correctness — agentPulse "skip if any active mission" edge cases (multi-engagement; completed mission lingering config) | **ADDRESSED** in §3.4 (M3 fold strict-rule; permissive explicitly rejected); §5.2 cross-references §3.4 per round-2 R5 | Per §3.4 + §5.2: suppression rule = `mission.status === 'active' AND agent.id IN (engineerId, architectId)`; multi-engagement = ANY active mission suppresses (OR semantics); completed don't (status drives, not stale config). **Engineer-audit ask (round-3):** validate semantics; flag missed edges |
+| F3 (MEDIUM) | Cognitive-stale threshold against engagement patterns — 60s may false-positive on long-thinking-no-tool-call | **ADDRESSED** in §3.5 (M4 fold collapses to existing PEER_PRESENCE_WINDOW_MS = 60s invariant; 1 invariant not 2) | Per §3.5 + §5.3: ship 60s v1; instrument false-positive rate; raise to 120s in follow-on if needed. **Engineer-audit ask (round-3):** validate threshold; suggest empirical observation strategy |
+| F4 (MINOR) | **REFRAMED v0.2 + v0.3:** truth table is for component states (`cognitiveState` × `transportState`), NOT composite-`livenessState` derivation rules. v0.3 per round-2 R4 explicitly: composite stays untouched per C1 fold; F4's "composite derivation rules" framing was v0.1-era and no longer applies — there is no composite derivation in v0.2/v0.3 | **ADDRESSED** via reframe to component-state truth table in §3.1 (incl. registration-instant `(unknown, alive)` edge per MIN1); §5.4 reframes per C1 fold | Per §3.1 + §5.4: 7-row truth table for `cognitiveState × transportState` (NOT composite); registration-instant edge documented. **Engineer-audit ask (round-3):** validate §3.1 truth table; confirm registration-instant edge is naturally-pending; flag any edges §3.1 missed |
+| F5 (PROBE) | Per-agent pulse cadence specific number — Survey-deferred | **CONCUR** (P1 round-1) — 60min default; configurable per-agent at registration | Per §3.4 + §5.5: 60min default; configurable per Agent record. **Engineer-audit ask (round-3):** what cadence does engineer-substrate intuition support; 30/60/120min trade-off |
+| F6-NEW (FORWARD-FLAG; v0.3) | **NEW per round-2 N1 fold:** watchdog escalation logic needs engagement-context (active-mission-vs-not) for cognitive-state interpretation. Idle-agent semantic clarification per §3.3: `cognitiveState=unresponsive` is normal for idle agents (no active mission); only pathological under active engagement | **FORWARD-FLAG** for Phase 8 implementation (watchdog consumer-update scope per §4) | Per §3.3 idle-agent semantic clarification: watchdog logic update consumes engagement-context; idle-vs-stuck disambiguation = active-mission-presence + duration threshold |
 
 ---
 
@@ -605,13 +671,15 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 - **Pre-ratified macro-architecture:** Director-architect bilateral 2026-05-02 (transport HB owner + cognitive heartbeat composition + hybrid γ pulse architecture + cadence relationship + CLI surface mandate)
 - **Validator readiness:** mission-74 PR #166 multi-pick fix (2026-05-04) — enables validate-envelope.sh to accept Q1=cd; Phase 3 finalize-gate clean post-fix
 - **Methodology:** `docs/methodology/idea-survey.md` v1.0 (Survey methodology consumed; not modified per AG-9 carve-out from mission-69) + `docs/methodology/strategic-review.md` (Idea Triage Protocol; route-(a) skip-direct applied) + `docs/methodology/mission-lifecycle.md` v1.2 (Phase 4 Design entry methodology; substrate-introduction class)
-- **Substrate to extend (paths corrected per round-1 M2 fold):**
+- **Substrate to extend (paths corrected per round-1 M2 fold; v0.3 re-adds network-adapter poll-backstop per N1 fold):**
   - `hub/src/state.ts` (types + AGENT_PULSE_KIND constant + touchAgent hook + watchdog/agent-projection consumer updates)
   - `hub/src/entities/agent-repository.ts` (Agent record schema; 4 NEW fields persistence)
   - `hub/src/policy/pulse-sweeper.ts` (agentPulse second iteration pass)
   - `hub/src/policy/pending-action-policy.ts` (refreshHeartbeat post-bump hook)
+  - `hub/src/policy/router.ts` (NEW `transport_heartbeat` MCP tool registration; v0.3 per N1)
+  - `hub/src/handlers/transport-heartbeat-handler.ts` (NEW handler; v0.3 per N1)
   - `hub/src/policy/message-policy.ts` (agentPulse-ack hook)
-  - ~~`packages/network-adapter/src/kernel/`~~ (DROPPED v0.2 per C2 fold; existing poll-backstop unchanged)
+  - `packages/network-adapter/src/kernel/poll-backstop.ts` (EXTEND with second 30s heartbeat timer; v0.3 per N1)
   - `scripts/local/get-agents.sh` + `scripts/local/tpl/agents.jq` (CLI column refactor)
 - **Compressed-lifecycle precedent:** mission-67/68/69 substrate-introduction + mission-70/72/73/74 small-mission cleanup-wave precedents
 - **Memory references:**
@@ -622,14 +690,16 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 
 ---
 
-## §11 Round-1 audit fold summary (NEW v0.2; per mission-67/68/69/71 round-2 verify discipline)
+## §11 Multi-round audit fold summary (v0.3 — extends mission-67/68/69/71 round-2 verify discipline to multi-round folds)
 
-Engineer round-1 audit (greg; thread-472 round-1; 2026-05-05). **13 findings total: 3 CRITICAL + 4 MEDIUM + 2 MINOR + 4 PROBE concur.** Architect fold-decisions:
+### §11.1 Round-1 audit folds (v0.1 → v0.2; greg; thread-472 round-1; 2026-05-05)
 
-| Finding | Class | Architect fold-decision | v0.2 § |
+**13 findings: 3 CRITICAL + 4 MEDIUM + 2 MINOR + 4 PROBE concur.**
+
+| Finding | Class | Architect fold-decision (v0.2) | v0.2 § |
 |---|---|---|---|
 | C1 | enum-domain mismatch (schema-rename without migration); `livenessState` is 4-state ADR-017 FSM, not 3-state | **FOLDED** — option (a): preserve existing 4-state composite UNTOUCHED; new component fields use non-conflicting names `cognitiveState` + `transportState` (was `cognitiveLivenessState`/`transportLivenessState`) | §0.5 + §3.1 |
-| C2 | `transport_heartbeat` proposed tool duplicates existing `drain_pending_actions` HB mechanism | **FOLDED** — option (a): drop new MCP tool; document drain as transport-HB primitive; reuse poll-backstop cadence | §0.5 + §3.3 (rewritten) |
+| C2 | `transport_heartbeat` proposed tool duplicates existing `drain_pending_actions` HB mechanism | **FOLDED v0.2** — option (a): drop new MCP tool; document drain as transport-HB primitive; reuse poll-backstop cadence. **PARTIALLY REVERTED v0.3 per round-2 N1** — drain is queue-driven NOT periodic; v0.3 re-introduces `transport_heartbeat` MCP tool driven from poll-backstop substrate (NOT new Adapter Kernel timer; preserves C2 directional intent) | §0.5 + §3.3 (rewritten v0.3) |
 | C3 | existing 2-signal model (`lastSeenAt` + `lastHeartbeatAt`) not referenced; net-new timestamps create parallel-bookkeeping | **FOLDED** — option (a): reuse existing fields; derive cognitiveTTL from `lastSeenAt`, transportTTL from `lastHeartbeatAt`; 0 new timestamps; schema delta drops 7→4 fields | §0.5 + §3.1 + §3.2 |
 | M1 | agentPulse line estimate optimistic; PULSE_KEYS substrate has 6-file references; second iteration pass needed | **FOLDED** — line estimate revised +30 → +80-120; explicit second iteration pass; AGENT_PULSE_KIND stays SEPARATE from PULSE_KEYS | §3.4 |
 | M2 | path mismatches in §10 cross-references (entities/agent.ts, services/agent-store.ts, services/pulse-sweeper.ts) | **FOLDED** — corrected to entities/agent-repository.ts + state.ts + policy/pulse-sweeper.ts; consolidated agent-store into agent-repository | §3.4 + §6.1 + §7.3 + §10 |
@@ -642,14 +712,43 @@ Engineer round-1 audit (greg; thread-472 round-1; 2026-05-05). **13 findings tot
 | P3 | §7 PR sequencing — Option A right pick AFTER v0.2 resolves C1/C2/C3 | **CONCUR** — Option A confirmed v0.2; intermediate-state risk eliminated by C1+C2+C3 folds | §7 |
 | P4 | F1 write-amp at current scale fine; OCC handles contention; forward-flag for scale-out | **CONCUR** — eager-write v1; AG-5 anti-goal blocks batching this mission; forward-flag noted | §3.2 + §5.1 |
 
-**NEW §0.5 introduced:** Existing infrastructure inventory (closes prior-substrate-elision class structurally; methodology-fold candidate per mission-73 audit-rubric §3d pattern — sister to "memory-tier-to-methodology-tier graduation" + "validator-mechanism-tier-to-methodology-conformance graduation" → "architect-design-prior-substrate-elision" graduation; future-canonical instance triggers methodology-fold mission).
+**NEW §0.5 introduced (v0.2):** Existing infrastructure inventory (closes prior-substrate-elision class structurally; methodology-fold candidate per mission-73 audit-rubric §3d pattern — sister to "memory-tier-to-methodology-tier graduation" + "validator-mechanism-tier-to-methodology-conformance graduation" → "architect-design-prior-substrate-elision" graduation; future-canonical instance triggers methodology-fold mission).
 
-**Architectural impact:** v0.1 → v0.2 reduces substrate footprint by 50% (8 → 4 net-new substrate items). Composite `livenessState` 4-state FSM untouched; transport-HB reuses existing primitive; cognitive-staleness reuses existing invariant.
+### §11.2 Round-2 audit folds (v0.2 → v0.3; greg; thread-472 round-2; 2026-05-05)
 
-**Verdict:** all 3 CRITICALs resolved + 4/4 MEDIUMs folded + 2/2 MINORs folded + 4/4 PROBEs concur. v0.2 ready for round-2 verify on thread-472.
+**6 findings: 1 NEW (architectural; substrate-reality gap on C2 fold) + 5 fold-incomplete regressions (R1-R5; doc-internal text not updated to match v0.2 architectural reshapings) + 3 §0.5 polish items.**
 
-Round-2 verify expectation: greg confirms folds correct (especially CRITICAL resolutions C1+C2+C3 architectural reshapings + §0.5 inventory completeness) + no new findings → ratify v0.2 as v1.0 → Phase 6 preflight entry.
+| Finding | Class | Architect fold-decision (v0.3) | v0.3 § |
+|---|---|---|---|
+| N1 | **NEW (substrate-reality gap on v0.2 C2 fold)** — `drain_pending_actions` is queue-driven NOT periodic; idle agents (no pending actions) would have `lastHeartbeatAt` aging monotonically + `transportState` falsely flipping unresponsive after 60s. PEER_PRESENCE_WINDOW_MS = 60_000 doesn't absorb 300s+ poll-backstop default cadence variance. v0.2's "drain reuses existing" claim didn't deliver periodic transport-HB | **FOLDED v0.3 — option (c) partial C2 revert:** re-introduce `transport_heartbeat` MCP tool (Hub-side) driven from existing poll-backstop substrate (network-adapter package; NOT a new Adapter Kernel timer). Two-timer poll-backstop (300s message-poll UNCHANGED + new 30s heartbeat). C2 directional intent preserved (no new Adapter Kernel timer); periodic-transport-HB gap closed | §3.3 (rewritten v0.3) + §2 + §4 + §6.1 + §6.2 + §6.4 + §7.3 + §10 |
+| R1 | §2 architecture diagram still shows v0.1 wording ("Adapter Kernel timer") + lists `transport_heartbeat` as `(NEW; lightweight)` (which v0.2 dropped, v0.3 re-adds via different mechanism) | **FOLDED v0.3** — diagram rewritten to v0.3 reality: poll-backstop substrate (Layer 1) hosts both 300s message-poll + 30s heartbeat timer; explicit "NOT a new Adapter Kernel timer per N1" annotation | §2 |
+| R2 | §4 single-PR adds list still shows v0.1 items (`lastCognitiveSignalTime`, `lastTransportHBTime`, "Adapter Kernel transport-HB timer") that don't match v0.2 substrate; missing v0.3 N1 items | **FOLDED v0.3** — list rewritten: 4 fields (no supporting timestamps); v0.3 transport_heartbeat tool + handler; poll-backstop heartbeat timer extension; new env vars; explicit consumer-update scope; PolicyRouter snapshot test bump | §4 |
+| R3 | §6.4 verification gates reference `cognitiveLivenessState` (v0.1 name; v0.2 renamed to `cognitiveState` per C1 fold) + claim "no snapshot update needed" (v0.2 era; v0.3 needs the update) | **FOLDED v0.3** — gates updated to use v0.2 field names + add v0.3 N1 verification gates (transport_heartbeat tool registered in PolicyRouter snapshot; poll-backstop 30s heartbeat timer fires; idle-agent transport-state stability across 4× heartbeat cycles) | §6.4 |
+| R4 | §9 architect-flags table doesn't mark each F1-F5 with addressed/deferred status post-folds; F4 still shows v0.1 "composite derivation rules" framing despite v0.2 reframe to component-state truth table | **FOLDED v0.3** — status column added per-flag (ADDRESSED/DEFERRED/CONCUR/FORWARD-FLAG); F4 reframed explicitly to component-state truth table per C1; F1 deferred to round-3 verify with v0.3 N1 write-amp note; NEW F6-NEW added per N1 idle-agent semantic clarification | §9 |
+| R5 | §5.2 F2 edge cases doesn't cross-reference §3.4's M3-resolved strict-vs-permissive policy | **FOLDED v0.3** — §5.2 explicitly cross-references §3.4 for M3-resolved permissive policy + suppression rule text + worked-example | §5.2 |
+| §0.5-polish-1 | `applyLivenessRecompute()` (existing FSM transition function) absent from inventory | **FOLDED v0.3** — added inventory row (REUSE UNCHANGED; PARALLEL to v0.3 component-state hooks; no call-site changes for FSM transitions) | §0.5 |
+| §0.5-polish-2 | `isPeerPresent(agent)` helper (load-bearing for M4 collapse) absent from inventory | **FOLDED v0.3** — added inventory row (REUSE UNCHANGED; consumers continue using helper unchanged) | §0.5 |
+| §0.5-polish-3 | `activityState` auto-clamp behaviour (mission-62) absent from inventory | **FOLDED v0.3** — added inventory row (REUSE UNCHANGED; orthogonal to liveness component states; KEPT as separate CLI column per Q6=a; not folded) | §0.5 |
+
+### §11.3 Honest substrate-footprint accounting (v0.3 per round-2 N1 fold)
+
+| Version | Net-new substrate items | Reduction vs v0.1 | Honest framing |
+|---|---|---|---|
+| v0.1 | 5 fields + 2 supporting timestamps + 1 new MCP tool = **8** | (baseline) | Baseline |
+| v0.2 | 4 fields + 0 supporting + 0 new MCP tools = **4** | **claimed 50%** | **INCORRECT claim** — drain isn't periodic; v0.2 didn't deliver periodic transport-HB; "reuse existing" was substrate-reality gap |
+| v0.3 | 4 fields + 0 supporting + 1 new MCP tool (`transport_heartbeat` via poll-backstop substrate; NOT new Adapter Kernel timer) = **5** | **honest 38%** | Honest endpoint per round-2 N1 fold; periodic gap closed; C2 directional intent preserved |
+
+### §11.4 μ-finding (parked; sister-class to mission-71 μ7-impl4)
+
+**μ1-cumulative-fold-regression-class:** R1-R5 represent a sister-class to mission-71 μ7-impl4. v0.2 architectural folds (C1+C2+C3) were correct in directional intent + tabular (§0.5 + §3.1 + §3.3 + §3.5) sections, but doc-internal sections written before the folds (§2 diagram, §4 PR-list, §5.2 cross-refs, §6.4 gates, §9 flags) retained pre-fold framing — fold-incomplete regression class. Round-2 verify is the natural catch-net (per `feedback_refactor_introduces_regression_during_fold.md`). **Diagnostic question for future folds:** "When I introduce architectural reshaping in tabular section X, which doc-internal narrative sections still reference the pre-fold framing?" Architect-discipline + Phase-4 audit-rubric §3d candidate (parked; not promoted to methodology-fold this mission per mission-73 §3d pattern — wait for 2nd canonical instance).
+
+### §11.5 Verdict
+
+- **Round-1:** all 3 CRITICALs resolved + 4/4 MEDIUMs folded + 2/2 MINORs folded + 4/4 PROBEs concur. v0.2 ready for round-2 verify (delivered).
+- **Round-2:** 1 NEW finding folded (N1 substrate-reality gap on C2 fold) + 5 fold-incomplete regressions folded (R1-R5) + 3 §0.5 polish items folded. v0.3 ready for round-3 verify on thread-472.
+
+Round-3 verify expectation: greg confirms N1 fold mechanism (option (c) poll-backstop 30s heartbeat timer) + R1-R5 doc-internal corrections + §0.5 polish + honest substrate-footprint accounting → if no new findings → ratify v0.3 as v1.0 → Phase 6 preflight entry.
 
 ---
 
-— Architect: lily / 2026-05-05 (Phase 4 Design v0.2; engineer round-1 audit folded — 13 findings: 3 CRITICAL + 4 MEDIUM + 2 MINOR + 4 PROBE concur; pending engineer round-2 verify per `mission-lifecycle.md` Phase 4 audit cycle)
+— Architect: lily / 2026-05-05 (Phase 4 Design v0.3; engineer round-1 + round-2 audits folded — round-2 surfaced 1 NEW (N1 substrate-reality gap) + 5 fold-incomplete regressions (R1-R5) + 3 §0.5 polish items; pending engineer round-3 verify per `mission-lifecycle.md` Phase 4 audit cycle)
