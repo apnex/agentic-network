@@ -49,6 +49,7 @@ import { COMMIT_PUSHED_HANDLER } from "./repo-event-commit-pushed-handler.js";
 import { PR_OPENED_HANDLER } from "./repo-event-pr-opened-handler.js";
 import { PR_MERGED_HANDLER } from "./repo-event-pr-merged-handler.js";
 import { PR_REVIEW_SUBMITTED_HANDLER } from "./repo-event-pr-review-submitted-handler.js";
+import { PR_REVIEW_APPROVED_HANDLER } from "./repo-event-pr-review-approved-handler.js";
 
 /**
  * Shape of a downstream Message a handler emits. Mirrors the args
@@ -93,16 +94,25 @@ export interface RepoEventHandler {
 /**
  * Registered repo-event handlers. mission-68 W1 shipped commit-pushed;
  * mission-76 W1 adds 3 PR-event handlers per bug-46 closure (pr-opened,
- * pr-merged, pr-review-submitted). Net coverage: 4 of 8 RepoEventSubkind
- * values per Design v1.0 §3.1.1; 3 carved-out (pr-closed,
- * pr-review-approved, pr-review-comment) per AG-2; 1 unknown intentional
- * fallback.
+ * pr-merged, pr-review-submitted); bug-51 adds pr-review-approved (closes
+ * mission-76 §3.1.1 + §8 AG-2 carve-out — original "redundant with
+ * pr-review-submitted" rationale was factually incorrect; translator
+ * routes approved reviews to a separate subkind that pr-review-submitted
+ * never sees, so approval was being silently dropped).
+ *
+ * Net coverage: 5 of 8 RepoEventSubkind values per Design v1.0 §3.1.1
+ * (4 of 8 post mission-76; +1 post bug-51 closing the design-rationale-
+ * incorrect carve-out for pr-review-approved). 2 carved-out per idea-250
+ * (pr-closed + pr-review-comment) with documented promotion triggers;
+ * pr-review-approved removed from carve-out list per bug-51 closure. 1
+ * unknown intentional fallback.
  */
 export const REPO_EVENT_HANDLERS: readonly RepoEventHandler[] = [
   COMMIT_PUSHED_HANDLER,
   PR_OPENED_HANDLER,
   PR_MERGED_HANDLER,
   PR_REVIEW_SUBMITTED_HANDLER,
+  PR_REVIEW_APPROVED_HANDLER,
 ];
 
 /**

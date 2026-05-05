@@ -103,14 +103,15 @@ function makeRepoEventMessage(payload: unknown): Message {
 
 // ── Registry tests ────────────────────────────────────────────────────
 
-describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2 + mission-76 W1 bug-46 closure)", () => {
-  it("post-mission-76 contains 4 handlers (commit-pushed + 3 NEW PR-event)", () => {
-    expect(REPO_EVENT_HANDLERS.length).toBe(4);
+describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2 + mission-76 W1 bug-46 closure + bug-51 pr-review-approved)", () => {
+  it("post-bug-51 contains 5 handlers (commit-pushed + 4 PR-event)", () => {
+    expect(REPO_EVENT_HANDLERS.length).toBe(5);
     const subkinds = REPO_EVENT_HANDLERS.map((h) => h.subkind);
     expect(subkinds).toContain("commit-pushed");
     expect(subkinds).toContain("pr-opened");
     expect(subkinds).toContain("pr-merged");
     expect(subkinds).toContain("pr-review-submitted");
+    expect(subkinds).toContain("pr-review-approved");
   });
 
   it("each handler has subkind + name + handle function", () => {
@@ -145,11 +146,14 @@ describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2 + mission-76 W1 bug-46
     expect(found!.subkind).toBe("pr-review-submitted");
   });
 
-  it("findRepoEventHandler returns null for carved-out subkinds (Design v1.0 §3.1.1 + AG-2)", () => {
-    // pr-closed / pr-review-approved / pr-review-comment are translator-supported
-    // but explicitly carved out per Design v1.0 §3.1.1 + §8 AG-2
+  it("findRepoEventHandler returns null for carved-out subkinds (post-bug-51: pr-closed + pr-review-comment per idea-250)", () => {
+    // pr-closed / pr-review-comment remain translator-supported but
+    // carved out per idea-250 (genuine design-time deferrals with
+    // documented promotion triggers). pr-review-approved REMOVED from
+    // carve-out list per bug-51 closure (original §3.1.1 + AG-2 rationale
+    // was factually incorrect — approved reviews dispatch to a separate
+    // subkind that pr-review-submitted never sees).
     expect(findRepoEventHandler("pr-closed")).toBeNull();
-    expect(findRepoEventHandler("pr-review-approved")).toBeNull();
     expect(findRepoEventHandler("pr-review-comment")).toBeNull();
   });
 });
