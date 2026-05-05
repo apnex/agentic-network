@@ -302,6 +302,121 @@ describe("normalizeGhEvent — pr-merged payload", () => {
   });
 });
 
+describe("normalizeGhEvent — Events-API shape (bug-49 fix)", () => {
+  // bug-49: GH Events API consistently null on pr.user / review.user /
+  // comment.user; webhook delivery populates them. normalize-* functions
+  // fall back to event-level actor when nested user is null. Same pattern
+  // as bug-44's PushEvent pusher-vs-actor fallback chain. 3rd canonical
+  // instance of webhook-vs-Events-API-shape-mismatch (idea-249 driver).
+
+  it("pr-opened: pr.user null → falls back to event-level actor", () => {
+    const ghEvent = {
+      type: "PullRequestEvent",
+      actor: { login: "apnex-greg", id: 12345 },
+      repo: { name: "owner/repo" },
+      payload: {
+        action: "opened",
+        pull_request: {
+          number: 42,
+          title: "Add widget",
+          html_url: "https://github.com/owner/repo/pull/42",
+          user: null, // ← Events API shape: nested user is null
+          merged: false,
+          base: { ref: "main", sha: "aaa" },
+          head: { ref: "feature/widget", sha: "bbb" },
+        },
+      },
+    };
+    const out = normalizeGhEvent(ghEvent, "pr-opened");
+    expect(out.author).toBe("apnex-greg"); // ← falls back to actor.login
+    expect(out.number).toBe(42);
+  });
+
+  it("pr-merged: pr.user null → falls back to event-level actor", () => {
+    const ghEvent = {
+      type: "PullRequestEvent",
+      actor: { login: "apnex-lily" },
+      repo: { name: "owner/repo" },
+      payload: {
+        action: "merged",
+        pull_request: { number: 9, merged: true, user: null },
+      },
+    };
+    const out = normalizeGhEvent(ghEvent, "pr-merged");
+    expect(out.author).toBe("apnex-lily");
+    expect(out.merged).toBe(true);
+  });
+
+  it("pr-review-approved: review.user null → falls back to event-level actor", () => {
+    const ghEvent = {
+      type: "PullRequestReviewEvent",
+      actor: { login: "apnex-lily" },
+      repo: { name: "owner/repo" },
+      payload: {
+        action: "created",
+        pull_request: { number: 7 },
+        review: {
+          state: "approved",
+          user: null, // ← Events API shape: nested user is null
+          body: "LGTM",
+          html_url: "https://github.com/owner/repo/pull/7#review-1",
+        },
+      },
+    };
+    const out = normalizeGhEvent(ghEvent, "pr-review-approved");
+    expect(out.reviewer).toBe("apnex-lily");
+    expect(out.state).toBe("approved");
+  });
+
+  it("pr-review-comment: comment.user null → falls back to event-level actor", () => {
+    const ghEvent = {
+      type: "PullRequestReviewCommentEvent",
+      actor: { login: "apnex-greg" },
+      repo: { name: "owner/repo" },
+      payload: {
+        action: "created",
+        pull_request: { number: 11 },
+        comment: {
+          user: null, // ← Events API shape: nested user is null
+          body: "nit: rename",
+          html_url: "https://github.com/owner/repo/pull/11#discussion_r1",
+        },
+      },
+    };
+    const out = normalizeGhEvent(ghEvent, "pr-review-comment");
+    expect(out.commenter).toBe("apnex-greg");
+  });
+
+  it("pr-opened: webhook shape with pr.user populated → uses pr.user (preserves existing behavior)", () => {
+    const ghEvent = {
+      type: "PullRequestEvent",
+      actor: { login: "apnex-lily" }, // ← would be fallback
+      payload: {
+        action: "opened",
+        pull_request: {
+          number: 42,
+          user: { login: "alice" }, // ← but pr.user takes precedence
+        },
+      },
+    };
+    const out = normalizeGhEvent(ghEvent, "pr-opened");
+    expect(out.author).toBe("alice"); // ← webhook shape; pr.user wins
+  });
+
+  it("pr-opened: both pr.user null AND actor missing → author null", () => {
+    const ghEvent = {
+      type: "PullRequestEvent",
+      // no actor field
+      payload: {
+        action: "opened",
+        pull_request: { number: 42, user: null },
+      },
+    };
+    const out = normalizeGhEvent(ghEvent, "pr-opened");
+    expect(out.author).toBeUndefined();
+  });
+});
+
 describe("normalizeGhEvent — pr-review-approved payload", () => {
   it("extracts reviewer, state, prNumber", () => {
     const ghEvent = {
