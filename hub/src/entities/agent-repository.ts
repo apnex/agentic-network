@@ -133,7 +133,43 @@ function normalizeAgentShape(a: Agent): Agent {
     restartHistoryMs: Array.isArray(a.restartHistoryMs)
       ? (a.restartHistoryMs as number[])
       : [],
+    // ── mission-75 (M-TTL-Liveliness-Design) v1.0 — additive defaults ─
+    // 4 component-state fields default to (null TTL, "unknown" state) for
+    // legacy blobs; eager-write hooks populate on next signal arrival.
+    cognitiveTTL: typeof a.cognitiveTTL === "number" ? a.cognitiveTTL : null,
+    transportTTL: typeof a.transportTTL === "number" ? a.transportTTL : null,
+    cognitiveState: isComponentState(a.cognitiveState) ? a.cognitiveState : "unknown",
+    transportState: isComponentState(a.transportState) ? a.transportState : "unknown",
+    // Sparse sub-objects: present only when overrides are set; otherwise omitted.
+    ...(isAgentLivenessConfig(a.livenessConfig) ? { livenessConfig: a.livenessConfig } : {}),
+    ...(isAgentPulseConfig(a.pulseConfig) ? { pulseConfig: a.pulseConfig } : {}),
   } as Agent;
+}
+
+function isComponentState(v: unknown): v is "alive" | "unresponsive" | "unknown" {
+  return v === "alive" || v === "unresponsive" || v === "unknown";
+}
+
+function isAgentLivenessConfig(v: unknown): v is import("../state.js").AgentLivenessConfig {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  const numericOk = (k: string) => o[k] === undefined || typeof o[k] === "number";
+  const boolOk = (k: string) => o[k] === undefined || typeof o[k] === "boolean";
+  return numericOk("peerPresenceWindowMs")
+    && numericOk("agentTouchMinIntervalMs")
+    && numericOk("transportHeartbeatIntervalMs")
+    && boolOk("transportHeartbeatEnabled");
+}
+
+function isAgentPulseConfig(v: unknown): v is import("../state.js").AgentPulseConfig {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.intervalSeconds === "number"
+    && typeof o.message === "string"
+    && o.responseShape === "ack"
+    && typeof o.missedThreshold === "number"
+    && typeof o.enabled === "boolean"
+    && (o.lastFiredAt === null || typeof o.lastFiredAt === "string");
 }
 
 /**
@@ -372,6 +408,18 @@ export class AgentRepository implements IEngineerRegistry {
           restartCount: 0,
           recentErrors: [],
           restartHistoryMs: [],
+          // mission-75 v1.0 — component states default to (null, "unknown")
+          // at first-contact create. claimSession then bumps lastHeartbeatAt
+          // and the eager-recompute hook (commit 2) populates transportTTL/
+          // transportState. cognitiveTTL/cognitiveState stay at (null,
+          // "unknown") until first tool-call entry triggers touchAgent.
+          // Per Design v1.0 §3.1 truth table: registration-instant
+          // `(unknown cognitive, alive transport)` is naturally-pending —
+          // NOT pathological.
+          cognitiveTTL: null,
+          transportTTL: null,
+          cognitiveState: "unknown",
+          transportState: "unknown",
         };
         const created = await this.provider.createOnly(path, encode(agent));
         if (!created.ok) {

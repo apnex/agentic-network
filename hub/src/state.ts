@@ -198,6 +198,53 @@ export function taskClaimableBy(
 export type AgentLivenessState = "online" | "degraded" | "unresponsive" | "offline";
 
 /**
+ * mission-75 (M-TTL-Liveliness-Design) v1.0 — component-state surface.
+ * Simple TTL-derived freshness check on `lastSeenAt` (cognitiveState) and
+ * `lastHeartbeatAt` (transportState). PARALLEL observability surfaces to
+ * the composite `livenessState` 4-state ADR-017 FSM, NOT inputs to it.
+ *
+ * `unknown` covers the registration-instant edge case: `lastSeenAt` is
+ * null until first tool-call, so post-`claim_session` the natural state
+ * is `(cognitive=unknown, transport=alive)` per Design v1.0 §3.1 truth
+ * table. Naturally-pending — NOT pathological.
+ */
+export type ComponentState = "alive" | "unresponsive" | "unknown";
+
+/**
+ * mission-75 (M-TTL-Liveliness-Design) v1.0 — per-agent override sub-object
+ * for liveness-tuning fields (Design §3.1 v1.0 Director Declarative-Primacy
+ * fold). Optional fields; resolution at consumption-site via
+ * `resolveLivenessConfig()` precedence chain (agent → env → builtin).
+ * Analogous to `AgentPulseConfig`. Sparse persistence — only populated
+ * when overrides are set. Interim under idea-242 Vision (declarative
+ * config-as-entities).
+ */
+export interface AgentLivenessConfig {
+  peerPresenceWindowMs?: number;
+  agentTouchMinIntervalMs?: number;
+  transportHeartbeatIntervalMs?: number;
+  transportHeartbeatEnabled?: boolean;
+}
+
+/**
+ * mission-75 (M-TTL-Liveliness-Design) v1.0 — per-agent agentPulse
+ * configuration. Fires for agent X iff `enabled === true` AND no active
+ * mission has agent X in its pulse-binding (STRICT suppression rule per
+ * Design §3.4 M3 fold; permissive alternative explicitly rejected).
+ * `lastFiredAt` updated by PulseSweeper on each fire (NULL until first
+ * fire). Death-detection-slow-but-cheap signal between missions per
+ * envelope hybrid γ pulse architecture.
+ */
+export interface AgentPulseConfig {
+  intervalSeconds: number;
+  message: string;
+  responseShape: "ack";
+  missedThreshold: number;
+  enabled: boolean;
+  lastFiredAt: string | null;
+}
+
+/**
  * Mission-62 (M-Agent-Entity-Revisit) activity FSM — orthogonal to the
  * existing liveness FSM. Tool-call-driven; populated via explicit
  * signal_working_* / signal_quota_* RPCs (W3). Auto-clamp invariant:
@@ -282,6 +329,26 @@ export interface Agent {
   // Internal: ring of recent sessionEpoch-bump timestamps (ms epoch). Cap=AGENT_RESTART_HISTORY_CAP.
   // restartCount is computed by filtering this ring against AGENT_RESTART_WINDOW_MS.
   restartHistoryMs: number[];
+
+  // ── mission-75 (M-TTL-Liveliness-Design) v1.0 — liveness component states ──
+  // 4 NEW fields: parallel observability surface to the composite
+  // `livenessState` 4-state ADR-017 FSM (which stays UNCHANGED). Eager-write
+  // semantic per Q5=a — recomputed at signal-arrival in `touchAgent`
+  // (cognitive) and `refreshHeartbeat` (transport). See Design v1.0 §3.1
+  // truth table for `cognitiveState × transportState` semantics including
+  // the registration-instant `(unknown, alive)` edge.
+  cognitiveTTL: number | null;       // seconds since lastSeenAt; null when lastSeenAt unset
+  transportTTL: number | null;       // seconds since lastHeartbeatAt; null when lastHeartbeatAt unset
+  cognitiveState: ComponentState;    // alive | unresponsive | unknown
+  transportState: ComponentState;    // alive | unresponsive | unknown
+
+  // ── mission-75 v1.0 Director Declarative-Primacy fold — per-agent overrides ──
+  // Sparse sub-objects; populated only when overrides set. Resolution at
+  // consumption-site via `resolveLivenessConfig()` (agent → env → builtin).
+  // `pulseConfig` enables per-agent `agentPulse` cadence (60min default; STRICT
+  // suppression when agent on any active mission per Design §3.4 M3 fold).
+  livenessConfig?: AgentLivenessConfig;
+  pulseConfig?: AgentPulseConfig;
 }
 
 export interface RegisterAgentPayload {
@@ -1241,8 +1308,98 @@ export interface IEngineerRegistry {
   deleteAgent(agentId: string): Promise<boolean>;
 }
 
-/** Minimum interval between persisted Agent heartbeat writes (per agent). */
-export const AGENT_TOUCH_MIN_INTERVAL_MS = 30_000;
+/**
+ * Minimum interval between persisted Agent heartbeat writes (per agent).
+ * mission-75 v1.0 Director Declarative-Primacy fold — env-ified via
+ * `AGENT_TOUCH_MIN_INTERVAL_MS` env var (default 30_000; backward-compatible).
+ * Per-agent override via `agent.livenessConfig.agentTouchMinIntervalMs?` —
+ * resolved at consumption-site via `resolveLivenessConfig()`.
+ */
+export const AGENT_TOUCH_MIN_INTERVAL_MS_DEFAULT = 30_000;
+export const AGENT_TOUCH_MIN_INTERVAL_MS: number =
+  Number.isFinite(Number(process.env.AGENT_TOUCH_MIN_INTERVAL_MS))
+    ? Number(process.env.AGENT_TOUCH_MIN_INTERVAL_MS)
+    : AGENT_TOUCH_MIN_INTERVAL_MS_DEFAULT;
+
+/**
+ * Cognitive-presence window — `cognitivelyStale = !isPeerPresent(agent)`
+ * collapses 60s threshold into existing PEER_PRESENCE_WINDOW_MS invariant
+ * per Design v1.0 §3.5 M4 fold. Net win: 1 invariant not 2.
+ *
+ * mission-75 v1.0 Director Declarative-Primacy fold — env-ified
+ * (`PEER_PRESENCE_WINDOW_MS` env var; default 60_000; backward-compatible).
+ * Per-agent override via `agent.livenessConfig.peerPresenceWindowMs?` —
+ * resolved at consumption-site. Closes F3 mitigation strategy structurally:
+ * operator can tune via env without code change; specific agents can
+ * override at registration time.
+ */
+export const PEER_PRESENCE_WINDOW_MS_DEFAULT = 60_000;
+export const PEER_PRESENCE_WINDOW_MS: number =
+  Number.isFinite(Number(process.env.PEER_PRESENCE_WINDOW_MS))
+    ? Number(process.env.PEER_PRESENCE_WINDOW_MS)
+    : PEER_PRESENCE_WINDOW_MS_DEFAULT;
+
+/**
+ * Transport heartbeat cadence — adapter-side poll-backstop second 30s
+ * timer fires `transport_heartbeat` MCP tool, bumping `lastHeartbeatAt`.
+ * Matches transport-HB threshold derivation per Design v1.0 §3.3.
+ *
+ * mission-75 v1.0 — env-ified (`TRANSPORT_HEARTBEAT_INTERVAL_MS` env var;
+ * default 30_000; minimum 10_000 per design §3.3). Per-agent override via
+ * `agent.livenessConfig.transportHeartbeatIntervalMs?`.
+ */
+export const TRANSPORT_HEARTBEAT_INTERVAL_MS_DEFAULT = 30_000;
+export const TRANSPORT_HEARTBEAT_INTERVAL_MS: number = (() => {
+  const raw = Number(process.env.TRANSPORT_HEARTBEAT_INTERVAL_MS);
+  if (!Number.isFinite(raw)) return TRANSPORT_HEARTBEAT_INTERVAL_MS_DEFAULT;
+  return Math.max(10_000, raw);
+})();
+
+/**
+ * Transport heartbeat enabled — disable-disable for test scenarios.
+ * mission-75 v1.0 — env-ified (`TRANSPORT_HEARTBEAT_ENABLED` env var;
+ * default true). Per-agent override via
+ * `agent.livenessConfig.transportHeartbeatEnabled?`.
+ */
+export const TRANSPORT_HEARTBEAT_ENABLED_DEFAULT = true;
+export const TRANSPORT_HEARTBEAT_ENABLED: boolean =
+  process.env.TRANSPORT_HEARTBEAT_ENABLED === "false"
+    ? false
+    : TRANSPORT_HEARTBEAT_ENABLED_DEFAULT;
+
+/**
+ * mission-75 v1.0 §3.3 critical invariant — `transport_heartbeat` MCP tool
+ * MUST NOT bump `lastSeenAt` (would collapse cognitive-vs-transport semantic
+ * separation). Tools listed here skip the standard `touchAgent` invocation
+ * at the dispatcher entry. Approach (i) per Design §3.3 — extensible
+ * allow-list pattern (future heartbeat-class tools join the set).
+ *
+ * Critical invariant: `cognitiveState=alive` MUST require a tool-call OTHER
+ * than `transport_heartbeat` within PEER_PRESENCE_WINDOW_MS — i.e., LLM
+ * doing meaningful work. `transport_heartbeat` adapter-side polling does
+ * NOT count as cognitive activity.
+ */
+export const AGENT_TOUCH_BYPASS_TOOLS: ReadonlySet<string> = new Set([
+  "transport_heartbeat",
+]);
+
+/**
+ * mission-75 v1.0 — agentPulse pulse-class identifier. SEPARATE from
+ * `PULSE_KEYS = ["engineerPulse", "architectPulse"]` per Design §3.4 M1
+ * fold: agentPulse iterates Agents-not-missions (config lives on Agent,
+ * not Mission); cannot join PULSE_KEYS without breaking the
+ * `mission.pulses[pulseKey]` invariant in 6-file references.
+ */
+export const AGENT_PULSE_KIND = "agentPulse" as const;
+
+/**
+ * mission-75 v1.0 — default cadence for per-agent `agentPulse` (60min per
+ * F5 architect-recommendation; ≥30min per Q4 ratio; ≤120min per
+ * "death-detection slow-but-cheap" Survey envelope §0).
+ */
+export const AGENT_PULSE_DEFAULT_INTERVAL_SECONDS = 60 * 60;
+export const AGENT_PULSE_DEFAULT_MISSED_THRESHOLD = 2;
+export const AGENT_PULSE_DEFAULT_MESSAGE = "Agent pulse — heartbeat check; respond with shape ack";
 
 /** Default ADR-017 receipt SLA — Hub's tolerance for "drain has not arrived yet".
  *  idea-105 (2026-04-19): raised from 30s to 60s to accommodate real-world
