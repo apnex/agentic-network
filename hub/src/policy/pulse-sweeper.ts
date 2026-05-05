@@ -51,7 +51,8 @@ import type {
   Message,
 } from "../entities/index.js";
 import { PULSE_KEYS } from "../entities/index.js";
-import type { Selector } from "../state.js";
+import type { Selector, Agent, AgentPulseConfig } from "../state.js";
+import { AGENT_PULSE_KIND } from "../state.js";
 import type { IPolicyContext } from "./types.js";
 // Mission-68 W1 (Design v1.0 §4.2): precondition layer for pulses removed.
 // `evaluatePrecondition` import dropped — pulses fire unconditionally on
@@ -184,6 +185,18 @@ export class PulseSweeper {
           );
         }
       }
+    }
+    // mission-75 v1.0 §3.4 — second iteration pass for agentPulse
+    // (iterate-Agents-not-missions per M1 fold; AGENT_PULSE_KIND stays
+    // SEPARATE from PULSE_KEYS to preserve the `mission.pulses[pulseKey]`
+    // invariant in 6-file references). STRICT suppression rule per M3
+    // fold — skip if agent is on any active mission. Per Design §3.4,
+    // the permissive alternative was explicitly rejected.
+    try {
+      await this.iterateAgentPulses(activeMissions, result);
+    } catch (err) {
+      result.errors += 1;
+      this.logger.warn(`iterateAgentPulses pass failed`, err);
     }
     return result;
   }
@@ -499,6 +512,160 @@ export class PulseSweeper {
         `[PulseSweeper] push-on-escalate dispatch failed for ${message.id} (non-fatal)`,
         err,
       );
+    }
+  }
+
+  /**
+   * mission-75 v1.0 §3.4 — agentPulse second iteration pass. Iterates
+   * registered agents (NOT missions) per M1 fold. Fires per-agent
+   * pulses subject to STRICT suppression rule (M3 fold — permissive
+   * alternative explicitly rejected): agentPulse fires for agent X
+   * iff:
+   *   - agent.pulseConfig?.enabled === true
+   *   - AND no active mission has agent X in its pulse-binding (i.e.,
+   *     agent X is NOT createdBy on any active mission AND NOT
+   *     assignedEngineerId on any task whose correlationId is in the
+   *     active-mission set).
+   *
+   * Per Design §3.4 rationale: "agent on active mission is busy by
+   * definition; the system already trusts mission-pulse engagement
+   * (engineerPulse OR architectPulse) to monitor agent liveness during
+   * mission engagement."
+   *
+   * Death-detection-slow-but-cheap signal between missions per
+   * envelope hybrid γ pulse architecture.
+   */
+  private async iterateAgentPulses(
+    activeMissions: Mission[],
+    result: PulseSweepResult,
+  ): Promise<void> {
+    const ctx = this.contextProvider.forSweeper();
+    const agents: Agent[] = await ctx.stores.engineerRegistry.listAgents();
+    const eligible = agents.filter((a) => a.pulseConfig?.enabled === true);
+    if (eligible.length === 0) return;
+
+    // STRICT suppression — build engaged-agent set from active missions.
+    // Architect-side: createdBy.agentId. Engineer-side: assignedEngineerId
+    // on any task whose correlationId is in the active-mission set.
+    const engaged = new Set<string>();
+    for (const m of activeMissions) {
+      if (m.createdBy?.agentId) engaged.add(m.createdBy.agentId);
+    }
+    if (eligible.some((a) => !engaged.has(a.id))) {
+      // Only load tasks if at least one eligible agent isn't already
+      // architect-side engaged — saves I/O when all eligible agents are
+      // mission-creators.
+      const activeMissionIds = new Set(activeMissions.map((m) => m.id));
+      const allTasks = await ctx.stores.task.listTasks();
+      for (const t of allTasks) {
+        if (
+          t.assignedEngineerId &&
+          t.correlationId &&
+          activeMissionIds.has(t.correlationId)
+        ) {
+          engaged.add(t.assignedEngineerId);
+        }
+      }
+    }
+
+    const nowMs = this.now();
+    for (const agent of eligible) {
+      const config = agent.pulseConfig as AgentPulseConfig;
+      result.scanned += 1;
+
+      // STRICT suppression — agent on any active mission → skip.
+      if (engaged.has(agent.id)) {
+        result.skipped += 1;
+        continue;
+      }
+
+      // Cadence check — fire if interval elapsed since last fire (or
+      // since registration if never fired). agentPulse v1 ships without
+      // missedCount/escalation; cadence-driven re-fire provides
+      // operator visibility on persistent silence.
+      const baseMs = config.lastFiredAt
+        ? Date.parse(config.lastFiredAt)
+        : Date.parse(agent.firstSeenAt);
+      const dueAtMs = (Number.isFinite(baseMs) ? baseMs : nowMs) + config.intervalSeconds * 1000;
+      if (nowMs < dueAtMs) {
+        result.skipped += 1;
+        continue;
+      }
+
+      try {
+        await this.fireAgentPulse(agent, config, nowMs);
+        result.fired += 1;
+      } catch (err) {
+        result.errors += 1;
+        this.logger.warn(`fireAgentPulse failed for agent ${agent.id}`, err);
+      }
+    }
+  }
+
+  /**
+   * Fire an agentPulse Message targeting a single agent (NOT role).
+   * Restart-safe via deterministic migrationSourceId. Updates
+   * agent.pulseConfig.lastFiredAt post-fire.
+   */
+  private async fireAgentPulse(
+    agent: Agent,
+    config: AgentPulseConfig,
+    nowMs: number,
+  ): Promise<void> {
+    const fireAt = new Date(nowMs).toISOString();
+    const migrationSourceId = `pulse:${AGENT_PULSE_KIND}:${agent.id}:${fireAt}`;
+
+    const existing = await this.messageStore.findByMigrationSourceId(migrationSourceId);
+    if (existing) return; // restart-safe; sweeper crashed mid-create on prior tick
+
+    const message = await this.messageStore.createMessage({
+      kind: "external-injection",
+      authorRole: "system",
+      authorAgentId: "hub",
+      target: { agentId: agent.id }, // single-recipient pulse per §3.4
+      delivery: "push-immediate",
+      payload: {
+        pulseKind: "agent_status_check",
+        agentId: agent.id,
+        intervalSeconds: config.intervalSeconds,
+        message: config.message,
+        responseShape: config.responseShape,
+      },
+      migrationSourceId,
+    });
+
+    await this.updateAgentPulseLastFiredAt(agent.id, fireAt);
+    this.metrics?.increment("agent_pulse.fired", { agentId: agent.id });
+    this.logger.log(
+      `Fired ${AGENT_PULSE_KIND} for ${agent.id} at ${fireAt} (cadence ${config.intervalSeconds}s)`,
+    );
+
+    // Mirror the missionPulse fire-then-dispatch wiring so the agentPulse
+    // Message reaches the operator session via SSE push immediately.
+    try {
+      const ctx = this.contextProvider.forSweeper();
+      // Single-agent target — selector points at the specific agentId.
+      await ctx.dispatch("message_arrived", { message }, { agentIds: [agent.id] } as Selector);
+    } catch (err) {
+      this.logger.warn(
+        `[PulseSweeper] agentPulse push-on-fire dispatch failed for ${message.id} (non-fatal)`,
+        err,
+      );
+    }
+  }
+
+  /**
+   * Persist agentPulse bookkeeping (lastFiredAt) on the Agent record.
+   * Uses the engineer-registry's updateAgentPulseLastFiredAt mutator
+   * (added in the same commit as the schema delta).
+   */
+  private async updateAgentPulseLastFiredAt(agentId: string, lastFiredAt: string): Promise<void> {
+    const ctx = this.contextProvider.forSweeper();
+    const reg = ctx.stores.engineerRegistry as { updateAgentPulseLastFiredAt?: (agentId: string, lastFiredAt: string) => Promise<void> };
+    if (typeof reg.updateAgentPulseLastFiredAt === "function") {
+      await reg.updateAgentPulseLastFiredAt(agentId, lastFiredAt);
+    } else {
+      this.logger.warn(`updateAgentPulseLastFiredAt not implemented on engineerRegistry; bookkeeping skipped`);
     }
   }
 

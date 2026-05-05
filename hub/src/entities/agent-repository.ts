@@ -757,6 +757,27 @@ export class AgentRepository implements IEngineerRegistry {
     await this.provider.put(fpPath(agent.fingerprint), encode(updated));
   }
 
+  /**
+   * mission-75 v1.0 §3.4 — sweeper-managed agentPulse bookkeeping.
+   * Updates `agent.pulseConfig.lastFiredAt` on each per-agent pulse
+   * fire. No-op for agents without `pulseConfig` (defensive — sweeper
+   * only fires for agents with `pulseConfig.enabled === true`).
+   */
+  async updateAgentPulseLastFiredAt(agentId: string, lastFiredAt: string): Promise<void> {
+    const path = agentPath(agentId);
+    const existing = await this.getWithToken(path);
+    if (!existing) return;
+    const agent = normalizeAgentShape(decode(existing.data));
+    if (!agent.pulseConfig) return;
+    const updated: Agent = {
+      ...agent,
+      pulseConfig: { ...agent.pulseConfig, lastFiredAt },
+    };
+    const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
+    if (!result.ok) return;
+    await this.provider.put(fpPath(agent.fingerprint), encode(updated));
+  }
+
   // ── Mission-62 W1+W2 Pass 2: activity FSM transition handlers ──────
 
   async setActivityState(agentId: string, state: ActivityState): Promise<void> {

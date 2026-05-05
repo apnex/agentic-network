@@ -1263,6 +1263,10 @@ export interface IEngineerRegistry {
   /** ADR-017: flip `livenessState` on an agent (used by the watchdog's
    *  demotion ladder). No-op for unknown agents. */
   setLivenessState(agentId: string, state: AgentLivenessState): Promise<void>;
+  /** mission-75 v1.0 §3.4 — sweeper-managed agentPulse bookkeeping. Updates
+   *  `agent.pulseConfig.lastFiredAt` on each per-agent pulse fire. No-op
+   *  for unknown agents OR agents without `pulseConfig`. */
+  updateAgentPulseLastFiredAt(agentId: string, lastFiredAt: string): Promise<void>;
   // ── Mission-62 (M-Agent-Entity-Revisit) — activity FSM transition handlers ──
   /** Mission-62 W1+W2 Pass 2: write `activityState`. Auto-clamp invariant
    *  (livenessState !== "online" → activityState = "offline") is enforced
