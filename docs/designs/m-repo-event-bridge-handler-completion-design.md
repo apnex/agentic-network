@@ -1,6 +1,6 @@
-# M-RepoEventBridge-Handler-Completion — Design v0.1 DRAFT
+# M-RepoEventBridge-Handler-Completion — Design v0.2
 
-**Status:** v0.1 DRAFT (architect-authored 2026-05-05; pending engineer round-1 audit per `mission-lifecycle.md` Phase 4 audit cycle)
+**Status:** v0.2 (architect-revised 2026-05-05; engineer round-1 audit folded — 5 findings: 1 CRITICAL (C1 §0.5 enum-size factual + bug-46 scope) + 1 MEDIUM (M1 AG-2 reframe) + 3 MINOR (m1 per-subkind intents / m2 director-skip enumeration / m3 line estimates +30%); 4 PROBE concur; pending engineer round-2 verify per `mission-lifecycle.md` Phase 4 audit cycle)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Source idea:** idea-246 (status `triaged` via Director-direct route-(a) skip-direct 2026-05-05)
 **Source bugs:** bug-46 (major; missing-feature; PR-event handler registration gap) + bug-47 (major; identity-resolution; commit-pushed handler gh-login parsing)
@@ -39,7 +39,8 @@ Reading order:
 | Substrate primitive | Source-of-truth location | Reuse-vs-replace decision |
 |---|---|---|
 | `RepoEvent` envelope `{kind: "repo-event", subkind, payload}` | `packages/repo-event-bridge/src/translator.ts` (export) | **REUSE UNCHANGED** — wire format established by mission-52 |
-| `RepoEventSubkind` enum (5 values: pr-opened, pr-merged, pr-review-submitted, commit-pushed, unknown) | `packages/repo-event-bridge/src/translator.ts:55` | **REUSE UNCHANGED** — translator already classifies all 5 subkinds |
+| `RepoEventSubkind` enum (**8 values per round-1 C1 fold**: pr-opened, **pr-closed**, pr-merged, pr-review-submitted, **pr-review-approved**, **pr-review-comment**, commit-pushed, unknown) | `packages/repo-event-bridge/src/translator.ts:48-57` | **REUSE UNCHANGED** — translator already classifies all 8 subkinds + per-type normalization helpers exist (normalizePullRequest / normalizePullRequestReview / normalizePullRequestReviewComment / normalizePush). v0.1 incorrectly stated "5 values" + only enumerated 5; v0.2 corrects per C1 |
+| **Mission handler-coverage scope (NEW v0.2 per C1 fold):** 4 of 8 subkinds covered in-mission (commit-pushed existing + 3 NEW PR-event handlers); 3 carved-out per §8 AG-2; 1 unknown intentional fallback | `hub/src/policy/repo-event-handlers.ts` (post-mission state) | **EXPLICIT CARVE-OUT** — pr-closed + pr-review-approved + pr-review-comment remain handler-uncovered post-mission per option (b); see §8 AG-2 per-subkind rationale + §3.1 mission-coverage table |
 | Translator `dispatchSubkind()` + `normalizeGhEvent()` (per-subkind payload normalization) | `packages/repo-event-bridge/src/translator.ts` | **REUSE** — pr-opened/pr-merged/pr-review-submitted normalization helpers (`normalizePrOpened` line 186 / `normalizePrMerged` line 205 / `normalizePrReviewSubmitted` line 229) ALREADY EXIST; only handler-side consumption missing |
 | Translator `extractLogin()` helper (reads `user.login` → `user.name` fallback) | `packages/repo-event-bridge/src/translator.ts:276` | **INVESTIGATE + FIX per bug-47** — handler log shows `gh-login=apnex` reaching role-lookup when should be `apnex-greg`/`apnex-lily`; root-cause within translator OR upstream in event-source `actor` extraction |
 | Push event `normalizePush` 3-level pusher fallback chain (`payload.pusher → payload.sender → actor`) | `packages/repo-event-bridge/src/translator.ts:261-264` | **INVESTIGATE per bug-47** — bug-44 fix comment notes Events API has no `payload.pusher`; falls through to `actor`; one of these three sources is yielding `apnex` (org name?) instead of full user login |
@@ -133,12 +134,29 @@ GH event {actor: {login: "apnex-greg"}} → Translator.extractLogin → ??? → 
 - Import each constant (e.g., `import { PR_OPENED_HANDLER } from "./repo-event-pr-opened-handler.js";`)
 - Append to `REPO_EVENT_HANDLERS` array
 
-**Per-handler logic (uniform shape; per-event payload differs):**
+**Per-handler logic (uniform shape; per-event payload differs; v0.2 m2 fold — explicit role-skip enumeration):**
 1. Extract relevant payload fields from `inbound.payload.payload` (the bridge's normalized `RepoEvent.payload`)
 2. Resolve author role via `lookupRoleByGhLogin(authorLogin, ctx)`
-3. If role resolves: emit `MessageDispatch[]` (target: peer role per §3.4 routing matrix)
-4. If author-role unknown: log + skip (per existing `commit-pushed` pattern)
-5. If author-role matches AG-7-style carve-out (decided per §3.4): log + skip
+3. **Skip if author-role is `null`** (lookup miss — log + skip; pre-existing pattern from `commit-pushed-handler.ts:72-77`)
+4. **Skip if author-role is `"director"`** (no peer-role for engineer↔architect-targeted notifications — Director-author PRs are out of bilateral cross-approval scope; log + skip)
+5. **Otherwise emit notification targeting the peer:**
+   - `engineer` author → emit `target: { role: "architect" }`
+   - `architect` author → emit `target: { role: "engineer" }` (symmetric per §3.4; differs from commit-pushed AG-7)
+
+### §3.1.1 Mission handler-coverage table (NEW v0.2 per C1 fold)
+
+| Subkind | Translator support | Handler in this mission | §8 AG-2 carve-out rationale |
+|---|---|---|---|
+| commit-pushed | ✅ existing | ✅ EXISTING (mission-68 W1; UNCHANGED) | n/a (in-substrate) |
+| pr-opened | ✅ existing | ✅ NEW v0.2 | n/a (in-mission) |
+| pr-merged | ✅ existing | ✅ NEW v0.2 | n/a (in-mission) |
+| pr-review-submitted | ✅ existing | ✅ NEW v0.2 | n/a (in-mission) |
+| pr-closed | ✅ existing | ❌ DEFERRED | Author-abandon-or-decline; low peer-coord signal value (peer sees PR-state on GitHub if needed); pr-merged covers success-state delivery. Defer to future-canonical follow-on if abandon-pattern recurrence warrants |
+| pr-review-approved | ✅ existing | ❌ DEFERRED | Separate GH event from pr-review-submitted (which is umbrella; review-state encoded in payload). Potentially redundant with pr-review-submitted handler reading review state; defer pending post-mission behavioral observation. If pr-review-submitted handler's review-state decoding turns out incomplete, file follow-on |
+| pr-review-comment | ✅ existing | ❌ DEFERRED | Per-comment mid-review chatter; high-volume; lower signal-per-event ratio than pr-review-submitted decision-point. Defer to future-canonical (operator-UX trigger; if/when comment-thread-discipline becomes load-bearing) |
+| unknown | ✅ load-bearing fallback | n/a (intentional skip) | Translator's documented fallback for unrecognized GH events; §3.3 light-touch investigation only |
+
+**Net mission-coverage: 4 of 8 subkinds (50%; 3 NEW + commit-pushed existing); 3 explicit carve-outs with per-subkind rationale; 1 intentional fallback.**
 
 ### §3.2 gh-login parsing fix (bug-47 root-cause investigation + fix)
 
@@ -198,6 +216,11 @@ This contrasts with commit-pushed (mission-68 AG-7 architect-pushes-skip rationa
 
 Per **#41 STRUCTURAL ANCHOR** (mission-66 commit 5; `triggers.ts:108-119` canonical pattern): terse `body: string` + structured payload sub-fields for adapter-side `source-attribute.ts` rendering.
 
+**Per-subkind intent values (v0.2 m1 fold per engineer recommendation; symmetry with adapter-side `source-attribute.ts` pattern + finer-grained operator-side filter handle):**
+- `intent: "pr-opened-notification"` (pr-opened handler)
+- `intent: "pr-merged-notification"` (pr-merged handler)
+- `intent: "pr-review-notification"` (pr-review-submitted handler; covers all review states emitted by this subkind)
+
 **Example (pr-opened):**
 ```typescript
 {
@@ -215,14 +238,14 @@ Per **#41 STRUCTURAL ANCHOR** (mission-66 commit 5; `triggers.ts:108-119` canoni
     repo,
     sourceMessageId: inbound.id,
   },
-  intent: "pr-event",  // architect-flag F3 — new intent value; reviewer-confirm
+  intent: "pr-opened-notification",  // v0.2 m1 fold — per-subkind value
 }
 ```
 
 **Body templates:**
 - pr-opened: `${peerRole} opened PR #${prNumber}: ${prTitle}`
 - pr-merged: `${peerRole} merged PR #${prNumber}: ${prTitle}`
-- pr-review-submitted: `${peerRole} reviewed PR #${prNumber} (${reviewState}): ${prTitle}`
+- pr-review-submitted: `${peerRole} reviewed PR #${prNumber} (${reviewState}): ${prTitle}` (where reviewState ∈ `approved` / `changes_requested` / `commented` per GH PR review state enum)
 
 ---
 
@@ -318,20 +341,22 @@ When architect (lily) opens PR / merges / reviews, do we want engineer (greg) no
 |---|---|---|
 | `docs/designs/m-repo-event-bridge-handler-completion-design.md` | This Design v0.1 → v1.0 | +500 |
 | `docs/missions/m-repo-event-bridge-handler-completion-preflight.md` | Phase 6 preflight | +120 |
-| **`hub/src/policy/repo-event-pr-opened-handler.ts`** *(NEW)* | pr-opened handler | +60 |
-| **`hub/src/policy/repo-event-pr-merged-handler.ts`** *(NEW)* | pr-merged handler | +60 |
-| **`hub/src/policy/repo-event-pr-review-submitted-handler.ts`** *(NEW)* | pr-review-submitted handler | +70 (review state branching adds slight complexity) |
+| **`hub/src/policy/repo-event-pr-opened-handler.ts`** *(NEW)* | pr-opened handler | +85 (v0.2 m3 fold; commit-pushed-handler.ts ~110 line baseline) |
+| **`hub/src/policy/repo-event-pr-merged-handler.ts`** *(NEW)* | pr-merged handler | +85 (v0.2 m3 fold) |
+| **`hub/src/policy/repo-event-pr-review-submitted-handler.ts`** *(NEW)* | pr-review-submitted handler | +95 (v0.2 m3 fold; review-state branching adds slight complexity) |
+| **`hub/src/policy/repo-event-pr-handler-helpers.ts`** *(NEW; v0.2 P1 concur)* | `synthesizePrNotification` shared helper extracted per engineer DRY recommendation; ~50 lines | +50 |
 | `hub/src/policy/repo-event-handlers.ts` | Append 3 imports + 3 array entries | +6 / -0 |
 | `packages/repo-event-bridge/src/translator.ts` | bug-47 fix (engineer-determined per §3.2 investigation) | +5-15 / variable |
-| `hub/test/policy/repo-event-pr-opened-handler.test.ts` *(NEW)* | Handler unit tests | +90 |
-| `hub/test/policy/repo-event-pr-merged-handler.test.ts` *(NEW)* | Handler unit tests | +90 |
-| `hub/test/policy/repo-event-pr-review-submitted-handler.test.ts` *(NEW)* | Handler unit tests | +100 |
+| `hub/test/policy/repo-event-pr-opened-handler.test.ts` *(NEW)* | Handler unit tests | +120 (v0.2 m3 fold +30%) |
+| `hub/test/policy/repo-event-pr-merged-handler.test.ts` *(NEW)* | Handler unit tests | +120 (v0.2 m3 fold +30%) |
+| `hub/test/policy/repo-event-pr-review-submitted-handler.test.ts` *(NEW)* | Handler unit tests | +130 (v0.2 m3 fold +30%) |
+| `hub/test/policy/repo-event-pr-handler-helpers.test.ts` *(NEW; v0.2 P1 concur)* | `synthesizePrNotification` helper unit tests | +60 |
 | `hub/test/policy/repo-event-handlers.test.ts` | Registry assertion update | +10 |
-| `packages/repo-event-bridge/test/translator.test.ts` | Translator unit tests for bug-47 + 3 PR-event types | +60 |
+| `packages/repo-event-bridge/test/translator.test.ts` | Translator unit tests for bug-47 + 3 PR-event types | +80 (v0.2 m3 fold +30%) |
 | `docs/audits/m-repo-event-bridge-handler-completion-closing-audit.md` | Phase 9 | +120 |
 | `docs/reviews/m-repo-event-bridge-handler-completion-retrospective.md` | Phase 10 | +150 |
 
-**Total est.** ~1430 lines net addition.
+**Total est. (v0.2 m3 fold):** ~1700 lines net addition (revised up from v0.1's ~1430 per substrate-realistic baseline + DRY-helper P1 concur addition).
 
 ---
 
@@ -340,7 +365,7 @@ When architect (lily) opens PR / merges / reviews, do we want engineer (greg) no
 | AG | Description | Composes-with |
 |---|---|---|
 | AG-1 | Don't redesign RepoEventBridge architecture (poll-based stays; envelope shape stays; mission-52 substrate UNCHANGED) | n/a |
-| AG-2 | Don't add new GH event-types beyond pr-opened / pr-merged / pr-review-submitted in this mission (commit-pushed-architect-symmetric is idea-227 scope) | future-canonical (idea-227) |
+| AG-2 (v0.2 reframe per round-1 M1 fold) | Don't add handlers for **pr-closed / pr-review-approved / pr-review-comment** in this mission per per-subkind rationale (these existing-but-uncovered subkinds defer to future-canonical follow-on; behavioral observation triggers: abandon-pattern recurrence; pr-review-submitted decoding incompleteness; comment-thread-discipline load-bearing). Per-subkind rationale documented in §3.1.1 mission-coverage table. Commit-pushed-architect-symmetric is idea-227 scope (separate from this mission's PR-event scope) | future-canonical (idea-227 + per-subkind triggers) |
 | AG-3 | Don't bundle with idea-244 (M-Design-Process-Mechanisation) Vision — orthogonal scope | idea-244 stays separate |
 | AG-4 | Don't introduce new role-resolution mechanism beyond `ois.io/github/login` label format (mission-68 W1 substrate UNCHANGED) | future ideas (TBD; trigger = label-system redesign) |
 | AG-5 | Don't add webhook-based ingestion (poll-based stays per AG-1) | future ideas (TBD; trigger = real-time-event-latency requirement) |
@@ -348,15 +373,16 @@ When architect (lily) opens PR / merges / reviews, do we want engineer (greg) no
 
 ---
 
-## §9 Architect-flags for round-1 audit
+## §9 Architect-flags status (v0.2 — round-1 audit folded)
 
-| # | Flag | Architect-recommendation |
-|---|---|---|
-| F1 (MEDIUM) | bug-47 root-cause unclear without engineer investigation; Design specifies behavioral requirement only (gh-login value matches `ois.io/github/login` label) | Engineer determines fix mechanism during Phase 8 implementation; document finding inline in PR description |
-| F2 (MEDIUM) | Symmetric-coverage decision for PR-events (§3.4) — architect-PR notifies engineer? | Default symmetric-yes (different from commit-pushed AG-7); reviewer-confirm at round-1 |
-| F3 (MINOR) | Notification body shape — `intent: "pr-event"` is a new intent value; reviewer-confirm or suggest existing-vocabulary | Reviewer-confirm intent value |
-| F4 (MINOR) | subkind=unknown investigation deliverable — what depth + format | Engineer judgement; document findings in PR description |
-| F5 (PROBE) | Handler-shape symmetry — should pr-opened/pr-merged/pr-review-submitted share an internal helper for common extract+resolve+emit logic? | Engineer call (DRY vs explicit per-event); architect leans explicit-per-event for readability |
+| # | Flag | Status (v0.2) | Resolution |
+|---|---|---|---|
+| F1 (MEDIUM) | bug-47 root-cause unclear without engineer investigation; Design specifies behavioral requirement only (gh-login value matches `ois.io/github/login` label) | **CONCURRED** (P3 round-1) — substrate-realistic caveats noted: `payload.head_commit.author.username` plausible primary; noreply-email-parse fragile fallback; verify Events API `payload.sender` shape post-bug-44 | Engineer determines fix mechanism during Phase 8 implementation; document finding inline in PR description per `feedback_pr_branch_base_preflight.md` precedent |
+| F2 (MEDIUM) | Symmetric-coverage decision for PR-events (§3.4) — architect-PR notifies engineer? | **CONCURRED** (P2 round-1) — symmetric-yes confirmed; differs from commit-pushed AG-7 (engineer-cadence-discipline scope only) | Default symmetric routing; PR-events bilateral cross-approval surface |
+| F3 (MINOR) | Notification body shape — `intent: "pr-event"` is a new intent value; reviewer-confirm or suggest existing-vocabulary | **ADDRESSED** (m1 round-1 fold) — per-subkind intents adopted: `intent: "pr-opened-notification"` / `intent: "pr-merged-notification"` / `intent: "pr-review-notification"` (engineer recommendation; symmetry with adapter-side `source-attribute.ts` pattern) | Per §3.5 v0.2 fold |
+| F4 (MINOR) | subkind=unknown investigation deliverable — what depth + format | **CONCURRED** (P4 round-1) — concrete sampling: 5-10 events from 24h post-mission-225 Hub log window; document type distribution + payload shape excerpts; classify intentional-skip vs future-handler-candidate | Engineer judgement at Phase 8 |
+| F5 (PROBE) | Handler-shape symmetry — should pr-opened/pr-merged/pr-review-submitted share an internal helper for common extract+resolve+emit logic? | **ENGINEER-CALL CONCURRED** (P1 round-1) — DRY: `synthesizePrNotification` helper (~50 lines) + 3 thin wrappers (~25 lines each); engineer DRY recommendation accepted; revert to explicit at preflight if substrate-investigation suggests otherwise | NEW file `repo-event-pr-handler-helpers.ts` per §7 content map |
+| F6-NEW (BLOCKING; v0.2) | **NEW round-1 C1 fold** — §0.5 inventory factually incorrect on `RepoEventSubkind` enum size (8 values, not 5); bug-46 scope undershoots actual coverage gap (6 PR-event subkinds uncovered, not 3) | **ADDRESSED** v0.2 — option (b) explicit carve-out with per-subkind rationale for pr-closed / pr-review-approved / pr-review-comment; documented in §0.5 + §3.1.1 mission-coverage table + §8 AG-2 reframe + §11.1 fold summary | n/a (C1 closed structurally) |
 
 ---
 
@@ -390,17 +416,31 @@ When architect (lily) opens PR / merges / reviews, do we want engineer (greg) no
 
 ---
 
-## §11 Audit fold summary scaffold
+## §11 Audit fold summary
 
-(Populated during round-N audit cycles per `mission-lifecycle.md` Phase 4 discipline.)
+### §11.1 Round-1 audit folds (v0.1 → v0.2; greg; thread-475 round-1; 2026-05-05)
 
-### §11.1 Round-1 audit folds (v0.1 → v0.2)
+**9 findings: 1 CRITICAL + 1 MEDIUM + 3 MINOR + 4 PROBE concur.**
 
-(pending engineer round-1 audit)
+| Finding | Class | Architect fold-decision (v0.2) | v0.2 § |
+|---|---|---|---|
+| C1 | §0.5 inventory factually incorrect on `RepoEventSubkind` enum size (8 values not 5); bug-46 scope undershoots actual coverage gap (6 PR-event subkinds uncovered); 3 omitted subkinds (pr-closed, pr-review-approved, pr-review-comment) ARE translator-supported | **FOLDED** — option (b) explicit carve-out with per-subkind rationale: pr-closed (author-abandon; low peer-coord signal); pr-review-approved (potentially redundant with pr-review-submitted umbrella); pr-review-comment (high-volume mid-review chatter; lower signal-per-event ratio). Carve-out propagates to §0.5 + §3.1.1 mission-coverage table + §8 AG-2 + §7 content-map + §11 | §0.5 + §3.1.1 + §8 + §7 |
+| M1 | §8 AG-2 framing inconsistent with §0.5 substrate reality (pr-closed/pr-review-approved/pr-review-comment are existing event-types, not "new") | **FOLDED** — AG-2 reframed per option (b): "Don't add handlers for pr-closed / pr-review-approved / pr-review-comment in this mission per per-subkind rationale §3.1.1" | §8 |
+| m1 | F3 intent value "pr-event" too generic; existing precedent uses descriptive per-purpose intents (e.g., `commit-push-thread-heartbeat`) | **FOLDED** — per-subkind intents adopted: `pr-opened-notification` / `pr-merged-notification` / `pr-review-notification` (engineer recommendation; symmetry with adapter-side `source-attribute.ts`) | §3.5 |
+| m2 | §3 per-handler logic doesn't enumerate director-author skip case; if `lookupRoleByGhLogin` returns `"director"`, no peer-role exists | **FOLDED** — §3.1 step 5 reframed with explicit role-skip enumeration: skip if `null` (lookup miss); skip if `"director"` (no peer-role); otherwise emit to peer | §3.1 |
+| m3 | §7 line estimates likely 30% low (commit-pushed-handler.ts ~110 line baseline) | **FOLDED** — §7 estimates revised +30%: pr-opened ~85; pr-merged ~85; pr-review-submitted ~95; tests +30%; total revised ~1700 lines (up from ~1430) | §7 |
+| P1 | F5 DRY-vs-explicit handler shape; engineer leans DRY (`synthesizePrNotification` helper + 3 thin wrappers) | **CONCURRED** — DRY accepted; NEW file `repo-event-pr-handler-helpers.ts` added to §7; revert to explicit at preflight if substrate-investigation suggests | §7 + §3.1 |
+| P2 | F2 symmetric-coverage CONCUR | **CONCUR** — PR-events bilateral cross-approval surface; correctly differs from commit-pushed AG-7 | §3.4 |
+| P3 | F1 bug-47 root-cause investigation framing CONCUR with caveats | **CONCUR** — substrate-realistic caveats noted (head_commit.author.username + noreply-email fallback + Events API re-verification); document raw-API-response inline per `feedback_pr_branch_base_preflight.md` | §3.2 |
+| P4 | F4 subkind=unknown investigation scope CONCUR with concrete sampling | **CONCUR** — 5-10 events from 24h post-mission-225 window; document type distribution + payload shape excerpts; classify intentional-skip vs future-handler-candidate | §3.3 |
+
+**Architectural impact:** v0.1 → v0.2 corrects factual error in §0.5 (enum-size + coverage scope); reframes AG-2 with per-subkind rationale; adopts per-subkind intent values + DRY helper extraction; revises line estimates +20%. Net mission-coverage: 4 of 8 RepoEventSubkind values (commit-pushed existing + 3 NEW PR-event handlers); 3 explicit carve-outs with per-subkind rationale; 1 intentional fallback.
+
+**μ-finding parked:** **enum-size misreporting in §0.5 inventory** — sister-class to mission-225's μ1 cumulative-fold-regression-class. v0.1 inventory enumerated 5 values but didn't validate "5 values" claim against actual translator source (`packages/repo-event-bridge/src/translator.ts:48-57` shows 8 values). Future-discipline candidate: **§0.5 inventory enum-size claims must be `git grep`-validated before commit** per architect-discipline at Design-authoring time. Methodology-fold candidate per mission-73 §3d pattern (parked; not promoted this mission per wait-for-2nd-canonical-instance discipline).
 
 ### §11.2 Round-N audit folds (v0.N → v0.N+1)
 
-(pending if subsequent rounds warranted)
+(pending engineer round-2 verify)
 
 ### §11.3 Verdict
 
@@ -408,4 +448,4 @@ When architect (lily) opens PR / merges / reviews, do we want engineer (greg) no
 
 ---
 
-— Architect: lily / 2026-05-05 (Phase 4 Design v0.1 DRAFT; route-(a) skip-direct per Director directive 2026-05-05; bug-46 + bug-47 paired closure; pending engineer round-1 audit per `mission-lifecycle.md`)
+— Architect: lily / 2026-05-05 (Phase 4 Design v0.2; route-(a) skip-direct per Director directive 2026-05-05; bug-46 + bug-47 paired closure; engineer round-1 audit folded — 5 substantive folds (C1 + M1 + m1 + m2 + m3) + 4 PROBE concurs; pending engineer round-2 verify per `mission-lifecycle.md`)
