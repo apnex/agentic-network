@@ -70,8 +70,13 @@ async function handleCommitPushed(
 
   const role = await lookupRoleByGhLogin(pusher, ctx);
   if (role === null) {
-    console.warn(
-      `[repo-event-commit-pushed-handler] no role mapping for gh-login=${pusher} (no agent has label ois.io/github/login=${pusher}); skipping`,
+    // mission-76 γ fold (bug-47 scenario-B reframing): null-lookup is EXPECTED
+    // behavior for unregistered author identity (Director's personal GH
+    // account, third-party contributors, etc.). Demoted from console.warn
+    // to console.info — null-lookup-skip is NOT operator-actionable in
+    // steady state.
+    console.info(
+      `[repo-event-commit-pushed-handler] no role mapping for gh-login=${pusher} (no agent has label ois.io/github/login=${pusher}); skipping (expected for unregistered authors)`,
     );
     return [];
   }

@@ -102,11 +102,14 @@ function makeRepoEventMessage(payload: unknown): Message {
 
 // ── Registry tests ────────────────────────────────────────────────────
 
-describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2)", () => {
-  it("seeds COMMIT_PUSHED_HANDLER (Path C ships ONE handler)", () => {
-    expect(REPO_EVENT_HANDLERS.length).toBeGreaterThanOrEqual(1);
+describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2 + mission-76 W1 bug-46 closure)", () => {
+  it("post-mission-76 contains 4 handlers (commit-pushed + 3 NEW PR-event)", () => {
+    expect(REPO_EVENT_HANDLERS.length).toBe(4);
     const subkinds = REPO_EVENT_HANDLERS.map((h) => h.subkind);
     expect(subkinds).toContain("commit-pushed");
+    expect(subkinds).toContain("pr-opened");
+    expect(subkinds).toContain("pr-merged");
+    expect(subkinds).toContain("pr-review-submitted");
   });
 
   it("each handler has subkind + name + handle function", () => {
@@ -123,9 +126,30 @@ describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2)", () => {
     expect(found!.subkind).toBe("commit-pushed");
   });
 
-  it("findRepoEventHandler returns null for unregistered subkind (caller logs WARN)", () => {
+  it("findRepoEventHandler resolves pr-opened (mission-76 W1 bug-46 closure)", () => {
     const found = findRepoEventHandler("pr-opened");
-    expect(found).toBeNull();
+    expect(found).not.toBeNull();
+    expect(found!.subkind).toBe("pr-opened");
+  });
+
+  it("findRepoEventHandler resolves pr-merged (mission-76 W1 bug-46 closure)", () => {
+    const found = findRepoEventHandler("pr-merged");
+    expect(found).not.toBeNull();
+    expect(found!.subkind).toBe("pr-merged");
+  });
+
+  it("findRepoEventHandler resolves pr-review-submitted (mission-76 W1 bug-46 closure)", () => {
+    const found = findRepoEventHandler("pr-review-submitted");
+    expect(found).not.toBeNull();
+    expect(found!.subkind).toBe("pr-review-submitted");
+  });
+
+  it("findRepoEventHandler returns null for carved-out subkinds (Design v1.0 §3.1.1 + AG-2)", () => {
+    // pr-closed / pr-review-approved / pr-review-comment are translator-supported
+    // but explicitly carved out per Design v1.0 §3.1.1 + §8 AG-2
+    expect(findRepoEventHandler("pr-closed")).toBeNull();
+    expect(findRepoEventHandler("pr-review-approved")).toBeNull();
+    expect(findRepoEventHandler("pr-review-comment")).toBeNull();
   });
 });
 

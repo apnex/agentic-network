@@ -46,6 +46,9 @@ import type { Message } from "../entities/index.js";
 import type { IPolicyContext } from "./types.js";
 import type { RepoEventSubkind } from "@apnex/repo-event-bridge";
 import { COMMIT_PUSHED_HANDLER } from "./repo-event-commit-pushed-handler.js";
+import { PR_OPENED_HANDLER } from "./repo-event-pr-opened-handler.js";
+import { PR_MERGED_HANDLER } from "./repo-event-pr-merged-handler.js";
+import { PR_REVIEW_SUBMITTED_HANDLER } from "./repo-event-pr-review-submitted-handler.js";
 
 /**
  * Shape of a downstream Message a handler emits. Mirrors the args
@@ -88,11 +91,18 @@ export interface RepoEventHandler {
 }
 
 /**
- * Registered repo-event handlers. Path C ships ONE handler; additional
- * handlers compose via idea-227 / future mission per AG-4 anti-goal.
+ * Registered repo-event handlers. mission-68 W1 shipped commit-pushed;
+ * mission-76 W1 adds 3 PR-event handlers per bug-46 closure (pr-opened,
+ * pr-merged, pr-review-submitted). Net coverage: 4 of 8 RepoEventSubkind
+ * values per Design v1.0 §3.1.1; 3 carved-out (pr-closed,
+ * pr-review-approved, pr-review-comment) per AG-2; 1 unknown intentional
+ * fallback.
  */
 export const REPO_EVENT_HANDLERS: readonly RepoEventHandler[] = [
   COMMIT_PUSHED_HANDLER,
+  PR_OPENED_HANDLER,
+  PR_MERGED_HANDLER,
+  PR_REVIEW_SUBMITTED_HANDLER,
 ];
 
 /**
