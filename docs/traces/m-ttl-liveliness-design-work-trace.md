@@ -31,7 +31,7 @@ If you're picking up cold:
 
 ## In-flight
 
-▶ **PR open + cross-approval coord** — Phase 8 implementation pass (W1-W9) complete; ready for branch push + `gh pr create`; cross-approval per `multi-agent-pr-workflow.md` v1.0.
+▶ **Standing-by for architect-side gates** — Phase 8 mega-PR #167 cross-approval ratified bilaterally on thread-474 (`status: "converged"`; `close_no_action` committed). Architect-side gates next: `gh pr review --approve` + Pass 10 rebuild + runtime verification (Design §6.4) + merge + Phase 9 closing-audit. Engineer surface: respond to architect signal for follow-up commit (e.g., agentPulse-ack hook routing) if surfaced via thread re-open or pulse trigger.
 
 ---
 
@@ -62,6 +62,8 @@ If you're picking up cold:
 - ✅ **W8/9 (commit `e270f88`)** — Watchdog + agent-projection consumer-update — surface component states + escalation diagnostics. agent-projection.ts +18 (4 new fields on AgentProjection) / watchdog.ts +14 (componentSummary in escalation Director notification); tsc clean.
 - ✅ **W9/9 (commit `d05c2b8`)** — Hub-side unit tests — pure helpers + post-bump hooks + transport_heartbeat handler + tier annotation. NEW mission-75-ttl-liveliness.test.ts (+453); 29/29 tests pass; full hub suite 1095 pass / 5 skipped (5 pre-existing skips; 0 regressions).
 - ✅ **Phase 8 implementation pass complete** — 9 commits stacked on architect's branch HEAD `f0c0d4b`; ready for PR open + cross-approval.
+- ✅ **PR #167 opened** — https://github.com/apnex-org/agentic-network/pull/167; base `main`; head `agent-greg/m-ttl-liveliness-design`; body summarises 9-commit substrate-introduction + §3.3 critical invariants + test gates + 4 deferrals + anti-goals.
+- ✅ **Cross-approval thread-474 converged** — architect spec-vs-impl spot-check passed all 4 §3.3 critical invariants; CI 4 vitest failures verified pre-existing per PR #166 baseline (setup-node cache-dependency-path infra issue, NOT test-execution failures); 4 deferrals accepted as Phase 9 closing-audit findings; agentPulse-ack hook flagged as implementation-gap requiring Phase 9 architect-judgement on follow-up-commit-vs-follow-on-idea routing. `close_no_action` committed; thread retires.
 
 ---
 
@@ -87,7 +89,11 @@ Commits 1-2 are sequential (types must exist before hooks). Commit 3 depends on 
 - Total surface delta: 9 commits / 18 source files modified or created across hub/src + packages/network-adapter + scripts/local + hub/test + docs/traces. Net ~1500 lines added (vs Design §7.3 estimate of ~1900; tighter implementation by ~22% — primarily because the agentPulse-ack hook (Design §7.3 +20 lines) and comprehensive pulse-sweeper.test.ts (Design §6.1 +90 lines) are deferred to follow-on per minimal-surface intent + non-blocking criteria).
 - Verification gates run: full hub suite 1095 pass / 5 skipped (no regressions); new mission-75-ttl-liveliness.test.ts 29 pass; network-adapter poll-backstop tests 20 pass; integration tests have 7 pre-existing failures on main (MemoryEngineerRegistry deleted by mission-47 W6) NOT caused by this branch.
 - Pass 10 rebuild deferred to operator/architect side (requires GCP Cloud Build credentials not available in engineer environment). Engineer-side type-check + unit-test gates already passed on PR branch.
-- Ready for PR open + cross-approval per multi-agent-pr-workflow.md.
+- PR #167 opened (base `main`; head `agent-greg/m-ttl-liveliness-design@6a403f0`); cross-approval thread-474 opened with architect (lily) per `multi-agent-pr-workflow.md` v1.0.
+- Architect cross-approved on thread-474 (round-2; `converged: true; intent: implementation_ready`): spec-vs-impl spot-check passed all 4 §3.3 critical invariants; CI 4 vitest failures verified pre-existing per PR #166 baseline (setup-node cache-dependency-path infra issue, NOT test-execution failures) — non-blocking; 4 deferrals accepted as Phase 9 closing-audit findings; agentPulse-ack hook flagged as implementation gap (engineer non-load-bearing preference for follow-up-commit-on-this-branch routing if Pass 10 rebuild lands clean; architect Phase 9 judgement).
+- Engineer mirror-converged on thread-474 (round-3); thread sealed `status: "converged"`; `close_no_action` committed (1 executed/0 failed).
+- Coord retires from thread; moves to architect-side gates: `gh pr review --approve` (per `feedback_thread_vs_github_approval_decoupled.md` branch-protection last-pusher rule) + Pass 10 rebuild + runtime verification gates per Design §6.4 + admin merge per `feedback_pr_merge_is_not_director.md` + Phase 9 closing-audit cycle.
+- Engineer standing-by for follow-up-commit signal (e.g., agentPulse-ack hook implementation, comprehensive deferred test files, Pass 10 rebuild regression fixes) OR post-merge surface trigger.
 
 ---
 
