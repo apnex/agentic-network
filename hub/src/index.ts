@@ -43,6 +43,7 @@ import { registerThreadPolicy } from "./policy/thread-policy.js";
 import { registerMessagePolicy } from "./policy/message-policy.js";
 import { registerBugPolicy } from "./policy/bug-policy.js";
 import { registerPendingActionPolicy } from "./policy/pending-action-policy.js";
+import { registerTransportHeartbeatPolicy } from "./handlers/transport-heartbeat-handler.js";
 import { Watchdog } from "./policy/watchdog.js";
 import { MessageProjectionSweeper } from "./policy/message-projection-sweeper.js";
 import { ScheduledMessageSweeper } from "./policy/scheduled-message-sweeper.js";
@@ -239,6 +240,9 @@ registerProposalPolicy(policyRouter);
 registerThreadPolicy(policyRouter);
 registerBugPolicy(policyRouter);
 registerPendingActionPolicy(policyRouter);
+// mission-75 v1.0 §3.3 — adapter-internal periodic transport-liveness
+// signal; tier="adapter-internal" excludes it from shim's LLM tool catalogue.
+registerTransportHeartbeatPolicy(policyRouter);
 // Mission-51 W6: list_messages + create_message MCP verbs.
 registerMessagePolicy(policyRouter);
 console.log(`[Hub] PolicyRouter initialized with ${policyRouter.size} tool(s): ${policyRouter.getRegisteredTools().join(", ")}`);

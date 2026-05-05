@@ -14,9 +14,33 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { IEngineerRegistry, Selector, IAuditStore } from "./state.js";
+import { AGENT_TOUCH_BYPASS_TOOLS } from "./state.js";
 import { fireWebhook } from "./webhook.js";
 import { emitLegacyNotification } from "./policy/notification-helpers.js";
 import type { Server } from "http";
+
+/**
+ * mission-75 v1.0 §3.3 — predicate for the touchAgent-bypass discipline.
+ * Returns true iff the incoming MCP request body consists ENTIRELY of
+ * tool calls listed in AGENT_TOUCH_BYPASS_TOOLS. Mixed batches (any
+ * non-bypass tool present) flow through the standard touchAgent path.
+ *
+ * Critical invariant: bumping `lastSeenAt` for adapter-internal heartbeat
+ * tools would collapse the cognitive-vs-transport semantic separation —
+ * cognitiveState=alive must require LLM doing meaningful work, not
+ * adapter-side polling.
+ */
+function shouldBypassTouchAgent(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const calls = Array.isArray(body) ? body : [body];
+  if (calls.length === 0) return false;
+  return calls.every((call) => {
+    const c = call as { method?: string; params?: { name?: string } };
+    if (c.method !== "tools/call") return false;
+    const name = c.params?.name;
+    return typeof name === "string" && AGENT_TOUCH_BYPASS_TOOLS.has(name);
+  });
+}
 
 // Mission-56 W1b: soft-cap on SSE Last-Event-ID + cold-start replay.
 // Symmetric with the adapter-side seen-id LRU N=1000 per round-2
@@ -707,9 +731,17 @@ export class HubNetworking {
         if (sessionId && this.transports.has(sessionId)) {
           this.sessionLastActivity.set(sessionId, Date.now());
           // M18: heartbeat the bound Agent entity (rate-limited internally).
-          this.engineerRegistry.touchAgent(sessionId).catch((err) => {
-            this.log(`[Hub] touchAgent failed for ${sessionId.substring(0, 8)}...: ${err}`);
-          });
+          // mission-75 v1.0 §3.3 critical invariant — skip touchAgent when
+          // the incoming call is in AGENT_TOUCH_BYPASS_TOOLS (currently
+          // `transport_heartbeat`). Bumping lastSeenAt for adapter-internal
+          // heartbeat tools would collapse cognitive-vs-transport semantic
+          // separation (cognitiveState=alive must require LLM doing
+          // meaningful work, NOT adapter-side polling).
+          if (!shouldBypassTouchAgent(req.body)) {
+            this.engineerRegistry.touchAgent(sessionId).catch((err) => {
+              this.log(`[Hub] touchAgent failed for ${sessionId.substring(0, 8)}...: ${err}`);
+            });
+          }
           const transport = this.transports.get(sessionId)!;
           await transport.handleRequest(req, res, req.body);
           return;
