@@ -37,6 +37,26 @@ import type { IAgentClient, AgentEvent } from "./agent-client.js";
 const DEFAULT_CADENCE_SECONDS = 300; // 5 minutes
 const MIN_CADENCE_SECONDS = 60; // 1 minute floor — anti-pattern guard
 
+/**
+ * mission-75 (M-TTL-Liveliness-Design) v1.0 §3.3 — second 30s heartbeat
+ * timer alongside the existing 300s message-poll timer. Calls the new
+ * `transport_heartbeat` MCP tool periodically so the Hub's
+ * `lastHeartbeatAt` doesn't age monotonically for idle agents (no
+ * pending actions queued; drain is queue-driven NOT periodic per
+ * round-2 N1 fold).
+ *
+ * Defaults match Hub-side env-ified constants:
+ *   TRANSPORT_HEARTBEAT_INTERVAL_MS = 30_000 (min 10_000)
+ *   TRANSPORT_HEARTBEAT_ENABLED     = true
+ *
+ * Hub remains source-of-truth for these defaults; adapter reads its
+ * own env vars at construction time. Per-agent override (livenessConfig
+ * sub-object) is Hub-side only — adapter uses env defaults.
+ */
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
+const MIN_HEARTBEAT_INTERVAL_MS = 10_000;
+const HEARTBEAT_RETRY_BACKOFF_MS = 5_000;
+
 export interface PollBackstopOptions {
   /**
    * Role this adapter polls for (e.g. "engineer", "architect"). Becomes
@@ -73,6 +93,23 @@ export interface PollBackstopOptions {
    * inline path (preserving seen-id LRU dedup across both paths).
    */
   onPolledMessage: (event: AgentEvent) => void;
+
+  /**
+   * mission-75 v1.0 §3.3 — heartbeat timer interval in milliseconds.
+   * Defaults to `TRANSPORT_HEARTBEAT_INTERVAL_MS` env var (parsed as
+   * integer), falling back to 30_000 (30s). Floored at 10_000 (10s)
+   * per Design v1.0 §3.3 minimum. Tests inject a small value (e.g.
+   * 100ms) to exercise cadence behaviour.
+   */
+  heartbeatIntervalMs?: number;
+
+  /**
+   * mission-75 v1.0 §3.3 — heartbeat timer enable flag. Defaults to
+   * `TRANSPORT_HEARTBEAT_ENABLED` env var (`"false"` disables; any
+   * other value including absence enables). Setting to `false`
+   * cleanly disables the timer (start() skips heartbeat scheduling).
+   */
+  heartbeatEnabled?: boolean;
 }
 
 interface CursorFile {
@@ -183,12 +220,18 @@ function parseListMessagesResult(raw: unknown): ListMessagesBody | null {
  * while not-started is a no-op.
  */
 export class PollBackstop {
-  private readonly opts: Required<Omit<PollBackstopOptions, "cursorFile">> & {
+  private readonly opts: Required<
+    Omit<PollBackstopOptions, "cursorFile" | "heartbeatIntervalMs" | "heartbeatEnabled">
+  > & {
     cursorFile?: string;
+    heartbeatIntervalMs: number;
+    heartbeatEnabled: boolean;
   };
   private timer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
   private resolvedCursorFile: string | null = null;
   private inFlight = false;
+  private heartbeatInFlight = false;
 
   constructor(opts: PollBackstopOptions) {
     const fromEnv = parseInt(
@@ -200,34 +243,61 @@ export class PollBackstop {
       opts.cadenceSeconds ??
         (Number.isFinite(fromEnv) ? fromEnv : DEFAULT_CADENCE_SECONDS),
     );
+    // mission-75 v1.0 §3.3 — heartbeat timer config (separate from
+    // message-poll cadence). Reads TRANSPORT_HEARTBEAT_INTERVAL_MS +
+    // TRANSPORT_HEARTBEAT_ENABLED env vars; explicit options override.
+    const hbFromEnv = Number(process.env.TRANSPORT_HEARTBEAT_INTERVAL_MS);
+    const heartbeatIntervalMs = Math.max(
+      MIN_HEARTBEAT_INTERVAL_MS,
+      opts.heartbeatIntervalMs ??
+        (Number.isFinite(hbFromEnv) ? hbFromEnv : DEFAULT_HEARTBEAT_INTERVAL_MS),
+    );
+    const heartbeatEnabled = opts.heartbeatEnabled ??
+      (process.env.TRANSPORT_HEARTBEAT_ENABLED === "false" ? false : true);
     this.opts = {
       role: opts.role,
       cadenceSeconds: cadence,
       cursorFile: opts.cursorFile,
       log: opts.log ?? (() => {}),
       onPolledMessage: opts.onPolledMessage,
+      heartbeatIntervalMs,
+      heartbeatEnabled,
     };
   }
 
-  /** Start the periodic poll. Idempotent. */
+  /** Start the periodic poll + heartbeat (if enabled). Idempotent. */
   start(getAgent: () => IAgentClient | null): void {
     if (this.timer) return;
     const cadenceMs = this.opts.cadenceSeconds * 1000;
     this.opts.log(
-      `[poll-backstop] starting (role=${this.opts.role}, cadenceS=${this.opts.cadenceSeconds})`,
+      `[poll-backstop] starting (role=${this.opts.role}, cadenceS=${this.opts.cadenceSeconds}, heartbeatMs=${this.opts.heartbeatEnabled ? this.opts.heartbeatIntervalMs : "disabled"})`,
     );
     this.timer = setInterval(() => {
       // Fire-and-forget; tick() handles its own errors.
       void this.tick(getAgent);
     }, cadenceMs);
     if (this.timer.unref) this.timer.unref();
+    // mission-75 v1.0 §3.3 — second timer for transport_heartbeat. Only
+    // started when heartbeatEnabled === true (TRANSPORT_HEARTBEAT_ENABLED
+    // env-disable path; tests opt-out).
+    if (this.opts.heartbeatEnabled) {
+      this.heartbeatTimer = setInterval(() => {
+        void this.tickHeartbeat(getAgent);
+      }, this.opts.heartbeatIntervalMs);
+      if (this.heartbeatTimer.unref) this.heartbeatTimer.unref();
+    }
   }
 
-  /** Stop the periodic poll. Idempotent. */
+  /** Stop the periodic poll + heartbeat. Idempotent. */
   stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = null;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     this.opts.log("[poll-backstop] stopped");
   }
 
@@ -323,6 +393,49 @@ export class PollBackstop {
       }
     } finally {
       this.inFlight = false;
+    }
+  }
+
+  /**
+   * mission-75 v1.0 §3.3 — single transport_heartbeat tick. Lightweight
+   * no-payload; the call itself is the heartbeat. Failure handling per
+   * Design §3.3:
+   *   - retry once with 5s backoff;
+   *   - skip cycle on second failure (next cycle attempts);
+   *   - poll-backstop existing retry semantics for transient blips.
+   *
+   * Reentrant-safe via heartbeatInFlight guard. Exposed for tests
+   * (force-tick on demand).
+   */
+  async tickHeartbeat(getAgent: () => IAgentClient | null): Promise<void> {
+    if (this.heartbeatInFlight) return;
+    this.heartbeatInFlight = true;
+    try {
+      const agent = getAgent();
+      if (!agent || agent.state !== "streaming") return;
+      try {
+        await agent.call("transport_heartbeat", {});
+        return;
+      } catch (firstErr) {
+        this.opts.log(
+          `[poll-backstop] transport_heartbeat failed (1st; retrying in ${HEARTBEAT_RETRY_BACKOFF_MS}ms): ${(firstErr as Error)?.message ?? String(firstErr)}`,
+        );
+      }
+      // Single retry with backoff. If this fails too, skip the cycle —
+      // next cycle (heartbeatIntervalMs from now) will try again.
+      await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_RETRY_BACKOFF_MS));
+      try {
+        // Re-check agent state after the backoff (could have torn down).
+        const agent2 = getAgent();
+        if (!agent2 || agent2.state !== "streaming") return;
+        await agent2.call("transport_heartbeat", {});
+      } catch (secondErr) {
+        this.opts.log(
+          `[poll-backstop] transport_heartbeat failed (2nd; skipping cycle): ${(secondErr as Error)?.message ?? String(secondErr)}`,
+        );
+      }
+    } finally {
+      this.heartbeatInFlight = false;
     }
   }
 }
