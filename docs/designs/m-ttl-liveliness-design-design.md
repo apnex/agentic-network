@@ -306,6 +306,18 @@ PEER_PRESENCE_WINDOW_MS = 60_000 doesn't absorb 300s+ cadence variance. The C2 c
 - **PolicyRouter snapshot test (mission-72 invariant):** sorted-tool-name list updated with new entry; absorbs cleanly per mission-72 pattern (no count assertion to bump)
 - Per-mission permission: implicit (any registered agent can call it for self)
 
+**Handler hook discipline — `transport_heartbeat` MUST bypass `touchAgent` (NEW v0.3; load-bearing for cognitive-vs-transport semantic separation):**
+
+The Hub-side `transport_heartbeat` handler invokes `refreshHeartbeat(agent.id)` to bump `lastHeartbeatAt` ONLY. It MUST NOT invoke `touchAgent(agent.id)` (which would bump `lastSeenAt`). Rationale: if the heartbeat goes through the standard MCP-tool-dispatcher path that calls `touchAgent` on every tool-call entry, `lastSeenAt` gets bumped on every 30s heartbeat → `cognitiveState` becomes effectively `transportState` (loses the load-bearing semantic distinction between "adapter polling" and "LLM doing meaningful work").
+
+**Implementation hook:** Phase 8 implementation requires either:
+- (i) **AGENT_TOUCH_BYPASS_TOOLS allow-list approach:** new constant `AGENT_TOUCH_BYPASS_TOOLS = {"transport_heartbeat"}` consulted by tool-dispatcher entry; tools in this set skip `touchAgent` invocation. Extensible if future heartbeat-class tools are added (e.g., a future `cognitive_pulse_ack` tool may want the inverse — bump `lastSeenAt` only).
+- (ii) **Direct handler bypass:** `transport_heartbeat` handler registered via a code path that never traverses the standard `touchAgent`-invoking dispatcher entry. Less extensible but smaller surgical surface.
+
+Phase 8 architect-recommendation: prefer (i) for extensibility; engineer-substrate judgment at implementation time. **Critical invariant:** `cognitiveState=alive` MUST require a tool-call OTHER than `transport_heartbeat` within PEER_PRESENCE_WINDOW_MS — i.e., LLM doing meaningful work. `transport_heartbeat` adapter-side polling does NOT count as cognitive activity.
+
+**Test coverage:** §6.1 transport_heartbeat tool tests MUST verify: (a) `lastHeartbeatAt` bumped post-call; (b) `lastSeenAt` UNCHANGED post-call (no touchAgent invocation); (c) `cognitiveState` UNCHANGED post-call when no other tool-call activity has occurred.
+
 **Idle-agent semantic clarification (NEW v0.3):**
 
 For idle agents (no active engagement; no tool-calls):
