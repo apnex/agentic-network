@@ -1426,6 +1426,116 @@ export function computeLivenessState(
   return "unresponsive";
 }
 
+// ── mission-75 (M-TTL-Liveliness-Design) v1.0 — TTL/state derivation ──
+
+/**
+ * Per-agent liveness-config resolution with precedence chain:
+ * `agent.livenessConfig.<field>` → env-var read → builtin fallback.
+ *
+ * When `agent` is null/undefined, falls through to env+builtin (used by
+ * pre-fetch hot paths like touchAgent rate-limit where loading the
+ * agent first would defeat the rate-limit's purpose).
+ *
+ * Per Design v1.0 §3.1+§3.2 v1.0 Director Declarative-Primacy fold —
+ * single canonical resolver consumed by hooks + heartbeat handler +
+ * watchdog escalation. Interim under idea-242 Vision (declarative
+ * config-as-entities; env vars deprecate to LivenessConfig entity).
+ */
+export function resolveLivenessConfig<K extends keyof AgentLivenessConfig>(
+  agent: Pick<Agent, "livenessConfig"> | null | undefined,
+  field: K,
+  builtinDefault: NonNullable<AgentLivenessConfig[K]>,
+): NonNullable<AgentLivenessConfig[K]> {
+  const override = agent?.livenessConfig?.[field];
+  if (override !== undefined) {
+    return override as NonNullable<AgentLivenessConfig[K]>;
+  }
+  const envVal = readLivenessConfigEnv(field);
+  if (envVal !== undefined) {
+    return envVal as NonNullable<AgentLivenessConfig[K]>;
+  }
+  return builtinDefault;
+}
+
+/**
+ * Env-var lookup for AgentLivenessConfig fields. Returns undefined when
+ * the env var is unset OR fails to parse — caller falls through to
+ * builtin default. Env-var name == camelCase field upper-snake-cased
+ * (peerPresenceWindowMs → PEER_PRESENCE_WINDOW_MS, etc.) for
+ * deterministic resolution.
+ */
+function readLivenessConfigEnv<K extends keyof AgentLivenessConfig>(
+  field: K,
+): AgentLivenessConfig[K] | undefined {
+  const envName = camelToSnakeUpper(field as string);
+  const raw = process.env[envName];
+  if (raw === undefined) return undefined;
+  if (field === "transportHeartbeatEnabled") {
+    if (raw === "true") return true as AgentLivenessConfig[K];
+    if (raw === "false") return false as AgentLivenessConfig[K];
+    return undefined;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  return n as AgentLivenessConfig[K];
+}
+
+function camelToSnakeUpper(s: string): string {
+  return s.replace(/([A-Z])/g, "_$1").toUpperCase();
+}
+
+/**
+ * Derive a `ComponentState` from a TTL (seconds) + window (ms). Per
+ * Design v1.0 §3.2 — single canonical derivation consumed by both
+ * cognitive (touchAgent post-bump) + transport (refreshHeartbeat
+ * post-bump) recompute hooks.
+ */
+export function deriveStateFromTTL(
+  ttlSeconds: number | null,
+  windowMs: number,
+): ComponentState {
+  if (ttlSeconds === null) return "unknown";
+  return ttlSeconds >= windowMs / 1000 ? "unresponsive" : "alive";
+}
+
+/**
+ * Compute fresh cognitive (cognitiveTTL, cognitiveState) + transport
+ * (transportTTL, transportState) values for an agent given current time.
+ * Pure derivation — caller composes into the OCC put.
+ *
+ * Per Design v1.0 §3.2 — recompute hooks fold into the same write that
+ * bumped the source timestamp (single OCC write, not two per Design F1
+ * write-amp considerations + AG-5 anti-goal).
+ */
+export interface ComponentStateSnapshot {
+  cognitiveTTL: number | null;
+  cognitiveState: ComponentState;
+  transportTTL: number | null;
+  transportState: ComponentState;
+}
+
+export function computeComponentStates(
+  agent: Pick<Agent, "lastSeenAt" | "lastHeartbeatAt" | "livenessConfig">,
+  nowMs: number,
+): ComponentStateSnapshot {
+  const windowMs = resolveLivenessConfig(agent, "peerPresenceWindowMs", PEER_PRESENCE_WINDOW_MS_DEFAULT);
+  const cognitiveTTL = ttlSecondsFromIso(agent.lastSeenAt, nowMs);
+  const transportTTL = ttlSecondsFromIso(agent.lastHeartbeatAt, nowMs);
+  return {
+    cognitiveTTL,
+    cognitiveState: deriveStateFromTTL(cognitiveTTL, windowMs),
+    transportTTL,
+    transportState: deriveStateFromTTL(transportTTL, windowMs),
+  };
+}
+
+function ttlSecondsFromIso(iso: string | null | undefined, nowMs: number): number | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.floor((nowMs - ms) / 1000));
+}
+
 // Mission-56 W5: `Notification` entity + `NotificationRepository` +
 // `INotificationStore` removed. Hub-event-bus → SSE injection flows
 // through the Message store via `emitLegacyNotification` (see

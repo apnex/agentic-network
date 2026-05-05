@@ -69,6 +69,9 @@ import {
   shallowEqualLabels,
   computeLivenessState,
   AGENT_RECENT_ERRORS_CAP,
+  PEER_PRESENCE_WINDOW_MS_DEFAULT,
+  resolveLivenessConfig,
+  computeComponentStates,
 } from "../state.js";
 
 function agentPath(agentId: string): string {
@@ -208,24 +211,25 @@ function applyLivenessRecompute(a: Agent, nowMs: number): Agent {
  * AGENT_TOUCH_MIN_INTERVAL_MS = 30s), making it the right signal for
  * "session is active, please route work here."
  *
- * Window of 60s = AGENT_TOUCH_MIN_INTERVAL_MS (30s rate-limit slack) +
- * one tool-call-budget worth of headroom. Wider than the rate-limit, narrow
- * enough that genuinely-stalled sessions age out within ~one ladder step.
+ * mission-75 v1.0 — window resolved via `resolveLivenessConfig()`
+ * precedence chain (agent.livenessConfig.peerPresenceWindowMs? → env →
+ * builtin 60_000). Per-agent override closes F3 mitigation strategy
+ * structurally per Director Declarative-Primacy framing.
  */
-const PEER_PRESENCE_WINDOW_MS = 60_000;
 
 /** Predicate: is this Agent eligible for `selectAgents` projection?
  *  - archived → no (lifecycle-pruned)
  *  - livenessState === "offline" → no (explicit teardown via markAgentOffline,
  *    or stored offline; sticky per ADR-017)
- *  - lastSeenAt within PEER_PRESENCE_WINDOW_MS → yes (recent tool-call activity)
+ *  - lastSeenAt within resolved peerPresenceWindowMs → yes (recent tool-call)
  *  - else → no (stale; agent has gone quiet) */
 function isPeerPresent(a: Agent, nowMs: number): boolean {
   if (a.archived) return false;
   if (a.livenessState === "offline") return false;
   const lastSeenMs = Date.parse(a.lastSeenAt);
   if (!Number.isFinite(lastSeenMs)) return false;
-  return nowMs - lastSeenMs <= PEER_PRESENCE_WINDOW_MS;
+  const windowMs = resolveLivenessConfig(a, "peerPresenceWindowMs", PEER_PRESENCE_WINDOW_MS_DEFAULT);
+  return nowMs - lastSeenMs <= windowMs;
 }
 
 type GetWithToken = (path: string) => Promise<{ data: Uint8Array; token: string } | null>;
@@ -465,7 +469,7 @@ export class AgentRepository implements IEngineerRegistry {
         payload.advisoryTags ?? agent.advisoryTags,
         payload.clientMetadata,
       );
-      const updated: Agent = {
+      const stamped: Agent = {
         ...agent,
         clientMetadata: payload.clientMetadata,
         advisoryTags: refreshedAdvisoryTags,
@@ -476,6 +480,10 @@ export class AgentRepository implements IEngineerRegistry {
         // INVARIANT (T1): do NOT touch sessionEpoch/currentSessionId/status/
         // livenessState/lastHeartbeatAt. Identity assertion is identity-only.
       };
+      // mission-75 v1.0 §3.2 — recompute component states post-bump (folded
+      // into single OCC write). Cognitive-side bumped here; transport-side
+      // unchanged but recomputed for freshness.
+      const updated: Agent = { ...stamped, ...computeComponentStates(stamped, Date.parse(now)) };
 
       const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
       if (!result.ok) {
@@ -551,7 +559,7 @@ export class AgentRepository implements IEngineerRegistry {
       const restartCount = restartHistoryMs.filter(
         (t) => nowMs - t <= 24 * 60 * 60 * 1000, // AGENT_RESTART_WINDOW_MS
       ).length;
-      const updated: Agent = {
+      const stamped: Agent = {
         ...agent,
         sessionEpoch: agent.sessionEpoch + 1,
         currentSessionId: sessionId,
@@ -566,6 +574,11 @@ export class AgentRepository implements IEngineerRegistry {
         restartHistoryMs,
         restartCount,
       };
+      // mission-75 v1.0 §3.2 — claimSession bumps both lastSeenAt +
+      // lastHeartbeatAt; recompute both component states (folded into the
+      // single OCC write). Per Design §3.1 truth-table this gives
+      // (alive, alive) at session-claim instant.
+      const updated: Agent = { ...stamped, ...computeComponentStates(stamped, nowMs) };
       const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
       if (!result.ok) {
         // OCC lost — retry.
@@ -694,11 +707,16 @@ export class AgentRepository implements IEngineerRegistry {
     if (!existing) return;
     const agent = normalizeAgentShape(decode(existing.data));
     if (agent.currentSessionId !== sessionId) return; // session no longer owns this agent
-    const updated: Agent = {
+    const stamped: Agent = {
       ...agent,
       lastSeenAt: new Date(now).toISOString(),
       status: "online",
     };
+    // mission-75 v1.0 §3.2 — eager-write hook: recompute component states
+    // alongside the lastSeenAt bump (folded into single OCC write per F1
+    // write-amp consideration; AG-5 anti-goal blocks batching this mission).
+    const components = computeComponentStates(stamped, now);
+    const updated: Agent = { ...stamped, ...components };
     const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
     if (!result.ok) return; // racing writer won
     // Mirror: fingerprint-indexed (best-effort).
@@ -713,11 +731,16 @@ export class AgentRepository implements IEngineerRegistry {
     const existing = await this.getWithToken(path);
     if (!existing) return;
     const agent = normalizeAgentShape(decode(existing.data));
-    const updated: Agent = {
+    const nowMs = Date.now();
+    const stamped: Agent = {
       ...agent,
-      lastHeartbeatAt: new Date().toISOString(),
+      lastHeartbeatAt: new Date(nowMs).toISOString(),
       livenessState: "online",
     };
+    // mission-75 v1.0 §3.2 — eager-write hook: recompute component states
+    // alongside the lastHeartbeatAt bump (single OCC write).
+    const components = computeComponentStates(stamped, nowMs);
+    const updated: Agent = { ...stamped, ...components };
     const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
     if (!result.ok) return;
     await this.provider.put(fpPath(agent.fingerprint), encode(updated));
