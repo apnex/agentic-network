@@ -1,6 +1,6 @@
-# M-RepoEventBridge-Handler-Completion — Design v0.2
+# M-RepoEventBridge-Handler-Completion — Design v1.0
 
-**Status:** v0.2 (architect-revised 2026-05-05; engineer round-1 audit folded — 5 findings: 1 CRITICAL (C1 §0.5 enum-size factual + bug-46 scope) + 1 MEDIUM (M1 AG-2 reframe) + 3 MINOR (m1 per-subkind intents / m2 director-skip enumeration / m3 line estimates +30%); 4 PROBE concur; pending engineer round-2 verify per `mission-lifecycle.md` Phase 4 audit cycle)
+**Status:** v1.0 RATIFIED (architect-finalised 2026-05-05; engineer round-1 + round-2 audits folded — round-2 caught 4 fold-incomplete regressions (R1 §2 diagram + R2 §3.1 helper-extraction reference + R3 §3.2 substrate-realistic caveats + R4 §6.1 helper test enumeration); option-(β) v1.0 ratification with R1-R4 landed in this commit per engineer recommendation — 2nd canonical instance of cumulative-fold-regression-class; methodology-fold trigger MET → filed as **idea-247 (M-Audit-Rubric-Cumulative-Fold-Regression-Class)** per mission-73 §3d wait-for-2nd-canonical-instance discipline)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Source idea:** idea-246 (status `triaged` via Director-direct route-(a) skip-direct 2026-05-05)
 **Source bugs:** bug-46 (major; missing-feature; PR-event handler registration gap) + bug-47 (major; identity-resolution; commit-pushed handler gh-login parsing)
@@ -73,7 +73,7 @@ Reading order:
 
 Two distinct gap classes; same mission to close both since they share substrate (translator + handler registry).
 
-### Gap A (bug-46) — handler-registration gap
+### Gap A (bug-46) — handler-registration gap (v1.0 R1 fold — full enum coverage with carve-outs)
 
 ```
 GH event → Bridge.poll → Translator.normalize → Sink (create_message) → Hub message store
@@ -81,17 +81,24 @@ GH event → Bridge.poll → Translator.normalize → Sink (create_message) → 
                                                                      message-policy dispatch
                                                                               ↓
                                                               findRepoEventHandler(subkind)
-                                                                          ↙       ↘
-                                                            ✅ commit-pushed     ❌ pr-opened (no handler)
-                                                                                  ❌ pr-merged (no handler)
-                                                                                  ❌ pr-review-submitted (no handler)
-                                                                                  ❌ unknown (intentional fallback)
-                                                                                       ↓
-                                                                             "skipping (non-fatal)" log
-                                                                             event silently dropped
+                                                                          ↙          ↘
+                                                            ✅ commit-pushed        Per RepoEventSubkind
+                                                            (mission-68 W1)        enum (8 values; v0.2 C1):
+                                                                                      ↓
+                                                                       ❌ pr-opened (no handler) ── this mission
+                                                                       ❌ pr-merged (no handler) ── this mission
+                                                                       ❌ pr-review-submitted (no handler) ── this mission
+                                                                       ❌ pr-closed (no handler) ── CARVED OUT per AG-2
+                                                                       ❌ pr-review-approved (no handler) ── CARVED OUT per AG-2
+                                                                       ❌ pr-review-comment (no handler) ── CARVED OUT per AG-2
+                                                                       ❌ unknown (intentional fallback)
+                                                                                      ↓
+                                                                  "skipping (non-fatal)" log; event silently dropped
+                                                                  (3 in-mission ❌ → ✅ post-PR; 3 CARVED ❌ remain;
+                                                                   1 unknown intentional)
 ```
 
-**Fix:** implement 3 handler files following `commit-pushed-handler.ts` pattern; append to `REPO_EVENT_HANDLERS` array.
+**Fix:** implement 3 handler files (pr-opened / pr-merged / pr-review-submitted) following `commit-pushed-handler.ts` pattern; append to `REPO_EVENT_HANDLERS` array. Mission-coverage: **4 of 8 subkinds** (commit-pushed existing + 3 NEW PR-event handlers); 3 carve-outs with per-subkind rationale per §3.1.1; 1 unknown intentional fallback.
 
 ### Gap B (bug-47) — identity-resolution gap
 
@@ -143,6 +150,21 @@ GH event {actor: {login: "apnex-greg"}} → Translator.extractLogin → ??? → 
    - `engineer` author → emit `target: { role: "architect" }`
    - `architect` author → emit `target: { role: "engineer" }` (symmetric per §3.4; differs from commit-pushed AG-7)
 
+**Helper extraction per v0.2 P1 concur (v1.0 R2 fold — explicit reference):**
+
+Steps 1-5 above implemented in `synthesizePrNotification(inbound, ctx, opts)` helper (NEW file `hub/src/policy/repo-event-pr-handler-helpers.ts` per §7 content map). Per-handler files (`repo-event-pr-{opened,merged,review-submitted}-handler.ts`) are thin wrappers calling the helper with subkind-specific opts:
+
+```typescript
+interface SynthesizePrNotificationOpts {
+  subkind: "pr-opened" | "pr-merged" | "pr-review-submitted";
+  bodyTemplate: (peerRoleVerb: string, payload: PrPayload) => string;
+  payloadExtractor: (raw: unknown) => PrPayload;
+  intentValue: string;  // per-subkind per §3.5 m1 fold
+}
+```
+
+Each thin wrapper provides its subkind-specific opts; helper handles common extract → resolve-role → emit semantics. Engineer reverts to explicit-per-event at preflight if substrate-investigation suggests otherwise (P1 carry-forward).
+
 ### §3.1.1 Mission handler-coverage table (NEW v0.2 per C1 fold)
 
 | Subkind | Translator support | Handler in this mission | §8 AG-2 carve-out rationale |
@@ -182,7 +204,17 @@ GH event {actor: {login: "apnex-greg"}} → Translator.extractLogin → ??? → 
 
 Most likely root cause is option (b) — GH Events API for org-owned repo returns `actor` populated with org-level info for some event types, while user-specific info lives in `payload.head_commit.author` or similar. Fix candidate: use `payload.head_commit.author.username` as primary source; fall back to `actor.login` only if not present.
 
-**Engineer-determined fix.** Architect specifies behavioral requirement; engineer determines mechanism per substrate-investigation findings.
+**Substrate-realistic caveats per round-1 P3 concur (v1.0 R3 fold):**
+
+Engineer round-1 audit surfaced 3 caveats on this fix candidate that warrant explicit substrate-investigation:
+
+1. **Commit-author-vs-pusher distinction:** For PushEvent, `payload.head_commit.author` is the COMMIT author (resolved via local git-config user.email / user.name). The pusher (the user who pushed the commits to the remote) MAY be different from the commit author when commits are authored elsewhere then pushed by different identity. Bug-47 cares about the pusher, not the commit author. If commit-author shape unreliable for our PushEvents, fall through to fallback logic.
+
+2. **Noreply-email-parse fragility:** GitHub-noreply-emailed commits use the pattern `<id>+<username>@users.noreply.github.com`. Parsing this email to extract `<username>` is FRAGILE (depends on noreply format stability) but more reliable than commit-author-name when commits are GitHub-noreply-emailed. Treat as fallback if commit-author shape unreliable.
+
+3. **Events API `payload.sender` shape re-verification:** Bug-44 fix comment notes "Events API has no pusher/sender in payload" (translator.ts:258-260). Worth re-validating — the API may have evolved since bug-44 fix-time. Engineer-substrate-investigation step: query GH Events API directly via curl + observe whether `sender` is populated for our PushEvent shape; if yes, use directly; if no, document the API behavior inline.
+
+**Engineer-determined fix.** Architect specifies behavioral requirement (gh-login MUST match `ois.io/github/login` label format); engineer determines mechanism per substrate-investigation findings + documents raw-API-response inline in PR description per `feedback_pr_branch_base_preflight.md` precedent.
 
 ### §3.3 subkind=unknown investigation
 
@@ -308,6 +340,12 @@ When architect (lily) opens PR / merges / reviews, do we want engineer (greg) no
 - **`hub/test/policy/repo-event-pr-review-submitted-handler.test.ts`** *(NEW)* — analogous structure
 - **`hub/test/policy/repo-event-handlers.test.ts`** *(EXTEND)* — registry assertion: `REPO_EVENT_HANDLERS.length === 4`; each handler subkind matches expected; lookup by subkind returns expected
 - `hub/test/policy/repo-event-author-lookup.test.ts` *(existing; verify still PASS)*
+- **`hub/test/policy/repo-event-pr-handler-helpers.test.ts`** *(NEW; v0.2 P1 concur + v1.0 R4 fold)* — `synthesizePrNotification` helper unit tests:
+  - subkind-vs-bodyTemplate dispatch correctness (3 subkinds × 3 templates rendered correctly)
+  - payloadExtractor application (per-subkind extractor receives raw payload + returns normalized)
+  - intent value pass-through (per-subkind intent reaches MessageDispatch.intent)
+  - symmetric peer-routing logic exercised across opts permutations (engineer→architect; architect→engineer)
+  - Skip-paths (null author-role; "director" author-role) verified at helper level (DRY pattern means handlers don't re-test these)
 
 ### §6.2 Translator tests (bug-47 fix)
 
@@ -438,14 +476,34 @@ When architect (lily) opens PR / merges / reviews, do we want engineer (greg) no
 
 **μ-finding parked:** **enum-size misreporting in §0.5 inventory** — sister-class to mission-225's μ1 cumulative-fold-regression-class. v0.1 inventory enumerated 5 values but didn't validate "5 values" claim against actual translator source (`packages/repo-event-bridge/src/translator.ts:48-57` shows 8 values). Future-discipline candidate: **§0.5 inventory enum-size claims must be `git grep`-validated before commit** per architect-discipline at Design-authoring time. Methodology-fold candidate per mission-73 §3d pattern (parked; not promoted this mission per wait-for-2nd-canonical-instance discipline).
 
-### §11.2 Round-N audit folds (v0.N → v0.N+1)
+### §11.2 Round-2 verify folds (v0.2 → v1.0; greg; thread-475 round-2; 2026-05-05)
 
-(pending engineer round-2 verify)
+**4 fold-incomplete regressions caught (R1-R4); all MEDIUM (non-blocking; non-architectural; doc-internal narrative-section divergence from tabular sections); landed in v1.0 ratification commit per engineer option (β) recommendation.**
 
-### §11.3 Verdict
+| Finding | Class | Architect fold-decision (v1.0) | v1.0 § |
+|---|---|---|---|
+| R1 | §2 Gap A diagram retained v0.1 framing (only 3 PR-events as missing handlers; not reflecting v0.2 reality of 6 PR-event subkinds uncovered = 3 in-mission + 3 carved-out) — diagram-self-documenting completeness gap; §11.1 C1 propagation list omitted §2 (evidence diagram was overlooked) | **FOLDED v1.0** — option (a) per engineer recommendation: diagram updated to show all 6 subkinds with `❌ ... (CARVED OUT per AG-2)` annotation; mission-coverage statement (4 of 8) added below diagram | §2 Gap A |
+| R2 | §3.1 per-handler logic doesn't reference `synthesizePrNotification` helper extraction per P1 concur; §7 content map adds helper file but §3.1 narrative still describes per-handler logic as if implemented inline | **FOLDED v1.0** — added "Helper extraction per v0.2 P1 concur" paragraph referencing helper signature + thin-wrapper pattern; engineer-revert-at-preflight clause carried | §3.1 |
+| R3 | §3.2 architect-recommendation paragraph retains v0.1 framing without v0.2 P3 concur substrate-realistic caveats (commit-author-vs-pusher distinction; noreply-email-parse fragility; Events API `payload.sender` re-verification) | **FOLDED v1.0** — appended "Substrate-realistic caveats per round-1 P3 concur" paragraph capturing all 3 caveats inline | §3.2 |
+| R4 | §6.1 Hub-side test enumeration doesn't list NEW `repo-event-pr-handler-helpers.test.ts` (which §7 content map adds per P1 concur) | **FOLDED v1.0** — added bullet under §6.1: helper unit-test scope (subkind-vs-bodyTemplate dispatch; payloadExtractor application; intent pass-through; symmetric peer-routing; skip-paths at helper level) | §6.1 |
 
-(populated at ratification)
+**μ-finding promotion (v1.0 fold per engineer round-2 recommendation):**
+
+R1-R4 represent the **2nd canonical instance** of the **cumulative-fold-regression-class** μ-finding (1st canonical instance: mission-225 round-2 R1-R5). Per mission-73 §3d wait-for-2nd-canonical-instance discipline, **methodology-fold trigger MET** — pattern eligible for promotion from "parked μ-finding" to formal `multi-agent-pr-workflow.md` audit-rubric §3d step.
+
+**Filed as separate idea — idea-247 (M-Audit-Rubric-Cumulative-Fold-Regression-Class)** — not bundled with this mission per AG-3 (don't bundle with idea-244) + scope-discipline (this mission is bug-46/bug-47 closure; methodology promotion is orthogonal substrate-cleanup-wave class). idea-247 carries the proposed §3d step text + cross-references mission-225 R1-R5 + idea-246 R1-R4 as the 2 canonical instances driving promotion.
+
+### §11.3 Verdict — v1.0 RATIFIED
+
+Mission-246 closes Phase 4 with all bilateral 2-round audit cycle findings folded (9 round-1 + 4 round-2 = 13 findings; 0 BLOCKING at v1.0; 0 carry-forward into Phase 6 preflight).
+
+- **Round-1:** 9 findings (1 CRITICAL + 1 MEDIUM + 3 MINOR + 4 PROBE concur); all 5 substantive folds + 4 PROBE concurs landed in v0.2.
+- **Round-2:** 4 fold-incomplete regressions (R1-R4 MEDIUM); all 4 landed in v1.0 ratification commit per engineer option (β) recommendation; methodology-fold trigger MET → idea-247 filed.
+
+**Phase 6 preflight eligibility: GREEN** — Design v1.0 ready for preflight authoring + Phase 7 Director release-gate.
+
+**Phase 4 Design v1.0 RATIFIED.** Ready for Phase 5 Manifest (mission-create per `mission-lifecycle.md` v1.2 §1).
 
 ---
 
-— Architect: lily / 2026-05-05 (Phase 4 Design v0.2; route-(a) skip-direct per Director directive 2026-05-05; bug-46 + bug-47 paired closure; engineer round-1 audit folded — 5 substantive folds (C1 + M1 + m1 + m2 + m3) + 4 PROBE concurs; pending engineer round-2 verify per `mission-lifecycle.md`)
+— Architect: lily / 2026-05-05 (Phase 4 Design v1.0 RATIFIED; route-(a) skip-direct per Director directive 2026-05-05; bug-46 + bug-47 paired closure; bilateral 2-round audit cycle complete (9 round-1 + 4 round-2 = 13 findings folded; 0 BLOCKING at v1.0); μ-finding cumulative-fold-regression-class promoted to methodology-fold trigger via idea-247; ready for Phase 5 Manifest)
