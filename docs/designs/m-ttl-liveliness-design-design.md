@@ -1,10 +1,11 @@
-# M-TTL-Liveliness-Design — Design v0.3
+# M-TTL-Liveliness-Design — Design v1.0
 
-**Status:** v0.3 (architect-revised 2026-05-05; engineer round-1 + round-2 audits folded — round-2 surfaced 1 NEW finding (N1 substrate-reality gap on C2 fold) + 5 fold-incomplete regressions (R1-R5; matches `feedback_refactor_introduces_regression_during_fold.md` pattern) + 3 §0.5 inventory polish items; full fold summary §11; pending engineer round-3 verify per `mission-lifecycle.md` Phase 4 audit cycle)
+**Status:** v1.0 RATIFIED (architect-finalised 2026-05-05; engineer round-1 + round-2 + round-3 audits folded; greg ratified v0.3 → v1.0 at thread-472 round-10; v1.0 ratification commit folds 5 Director-walk-through items: §3.3 adapter-internal-tool tier discipline + field-name corrections (COG_TTL → COGNITIVE_TTL etc.) + §5.2 STRICT/PERMISSIVE wording fix + env-ification with per-agent `livenessConfig` override (Director Declarative-Primacy framing; idea-242 captures broader Vision) + scripts/local/mod.core extraction (Director CLI consolidation ask; idea-243 captures systemic follow-on). Full multi-round fold summary §11; ready for Phase 6 preflight entry per `mission-lifecycle.md`.)
 **Methodology:** Phase 4 Design per `mission-lifecycle.md` v1.2 §1 (RACI: C=Director / R=Architect+Engineer)
 **Survey envelope:** `docs/surveys/m-ttl-liveliness-design-survey.md` v1.0 (Director-ratified 6 picks; commit `f68e23b`)
 **Source idea:** idea-225 (status `triaged` via route-(a) skip-direct)
-**Companion:** idea-224 / mission-68 (closed; pulse mechanism we consume per AG-1) + idea-216 (sibling concern; review at Phase 4 entry)
+**Companion:** idea-224 / mission-68 (closed; pulse mechanism we consume per AG-1) + idea-216 (sibling concern; reviewed Phase 4 entry — unrelated to this Vision)
+**Downstream Visions surfaced during Director walk-through (2026-05-05):** idea-239 (rolePulse vocabulary consolidation; AG-1/AG-7 follow-on), idea-240 (agnostic-transport Vision; AG-2 follow-on), idea-241 (WebSocket constituent of idea-240), idea-242 (declarative-config-as-entities; mission-225 env-vars + per-agent override are interim under this Vision), idea-243 (systemic mod.core consolidation across operator CLIs)
 **Branch:** `agent-lily/m-ttl-liveliness-design` (Survey envelope committed `f68e23b`; this Design v0.1 + retrofit + Phase 8 implementation cumulative)
 **Director-pre-ratified macro-architecture:** transport heartbeat owned by Adapter Kernel (NOT Transport module); periodic Client→Hub; Hub-side TTL count. Cognitive heartbeat = composite freshness across {pulse-response, tool-call, thread-reply, message-ack}. Hybrid (γ) pulse architecture (mission pulses + per-agent pulse).
 
@@ -21,10 +22,10 @@ Reading order:
 - §3 Component designs:
   - §3.1 Hub schema delta (4 NEW fields; 4-state composite preserved per round-1 C1 fold)
   - §3.2 Hub-side TTL computation (reuse lastSeenAt + lastHeartbeatAt per round-1 C3 fold; eager write-on-event; v0.3 adds applyLivenessRecompute interaction note per round-2 §0.5 polish)
-  - §3.3 Transport heartbeat = poll-backstop 30s heartbeat timer + new `transport_heartbeat` MCP tool (rewritten v0.3 per round-2 N1 fold; partial C2 revert — drain is queue-driven NOT periodic; new tool fills the periodic gap; NOT a new Adapter Kernel timer)
-  - §3.4 PulseSweeper extension (per-agent pulse via NULL mission binding; revised line estimate per round-1 M1 fold)
-  - §3.5 Cognitive-staleness collapses to PEER_PRESENCE_WINDOW_MS (per round-1 M4 fold; 1 invariant not 2)
-  - §3.6 CLI surface refactor (`get-agents.sh`; clarified wording per round-1 MIN2 fold)
+  - §3.3 Transport heartbeat = poll-backstop 30s heartbeat timer + new `transport_heartbeat` MCP tool (rewritten v0.3 per round-2 N1 fold; v1.0 fold adds adapter-internal-tool tier discipline — `transport_heartbeat` MUST be excluded from LLM-exposed tool surface via shim-side `list_tools` filter consuming PolicyRouter `tier: "adapter-internal"` annotation; idea-240 Vision makes this filter structurally unnecessary later)
+  - §3.4 PulseSweeper extension (per-agent pulse via NULL mission binding; revised line estimate per round-1 M1 fold; v1.0 fold notes `pulseConfig` is the canonical pattern that `livenessConfig` per-agent override generalises)
+  - §3.5 Cognitive-staleness collapses to PEER_PRESENCE_WINDOW_MS (per round-1 M4 fold; 1 invariant not 2; v1.0 fold env-tunable + per-agent overridable closes F3 mitigation in this mission per Director Declarative-Primacy framing)
+  - §3.6 CLI surface refactor (`get-agents.sh`; v1.0 fold extracts `buildTable()` into NEW `scripts/local/mod.core` per Director CLI consolidation ask + `feedback_design_phase_lib_extraction_for_substrate_bash.md` discipline)
 - §4 Migration sequencing (big-bang single-PR; tight consumer-update scope per round-1 P2 concur; v0.3 single-PR adds list updated per round-2 R2)
 - §5 Edge cases + failure modes (F1-F5 from envelope architect-flags; v0.3 §5.2 cross-references §3.4 M3 resolution per round-2 R5)
 - §6 Test / verification strategy (v0.3 transport_heartbeat tool tests re-added per N1; verification gates updated per round-2 R3)
@@ -32,34 +33,38 @@ Reading order:
 - §8 Anti-goals (carry from envelope §5)
 - §9 Architect-flags status (each marked addressed/deferred for round-3 verify; v0.3 F4 reframe to component-state truth table per round-2 R4)
 - §10 Cross-references (path corrections per round-1 M2 fold)
-- §11 Round-1 + round-2 audit fold summary (v0.3 — extends mission-67/68/69/71 round-2 verify discipline to multi-round folds; honest accounting of substrate-footprint reduction)
+- §11 Multi-round audit fold summary (v1.0 — round-1 + round-2 + round-3 + v1.0 Director-walk-through ratification folds; honest accounting of substrate-footprint reduction)
 
 ---
 
-## §0.5 Existing infrastructure inventory (NEW v0.2; load-bearing; v0.3 polish — 3 added rows + drain/poll-backstop decisions corrected per N1 substrate-reality fold)
+## §0.5 Existing infrastructure inventory (NEW v0.2; load-bearing; v0.3 polish — 3 added rows + drain/poll-backstop decisions corrected per N1 substrate-reality fold; v1.0 fold — env-ification + per-agent override sub-object + mod.core extraction)
 
-Round-1 audit C1/C2/C3 shared-root-cause: **prior-substrate-elision** in v0.1 — Design didn't reference existing infrastructure that this mission overlaps with. v0.2 grounds explicitly via inventory; reuse-vs-replace decisions become explicit per-primitive. **v0.3 update:** round-2 N1 substrate-reality fold corrects the v0.2 `drain_pending_actions` reuse claim (drain is queue-driven, not periodic — see §3.3); 3 polish rows added per round-2 §0.5 completeness audit.
+Round-1 audit C1/C2/C3 shared-root-cause: **prior-substrate-elision** in v0.1 — Design didn't reference existing infrastructure that this mission overlaps with. v0.2 grounds explicitly via inventory; reuse-vs-replace decisions become explicit per-primitive. **v0.3 update:** round-2 N1 substrate-reality fold corrects the v0.2 `drain_pending_actions` reuse claim (drain is queue-driven, not periodic — see §3.3); 3 polish rows added per round-2 §0.5 completeness audit. **v1.0 update (Director walk-through 2026-05-05):** PEER_PRESENCE_WINDOW_MS + AGENT_TOUCH_MIN_INTERVAL_MS env-ified (defaults match current values; backward-compatible); NEW agent.livenessConfig sub-object for per-agent override (interim under idea-242 Vision); buildTable() extracted from get-agents.sh into NEW scripts/local/mod.core (interim under idea-243 systemic follow-on per `feedback_design_phase_lib_extraction_for_substrate_bash.md` discipline).
 
-| Substrate primitive | Source-of-truth location | Reuse-vs-replace decision (v0.3) |
+| Substrate primitive | Source-of-truth location | Reuse-vs-replace decision (v1.0) |
 |---|---|---|
 | `livenessState` 4-state enum `{online, degraded, unresponsive, offline}` | `hub/src/state.ts:198` | **REUSE UNCHANGED** (per C1 fold option (a)) — ADR-017 FSM untouched; sticky-offline + degraded-as-intermediate semantics preserved |
 | ADR-017 liveness FSM (online → degraded → unresponsive → offline transitions) | (referenced via state.ts) | **REUSE UNCHANGED** — drives Agent-record liveness; load-bearing for routing + escalation |
 | `applyLivenessRecompute()` (existing FSM transition function) | `hub/src/state.ts` (referenced by ADR-017 FSM) | **REUSE UNCHANGED** (NEW polish v0.3) — composite `livenessState` transitions continue via this function; v0.3 component-state hooks (`recomputeCognitiveTTLAndState` + `recomputeTransportTTLAndState`) are PARALLEL to applyLivenessRecompute, NOT replacements; no call-site changes required for FSM transitions |
 | `lastSeenAt` field | `hub/src/state.ts` | **REUSE** as cognitive-touch primitive; v0.2 derives `cognitiveTTL = now - lastSeenAt` |
 | `touchAgent` (updates lastSeenAt; called from tool-call entry) | `hub/src/state.ts` (line ~1245) | **REUSE UNCHANGED** — already wired across all tool-call sites |
-| `AGENT_TOUCH_MIN_INTERVAL_MS = 30_000` (rate-limit on touchAgent) | `hub/src/agent-repository.ts:172` | **REUSE UNCHANGED** — cognitive-cadence sub-window of 60s threshold; aligns with engagement patterns |
+| `AGENT_TOUCH_MIN_INTERVAL_MS = 30_000` (rate-limit on touchAgent) | `hub/src/agent-repository.ts:172` | **ENV-IFY** (v1.0 fold per Director Declarative-Primacy framing) — default = current 30_000 (backward-compatible); env var `AGENT_TOUCH_MIN_INTERVAL_MS`; per-agent override via `agent.livenessConfig.agentTouchMinIntervalMs?` |
 | `lastHeartbeatAt` field | `hub/src/state.ts:250` | **REUSE** as transport-HB primitive; v0.2 derives `transportTTL = now - lastHeartbeatAt` |
 | `drain_pending_actions` MCP tool (existing) | `hub/src/policy/pending-action-policy.ts:42` | **REUSE UNCHANGED** (v0.3 corrects v0.2 claim per N1 fold) — drain remains queue-driven; NOT a transport-HB primitive (queue-driven cadence ≠ periodic). v0.3 introduces NEW `transport_heartbeat` tool driven from poll-backstop substrate per N1 |
 | `refreshHeartbeat(agent.id)` (Hub-side handler called on every drain) | `hub/src/policy/pending-action-policy.ts:42` | **REUSE UNCHANGED** — also invoked by NEW `transport_heartbeat` tool handler in v0.3; drives `lastHeartbeatAt` updates |
 | `isPeerPresent(agent)` helper (existing 60s-window check) | `hub/src/agent-repository.ts:179` | **REUSE UNCHANGED** (NEW polish v0.3) — load-bearing helper for `cognitivelyStale = !isPeerPresent(agent)` collapse per M4 fold; computes `(now - lastSeenAt) < PEER_PRESENCE_WINDOW_MS`; consumers (e.g., orchestrator routing decisions) continue using helper unchanged |
-| `PEER_PRESENCE_WINDOW_MS = 60_000` ("agent active in last 60s" check) | `hub/src/agent-repository.ts:179` | **REUSE AS COGNITIVE-STALE THRESHOLD** (per M4 fold) — `cognitivelyStale = !isPeerPresent(agent)` collapses 60s threshold into existing invariant; net win = 1 invariant not 2 |
+| `PEER_PRESENCE_WINDOW_MS = 60_000` ("agent active in last 60s" check) | `hub/src/agent-repository.ts:179` | **REUSE AS COGNITIVE-STALE THRESHOLD + ENV-IFY** (per M4 fold + v1.0 fold) — `cognitivelyStale = !isPeerPresent(agent)` collapses 60s threshold into existing invariant; net win = 1 invariant not 2. v1.0 env-ifies (default = current 60_000; backward-compatible); env var `PEER_PRESENCE_WINDOW_MS`; per-agent override via `agent.livenessConfig.peerPresenceWindowMs?` — closes F3 mitigation strategy structurally (env tune + per-agent override; no code change needed) |
+| `agent.livenessConfig` sub-object (NEW v1.0 fold) | `hub/src/state.ts` (Agent record schema extension) | **NEW** — optional per-agent override sub-object with optional fields: `peerPresenceWindowMs?`, `agentTouchMinIntervalMs?`, `transportHeartbeatIntervalMs?`, `transportHeartbeatEnabled?`. Analogous shape to existing per-agent `pulseConfig` sub-object (§3.4). Resolution at consumption-site via `resolveLivenessConfig()` helper: agent-override → env var → built-in fallback |
+| `resolveLivenessConfig()` helper (NEW v1.0 fold) | `hub/src/state.ts` (consumption-site helper) | **NEW** — generic accessor for liveness-tuning fields with precedence chain (agent.livenessConfig.X ?? readEnvAs(field) ?? builtinDefault). Single canonical resolution helper consumed by §3.2 hooks + §3.3 heartbeat handler + watchdog escalation logic |
+| `transport_heartbeat` MCP tool tier annotation (NEW v1.0 fold) | `hub/src/policy/router.ts` (registration metadata) | **NEW** — `tier: "adapter-internal"` annotation at PolicyRouter registration; consumed by shim-side `list_tools` filter (excludes adapter-internal tools from LLM-exposed catalogue). Interim solution; idea-240 Vision (agnostic-transport) makes this filter structurally unnecessary |
+| `scripts/local/mod.core` (NEW v1.0 fold) | `scripts/local/mod.core` | **NEW** — sourceable bash module hosting `buildTable()` extracted from get-agents.sh; first canonical instance of the lib-extraction pattern per `feedback_design_phase_lib_extraction_for_substrate_bash.md` discipline; idea-243 Vision is systemic follow-on (migrate all operator CLIs to source mod.core) |
 | Adapter Kernel poll-backstop | `packages/network-adapter/src/kernel/poll-backstop.ts` (DEFAULT_CADENCE_SECONDS = 300) | **EXTEND** (v0.3 corrects v0.2 claim per N1 fold) — existing 300s message-poll timer (calls `list_messages`) UNCHANGED; v0.3 adds NEW 30s heartbeat timer (calls `transport_heartbeat`) alongside; two-timer poll-backstop. NOT a new Adapter Kernel timer |
 | `PULSE_KEYS = ["engineerPulse", "architectPulse"]` | `hub/src/policy/pulse-sweeper.ts` (or related) | **EXTEND CAREFULLY** (per M1 fold) — agentPulse stays SEPARATE from PULSE_KEYS as new constant `AGENT_PULSE_KIND`; cannot join PULSE_KEYS without breaking `mission.pulses[pulseKey]` invariant in 6-file references |
 | `pulse-sweeper.ts` (mission-driven iteration) | `hub/src/policy/pulse-sweeper.ts` (NOT services/) | **EXTEND** with second iteration pass (iterate-agents-not-missions); explicit second pass per M1 fold |
 | `agent-repository.ts` (Agent record persistence + OCC `putIfMatch`) | `hub/src/entities/agent-repository.ts` | **EXTEND** — Agent record gains 4 new fields; OCC handles concurrent-write contention safely (per P4 concur) |
 | `activityState` (existing per mission-62; auto-clamp behaviour) | `hub/src/state.ts` (mission-62 substrate) | **REUSE UNCHANGED** (NEW polish v0.3) — orthogonal to liveness component states; auto-clamp behaviour preserved per mission-62 (`activityState` represents engagement-side concept, distinct from cognitive/transport TTL freshness). KEPT as separate column in CLI per Q6=a; NOT folded into cognitive/transport state |
-| `tpl/agents.jq` (jq projection for agents column rendering) | `scripts/local/tpl/agents.jq` | **EXTEND** — column projection update for COG_TTL + TRANS_TTL; replace LIVENESS_STATE column |
-| `scripts/local/get-agents.sh` (CLI with in-line `buildTable()` function) | `scripts/local/get-agents.sh` | **EXTEND** — column-header update; in-line buildTable preserved (NOT swapping prism.sh; per MIN2 wording-fold) |
+| `tpl/agents.jq` (jq projection for agents column rendering) | `scripts/local/tpl/agents.jq` | **EXTEND** — column projection update for COGNITIVE_TTL + TRANSPORT_TTL (v1.0 field-name correction; full-form deterministic camelCase ↔ SNAKE_CASE round-trip); replace LIVENESS_STATE column |
+| `scripts/local/get-agents.sh` (CLI with in-line `buildTable()` function) | `scripts/local/get-agents.sh` | **EXTEND + REFACTOR** (v1.0 fold) — column-header update; **`buildTable()` extracted to NEW `scripts/local/mod.core`** per Director CLI consolidation ask; get-agents.sh `source mod.core` + invoke extracted function. NOT swapping prism.sh (per MIN2 wording-fold) |
 
 **Discipline going forward:** Phase 4 Design-v0.1 authoring includes §0.5 Existing infrastructure inventory as standard methodology (architect drafts + engineer round-1 verifies completeness). Methodology-fold candidate per mission-73 audit-rubric §3d pattern — sister-class to "memory-tier-to-methodology-tier graduation" + "validator-mechanism-tier-to-methodology-conformance graduation" (mission-74) → "architect-design-prior-substrate-elision" → §3d audit-rubric promotion. Forward-canonical instance: when 2nd substrate-introduction Design surfaces same-class elision, file follow-on idea per the precedent.
 
@@ -139,8 +144,8 @@ Three-layer composition (v0.3 — diagram updated per round-2 R1 to reflect v0.3
 │                                                                          │
 │  get-agents.sh columns refactored:                                       │
 │    REMOVED: LIVENESS_STATE                                               │
-│    ADDED:   COG_TTL  (cognitiveTTL raw seconds)                          │
-│    ADDED:   TRANS_TTL (transportTTL raw seconds)                         │
+│    ADDED:   COGNITIVE_TTL  (cognitiveTTL raw seconds)                    │
+│    ADDED:   TRANSPORT_TTL  (transportTTL raw seconds)                    │
 │    KEPT:    ACTIVITY_STATE (orthogonal concept)                          │
 │                                                                          │
 │  Pipe-friendly numeric output (raw seconds; per Q6=a; in-line buildTable │
@@ -161,7 +166,7 @@ Three-layer composition (v0.3 — diagram updated per round-2 R1 to reflect v0.3
 
 ## §3 Component designs
 
-### §3.1 Hub schema delta (4 NEW fields; 4-state composite preserved per round-1 C1 fold)
+### §3.1 Hub schema delta (4 NEW fields + 1 livenessConfig sub-object per v1.0 fold; 4-state composite preserved per round-1 C1 fold)
 
 **Per Q1=cd maximal-information schema + C1 fold option (a) preserve existing 4-state composite enum.**
 
@@ -176,8 +181,22 @@ Existing `livenessState` field stays UNCHANGED (4-state ADR-017 FSM `{online, de
 | `transportTTL` (NEW) | integer (seconds) | Persisted (eager) | `now - lastHeartbeatAt`; computed at signal-arrival per Q5=a eager strategy | **NEW v0.2** |
 | `cognitiveState` (NEW; renamed from v0.1 `cognitiveLivenessState` per C1 non-conflicting-naming fold) | enum (`alive\|unresponsive\|unknown`) | Persisted | `cognitiveTTL >= PEER_PRESENCE_WINDOW_MS / 1000 ? unresponsive : alive`; `unknown` if `lastSeenAt === null` | **NEW v0.2** |
 | `transportState` (NEW; renamed from v0.1 `transportLivenessState` per C1 non-conflicting-naming fold) | enum (`alive\|unresponsive\|unknown`) | Persisted | `transportTTL >= PEER_PRESENCE_WINDOW_MS / 1000 ? unresponsive : alive`; `unknown` if `lastHeartbeatAt === null` | **NEW v0.2** |
+| `livenessConfig` (NEW v1.0 fold; per-agent override sub-object) | optional `AgentLivenessConfig` sub-object (see schema below) | Persisted (sparse — only populated when overrides are set) | n/a (configuration data, not derived) | **NEW v1.0** |
 
-**Net schema delta:** 4 NEW fields (cognitiveTTL + transportTTL + cognitiveState + transportState). 0 NEW supporting timestamps (reuse existing `lastSeenAt` + `lastHeartbeatAt` per C3 fold). Down from v0.1's 7 NEW fields (5 + 2 supporting).
+**`AgentLivenessConfig` sub-object schema (v1.0 fold; analogous to existing `pulseConfig` per-agent sub-object pattern from §3.4):**
+
+```typescript
+interface AgentLivenessConfig {
+  peerPresenceWindowMs?: number;       // optional override; defaults to env var PEER_PRESENCE_WINDOW_MS
+  agentTouchMinIntervalMs?: number;    // optional override; defaults to env var AGENT_TOUCH_MIN_INTERVAL_MS
+  transportHeartbeatIntervalMs?: number;  // optional override; defaults to env var TRANSPORT_HEARTBEAT_INTERVAL_MS
+  transportHeartbeatEnabled?: boolean;  // optional override; defaults to env var TRANSPORT_HEARTBEAT_ENABLED
+}
+```
+
+All fields optional. Resolution at consumption-site via `resolveLivenessConfig(agent, field, builtinDefault)` helper (precedence: agent.livenessConfig.X → env var → builtin fallback). Per Director Declarative-Primacy framing — interim under idea-242 Vision (declarative config-as-entities; env vars deprecate to declarative LivenessConfig entity later).
+
+**Net schema delta:** 4 NEW fields + 1 NEW sub-object (cognitiveTTL + transportTTL + cognitiveState + transportState + livenessConfig). 0 NEW supporting timestamps (reuse existing `lastSeenAt` + `lastHeartbeatAt` per C3 fold). Down from v0.1's 7 NEW fields (5 + 2 supporting).
 
 **Composite `livenessState` REMAINS in ADR-017 FSM territory (UNTOUCHED):**
 
@@ -248,16 +267,30 @@ function recomputeTransportTTLAndState(agentId: string) {
   await agentRepository.putIfMatch(agent);  // OCC; existing pattern
 }
 
-function deriveStateFromTTL(ttl: number | null): ComponentState {
+function deriveStateFromTTL(agent: Agent, ttl: number | null): ComponentState {
   if (ttl === null) return 'unknown';
   // M4 fold: collapse to existing PEER_PRESENCE_WINDOW_MS = 60_000
-  return ttl >= (PEER_PRESENCE_WINDOW_MS / 1000) ? 'unresponsive' : 'alive';
+  // v1.0 fold: per-agent override via agent.livenessConfig.peerPresenceWindowMs
+  const windowMs = resolveLivenessConfig(agent, 'peerPresenceWindowMs', 60_000);
+  return ttl >= (windowMs / 1000) ? 'unresponsive' : 'alive';
+}
+
+// NEW v1.0 fold: liveness config resolution helper (precedence chain)
+function resolveLivenessConfig<K extends keyof AgentLivenessConfig>(
+  agent: Agent,
+  field: K,
+  builtinDefault: NonNullable<AgentLivenessConfig[K]>
+): NonNullable<AgentLivenessConfig[K]> {
+  return agent.livenessConfig?.[field]
+    ?? readEnvAs(field)
+    ?? builtinDefault;
 }
 ```
 
-**Constants reused (NOT new):**
-- `PEER_PRESENCE_WINDOW_MS = 60_000` (existing; `hub/src/agent-repository.ts:179`) — 60s threshold for `cognitivelyStale` AND `transportStale` (per M4 fold; 1 invariant not 2)
-- `AGENT_TOUCH_MIN_INTERVAL_MS = 30_000` (existing; cognitive-cadence rate-limit; sub-window of 60s threshold; aligns with engagement patterns)
+**Constants — env-ified per v1.0 fold (Director Declarative-Primacy framing; idea-242 captures broader Vision):**
+- `PEER_PRESENCE_WINDOW_MS` env var — default 60_000 (backward-compatible); per-agent override via `agent.livenessConfig.peerPresenceWindowMs?`. Closes F3 mitigation strategy structurally (env tune + per-agent override; no code change required)
+- `AGENT_TOUCH_MIN_INTERVAL_MS` env var — default 30_000 (backward-compatible); per-agent override via `agent.livenessConfig.agentTouchMinIntervalMs?`. Cognitive-cadence rate-limit; sub-window of 60s threshold; aligns with engagement patterns
+- Both existing constants migrate from hardcoded to `resolveLivenessConfig()` reads at consumption-sites (`hub/src/agent-repository.ts:172` + `hub/src/agent-repository.ts:179`)
 
 **Sweeper concern:** TTL values stored on Agent record become stale between writes (since they're computed at write-time). Per F1 audit-flag write-amplification: ~7 writes/min/agent under engagement is acceptable per round-1 P4 concur (AgentRepository OCC `putIfMatch` handles concurrent-write contention safely; storage-provider write-throughput limits not approached at current scale of 2 agents). Reads return cached values which may be up to AGENT_TOUCH_MIN_INTERVAL_MS=30s stale on the cognitive side (negligible relative to 60s threshold).
 
@@ -297,14 +330,26 @@ PEER_PRESENCE_WINDOW_MS = 60_000 doesn't absorb 300s+ cadence variance. The C2 c
 - Message-poll timer cadence: 300s (existing; UNCHANGED; per poll-backstop's existing anti-pattern guard "poll cadence MUST be measurably longer than push latency")
 - Two timers in poll-backstop; clean separation of concerns (cadence-vs-poll vs cadence-vs-heartbeat)
 
-**Configuration env vars (NEW in v0.3):**
-- `TRANSPORT_HEARTBEAT_INTERVAL_MS = 30_000` (default 30s; configurable for test environments; minimum 10_000)
-- `TRANSPORT_HEARTBEAT_ENABLED = true` (default; can disable for test scenarios)
+**Configuration env vars (NEW in v0.3; v1.0 fold extends with per-agent override):**
+- `TRANSPORT_HEARTBEAT_INTERVAL_MS = 30_000` (default 30s; configurable for test environments; minimum 10_000); per-agent override via `agent.livenessConfig.transportHeartbeatIntervalMs?`
+- `TRANSPORT_HEARTBEAT_ENABLED = true` (default; can disable for test scenarios); per-agent override via `agent.livenessConfig.transportHeartbeatEnabled?`
+- v1.0 fold: poll-backstop heartbeat timer reads via `resolveLivenessConfig(agent, 'transportHeartbeatIntervalMs', 30_000)` precedence chain
 
-**MCP tool registration:**
+**MCP tool registration (v1.0 fold adds tier discipline; idea-240 Vision makes structurally unnecessary later):**
 - New tool: `transport_heartbeat` registered on Hub PolicyRouter
 - **PolicyRouter snapshot test (mission-72 invariant):** sorted-tool-name list updated with new entry; absorbs cleanly per mission-72 pattern (no count assertion to bump)
 - Per-mission permission: implicit (any registered agent can call it for self)
+- **NEW v1.0 fold — Tier annotation:** `tier: "adapter-internal"` annotation at PolicyRouter registration. Consumed by shim-side `list_tools` filter (excludes adapter-internal tools from LLM-exposed catalogue). Rationale: `transport_heartbeat` is invoked by adapter substrate code (poll-backstop's 30s timer) — NOT meant for LLM consumption. Without this tier annotation, the tool would appear in the LLM's tool catalogue, which is wrong (LLM has no business calling it; its purpose is mechanical adapter↔Hub liveness signalling).
+
+**Tool-tier separation discipline (NEW v1.0 fold):**
+
+Today's substrate has no formal distinction between adapter-internal MCP tools (e.g., `drain_pending_actions`, `claim_session`, `register_role`, `list_messages`, NEW `transport_heartbeat`) and LLM-callable MCP tools. All Hub-registered tools are returned by `list_tools` and surfaced by shim to the LLM. v1.0 fold introduces:
+- **Hub side:** PolicyRouter registration accepts optional `tier` field (`"adapter-internal" | "llm-callable"`; default `"llm-callable"` for backward-compat — only NEW `transport_heartbeat` carries `"adapter-internal"` in this mission)
+- **Shim side:** `list_tools` consumer filters out `adapter-internal`-tier tools before surfacing to LLM
+- **Hub remains passive about LLM-surface** — Hub annotates; shim filters. Matches today's pull-discovery model
+- **Interim status:** idea-240 Vision (agnostic-transport Adapter↔Hub) makes this filter structurally unnecessary by changing the wire format (adapter-internal tools become RPC methods that have no MCP-tool surface to begin with). v1.0 ships the shim-side filter as the in-mission solution
+
+**Phase 8 implementation hook:** PolicyRouter registration call for `transport_heartbeat` includes `tier: "adapter-internal"`; shim's tool-surface filter (in adapter package) reads tier annotation; `list_tools` response post-filter excludes adapter-internal tools.
 
 **Handler hook discipline — `transport_heartbeat` MUST bypass `touchAgent` (NEW v0.3; load-bearing for cognitive-vs-transport semantic separation):**
 
@@ -436,38 +481,57 @@ The 60s threshold (PEER_PRESENCE_WINDOW_MS = 60_000) means: "no `touchAgent` cal
 
 **Phase 4 Design open question (UNCHANGED from v0.1):** is the 60s threshold load-bearing, OR should we widen to e.g., 120s or 180s for "real" cognitive-stale? Engineer-audit consideration: empirical observation of typical cognitive-signal cadence under engagement (tool-calls during active work tend to fire every 5-30s; long-thinking >60s is rare but possible).
 
-**Architect-recommendation:** ship with PEER_PRESENCE_WINDOW_MS = 60s threshold for v1 (existing invariant; no constant change in this mission); instrument cognitive-stale-fire rate post-deployment; if false-positive rate is high, raise to 120s in follow-on (would mean updating the existing constant — affects ALL existing `isPeerPresent` consumers; broader change than this mission's scope; AG-3 anti-goal protects). NOT blocking this mission's ship.
+**Architect-recommendation (v1.0 fold updates per Director Declarative-Primacy framing):** ship with PEER_PRESENCE_WINDOW_MS = 60s default for v1 — but **env-tunable + per-agent overridable** per v1.0 fold (env var `PEER_PRESENCE_WINDOW_MS` defaults to 60_000; per-agent override via `agent.livenessConfig.peerPresenceWindowMs?`). Closes F3 mitigation strategy structurally **within this mission**: operator can tune the threshold via env (no code change required); specific agents can override at registration time via livenessConfig. Falls under idea-242 Vision (declarative config-as-entities) as interim; broader Vision retires env vars in favor of LivenessConfig declarative entity later.
 
-### §3.6 CLI surface refactor (`scripts/local/get-agents.sh`)
+### §3.6 CLI surface refactor (`scripts/local/get-agents.sh` + NEW `scripts/local/mod.core` extraction per v1.0 fold)
 
-**Per Q6=a raw-seconds + Director CLI mandate.**
+**Per Q6=a raw-seconds + Director CLI mandate + v1.0 Director CLI consolidation ask.**
 
 **Current columns** (mission-66 W4-era):
 ```
 ID  NAME  ROLE  LIVENESS_STATE  ACTIVITY_STATE  SHIM_PLUGIN  ADAPTER  LLM_MODEL  PID  LABELS
 ```
 
-**Target columns** (post-mission-225):
+**Target columns** (post-mission-225 v1.0; full-form names per v1.0 field-name correction for deterministic camelCase ↔ SNAKE_CASE round-trip):
 ```
-ID  NAME  ROLE  COG_TTL  TRANS_TTL  ACTIVITY_STATE  SHIM_PLUGIN  ADAPTER  LLM_MODEL  PID  LABELS
+ID  NAME  ROLE  COGNITIVE_TTL  TRANSPORT_TTL  ACTIVITY_STATE  SHIM_PLUGIN  ADAPTER  LLM_MODEL  PID  LABELS
 ```
 
 **Changes:**
 - REMOVED: `LIVENESS_STATE` column (composite still in schema; just not in CLI default render — composite available via `--show-composite` flag if needed)
-- ADDED: `COG_TTL` column showing `cognitiveTTL` raw seconds
-- ADDED: `TRANS_TTL` column showing `transportTTL` raw seconds
+- ADDED: `COGNITIVE_TTL` column showing `cognitiveTTL` raw seconds (v1.0 fold: full-form name; `cognitiveTTL` ↔ `COGNITIVE_TTL` deterministic round-trip)
+- ADDED: `TRANSPORT_TTL` column showing `transportTTL` raw seconds (v1.0 fold: full-form name; `transportTTL` ↔ `TRANSPORT_TTL` deterministic round-trip)
 - KEPT: `ACTIVITY_STATE` (orthogonal concept; busy/idle indicator)
 
-**Implementation (per MIN2 fold; clarified wording):**
-- `scripts/local/get-agents.sh` updates column header via existing in-line `buildTable()` function (NOT swapping prism.sh into scripts/local/; memory `reference_prism_table_pattern.md` is conceptual reference, not substrate import)
-- `scripts/local/tpl/agents.jq` projection update for new columns (COG_TTL + TRANS_TTL; remove LIVENESS_STATE)
-- In-line `buildTable()` column-header refresh in get-agents.sh
+**Determinism note (v1.0 fold per Director feedback):** with full-form column names, `buildTable()` can derive headers programmatically from camelCase field names via the conversion rule SNAKE_CASE = camelCase split on case boundary, joined with `_`, uppercased. Eliminates manual header-mapping; column projection is mechanical from agent record schema.
 
-**Sample output:**
+**Implementation (per MIN2 fold; clarified wording + v1.0 fold mod.core extraction per Director CLI consolidation ask):**
+- **NEW v1.0 fold — `scripts/local/mod.core` (NEW file)** — sourceable bash module hosting extracted utility functions; first canonical instance of the lib-extraction discipline pattern per `feedback_design_phase_lib_extraction_for_substrate_bash.md`. Mission-225 extracts `buildTable()` only; future operator scripts source mod.core opportunistically OR systemically (idea-243 follow-on)
+- `scripts/local/get-agents.sh` refactored to `source mod.core` + invoke extracted `buildTable()` function. Script-specific logic stays in get-agents.sh: argument parsing, jq template selection (`tpl/agents.jq`), Hub query specifics, output assembly
+- `scripts/local/tpl/agents.jq` projection update for new columns (COGNITIVE_TTL + TRANSPORT_TTL; remove LIVENESS_STATE)
+- Per AG-1 of mission-225 anti-goals: NOT swapping prism.sh into scripts/local/; memory `reference_prism_table_pattern.md` is conceptual reference, not substrate import
+- Per AG-6 of mission-225 anti-goals: NO color/format/auto-detect added to mod.core in this mission (operator-UX surface trigger)
+
+**Sourcing pattern (mod.core):**
+```bash
+#!/usr/bin/env bash
+# scripts/local/get-agents.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/mod.core"
+
+# ... script-specific logic ...
+buildTable "$jq_output"
 ```
-ID                NAME              ROLE       COG_TTL  TRANS_TTL  ACTIVITY_STATE  SHIM_PLUGIN   ADAPTER  ...
-eng-0d2c690e7dd5  eng-0d2c690e7dd5  engineer   12       8          online_idle     claude-1.2.0  2.1.0    ...
-eng-40903c59d19f  eng-40903c59d19f  architect  3        15         online_idle     claude-1.2.0  2.1.0    ...
+
+**mod.core scope (mission-225):**
+- `buildTable()` — extracted from get-agents.sh in-line definition; hosts column-rendering logic
+- (Future utilities migrate opportunistically as scripts are touched; idea-243 captures systemic follow-on for migrating all existing operator CLIs)
+
+**Sample output (v1.0 fold field names):**
+```
+ID                NAME              ROLE       COGNITIVE_TTL  TRANSPORT_TTL  ACTIVITY_STATE  SHIM_PLUGIN   ADAPTER  ...
+eng-0d2c690e7dd5  eng-0d2c690e7dd5  engineer   12             8              online_idle     claude-1.2.0  2.1.0    ...
+eng-40903c59d19f  eng-40903c59d19f  architect  3              15             online_idle     claude-1.2.0  2.1.0    ...
 ```
 
 Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; missing values = unknown". No color/format/auto-detect per AG-6.
@@ -485,10 +549,15 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 - Hub-side TTL/state computation hooks: `recomputeCognitiveTTLAndState()` invoked from existing `touchAgent`; `recomputeTransportTTLAndState()` invoked from existing `refreshHeartbeat`
 - **NEW v0.3 (per round-2 N1 fold):** Hub-side `transport_heartbeat` MCP tool (PolicyRouter registration; lightweight no-payload; handler invokes existing `refreshHeartbeat()`)
 - **NEW v0.3 (per round-2 N1 fold):** Network-adapter substrate — extend `poll-backstop.ts` with second 30s heartbeat timer (calls `transport_heartbeat`); existing 300s message-poll timer UNCHANGED. NOT a new Adapter Kernel timer per N1 directional intent
-- 2 new env vars: `TRANSPORT_HEARTBEAT_INTERVAL_MS` (default 30_000), `TRANSPORT_HEARTBEAT_ENABLED` (default true)
+- 2 new env vars (v0.3): `TRANSPORT_HEARTBEAT_INTERVAL_MS` (default 30_000), `TRANSPORT_HEARTBEAT_ENABLED` (default true)
+- **v1.0 fold — 2 additional env-ifications:** `PEER_PRESENCE_WINDOW_MS` (default 60_000; backward-compatible), `AGENT_TOUCH_MIN_INTERVAL_MS` (default 30_000; backward-compatible). Closes F3 mitigation strategy structurally
+- **v1.0 fold — `agent.livenessConfig` sub-object** (per-agent override for all 4 liveness env vars; analogous to existing `pulseConfig` per-agent pattern; sparse persistence)
+- **v1.0 fold — `resolveLivenessConfig()` helper** at consumption-site (precedence: agent-override → env var → builtin fallback); single canonical resolver consumed by §3.2 hooks + §3.3 heartbeat handler + watchdog escalation
+- **v1.0 fold — `transport_heartbeat` PolicyRouter tier annotation** (`tier: "adapter-internal"`); shim-side `list_tools` filter excludes adapter-internal tier from LLM catalogue surface (interim per idea-240 Vision)
+- **v1.0 fold — `scripts/local/mod.core` extraction** (NEW file; extracted `buildTable()` from get-agents.sh; first canonical lib-extraction instance per `feedback_design_phase_lib_extraction_for_substrate_bash.md`)
 - PulseSweeper `agentPulse` extension: second iteration pass (iterate-agents-not-missions); `AGENT_PULSE_KIND` constant separate from existing `PULSE_KEYS`
 - Suppression rule: skip per-agent pulse when agent is on any active mission (per §3.4)
-- CLI column refactor: `tpl/agents.jq` projection update (REMOVE `LIVENESS_STATE`; ADD `COG_TTL` + `TRANS_TTL`); `get-agents.sh` header refresh; in-line `buildTable()` preserved
+- CLI column refactor: `tpl/agents.jq` projection update (REMOVE `LIVENESS_STATE`; ADD `COGNITIVE_TTL` + `TRANSPORT_TTL` per v1.0 fold full-form names); `get-agents.sh` header refresh; **NEW v1.0 fold** — `buildTable()` extracted to `scripts/local/mod.core` per Director CLI consolidation ask (idea-243 captures systemic follow-on)
 - Watchdog consumer-update: cognitive-vs-transport differentiation in escalation logic (per §4 consumer-update opportunism scope)
 - PolicyRouter snapshot test: sorted-tool-name list updated with new `transport_heartbeat` entry (mission-72 invariant absorbs cleanly; no count assertion to bump)
 
@@ -497,7 +566,7 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 `livenessState` consumed by 6 hub/src files (per greg's substrate scan):
 - `state.ts` — types + isPeerPresent invariant; **STAY ON COMPOSITE** (predicate is "agent reachable for routing"; composite-FSM is correct level)
 - `agent-repository.ts` — Agent record persistence; **STAY ON COMPOSITE** (existing FSM transitions unchanged)
-- `agent-projection.ts` — CLI projection; **UPDATE** per §3.6 column refactor (COG_TTL + TRANS_TTL)
+- `agent-projection.ts` — CLI projection; **UPDATE** per §3.6 column refactor (COGNITIVE_TTL + TRANSPORT_TTL per v1.0 fold)
 - `watchdog.ts` — escalation-on-unresponsive logic; **UPDATE** to use cognitive-vs-transport differentiation (different remediation paths per macro-architecture: cognitive-stale → reset context / Director escalation; transport-stale → reconnect / restart shim)
 - `pending-action-policy.ts` — predicate is "is this Agent reachable for routing"; **STAY ON COMPOSITE**
 - `session-policy.ts` — session-management predicate; **STAY ON COMPOSITE**
@@ -528,7 +597,7 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 - New agent registration with no pulse-config
 - **Suppression-policy strictness** (per round-1 M3 fold): strict-vs-permissive resolution
 
-**§3.4 specifies suppression rule** (v0.3 R5 cross-reference per round-2 audit): `mission.status === 'active' AND (agent.id === mission.assignedEngineerId OR agent.id === mission.architectId)`. Multi-engagement → ANY active mission suppresses (`OR` semantics across missions); completed missions don't suppress; new agents get default pulseConfig at registration. **§3.4 M3 fold resolves to PERMISSIVE strict-vs-permissive policy** — pre-completion missions still suppress; post-completion lingering pulse-configs DO NOT suppress (mission status drives, not stale config). See §3.4 for full rule text + worked-example matrix.
+**§3.4 specifies suppression rule** (v0.3 R5 cross-reference per round-2 audit; v1.0 fold corrects v0.3 STRICT/PERMISSIVE wording bug per greg's round-3 non-blocking flag): `mission.status === 'active' AND (agent.id === mission.assignedEngineerId OR agent.id === mission.architectId)`. Multi-engagement → ANY active mission suppresses (`OR` semantics across missions); completed missions don't suppress; new agents get default pulseConfig at registration. **§3.4 M3 fold resolves to STRICT strict-vs-permissive policy** (any active-mission-engagement suppresses; permissive alternative explicitly rejected per §3.4 rationale). Separately, post-completion missions don't suppress (mission status drives, not stale config) — that's a different invariant from the STRICT/PERMISSIVE axis. See §3.4 for full rule text + rejection rationale.
 
 **Engineer-audit ask (F2):** validate suppression rule semantics per §3.4 (M3-resolved permissive policy); flag any edge cases §3.4 missed.
 
@@ -568,6 +637,8 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 - `hub/test/state.test.ts` — extend `touchAgent()` tests to verify `recomputeCognitiveTTLAndState()` hook fires post-bump (eager-write semantic; 30s rate-limit preserved)
 - **`hub/test/policy/transport-heartbeat-tool.test.ts` (RE-ADDED v0.3 per N1 fold)** — NEW tests for `transport_heartbeat` MCP tool handler: invokes `refreshHeartbeat(agent.id)`; non-registered-agent rejection; rate-limit preserved (delegated to existing handler); registration-required-context propagated correctly
 - **`hub/test/e2e/e2e-foundation.test.ts` snapshot update (RE-ADDED v0.3 per N1 fold)** — sorted-tool-name list snapshot updated for new `transport_heartbeat` entry; mission-72 invariant absorbs cleanly (no count assertion to bump per mission-72 pattern)
+- **`hub/test/state.test.ts` resolveLivenessConfig precedence tests (NEW v1.0 fold)** — verify resolution order: agent.livenessConfig.X → env var → builtin fallback; verify per-field independence (override one field, others fall through to env); verify env-var-only path (no agent override); verify builtin-only path (no env, no agent override)
+- **`hub/test/policy/transport-heartbeat-tool.test.ts` tier-filter tests (EXTENDED v1.0 fold)** — verify PolicyRouter registration of `transport_heartbeat` carries `tier: "adapter-internal"`; verify `list_tools` Hub-side response includes the tool (Hub remains passive); shim-side filter test (in adapter package §6.2) verifies LLM catalogue exclusion
 
 ### §6.2 Network-adapter substrate tests (revised v0.3 — re-add 30s heartbeat-timer tests per N1 fold)
 
@@ -576,7 +647,8 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 
 ### §6.3 CLI smoke-test
 
-- `scripts/local/test-get-agents-cli.sh` — extend OR new; verify columns COG_TTL + TRANS_TTL render correctly via in-line `buildTable()` + `tpl/agents.jq` projection
+- `scripts/local/test-get-agents-cli.sh` — extend OR new; verify columns COGNITIVE_TTL + TRANSPORT_TTL render correctly via mod.core's `buildTable()` + `tpl/agents.jq` projection (v1.0 fold uses full-form column names)
+- **NEW v1.0 fold** — `scripts/local/test-mod.core.sh` — unit tests for extracted `buildTable()` (column alignment edge cases; empty input; mixed-width input; deterministic camelCase→SNAKE_CASE header derivation)
 
 ### §6.4 Verification gates (Phase 6 + Phase 7; v0.3 update per round-2 R3)
 
@@ -587,7 +659,10 @@ Operator visually scans: "low TTLs = alive; high TTLs (>60) = unresponsive; miss
 - **Hub `transport_heartbeat` tool registered** (v0.3 RE-ADDED per N1) — validated via PolicyRouter snapshot test (mission-72 invariant): sorted-tool-name list contains `transport_heartbeat` entry
 - **Network-adapter poll-backstop fires 30s heartbeat timer** (v0.3 RE-ADDED per N1) — validated via §6.2 cadence test + integration smoke-test (verify Hub-side `lastHeartbeatAt` updates within ~30s of adapter startup, idle agent)
 - **Idle-agent transport-state stability** (NEW v0.3 verification per N1) — start adapter, no tool-calls, no pending actions; verify `transportState` remains `alive` for ≥120s (covers 4× heartbeat cycle)
-- `scripts/local/get-agents.sh` outputs COG_TTL + TRANS_TTL columns (LIVENESS_STATE removed)
+- `scripts/local/get-agents.sh` outputs COGNITIVE_TTL + TRANSPORT_TTL columns (LIVENESS_STATE removed; v1.0 fold full-form names; sources `mod.core` for `buildTable()`)
+- *(v1.0 fold)* **`transport_heartbeat` NOT in shim's LLM-exposed tool surface** — validated via shim `list_tools` filter test; tool returns from Hub but is filtered out by tier annotation (`tier: "adapter-internal"`) before LLM catalogue surface
+- *(v1.0 fold)* **Per-agent override resolution test** — `agent.livenessConfig.peerPresenceWindowMs` overrides env default; `agent.livenessConfig.transportHeartbeatIntervalMs` overrides env default; `resolveLivenessConfig()` precedence chain validated (agent override → env var → builtin fallback)
+- *(v1.0 fold)* **`scripts/local/mod.core` sourced cleanly by `get-agents.sh`** — validated via test-mod.core.sh + test-get-agents-cli.sh end-to-end
 
 ---
 
@@ -632,7 +707,9 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 | **`packages/network-adapter/test/kernel/poll-backstop.test.ts` (EXTENDED v0.3 per N1 fold)** | New tests for 30s heartbeat timer cadence + env-var honor + failure handling + idle-agent stability | +80 |
 | `hub/src/state.ts` (watchdog consumer-update per P2 concur tight-scope) | watchdog escalation-on-unresponsive update to use cognitiveState vs transportState differentiation (different remediation paths); idle-vs-stuck disambiguation per §3.3 idle-agent semantic clarification | +25 / -10 |
 | `hub/src/state.ts` (agent-projection consumer-update per P2 concur tight-scope) | agent-projection update for new fields surface in get_agents tool response | +15 |
-| `scripts/local/get-agents.sh` | Column refactor (COG_TTL + TRANS_TTL replace LIVENESS_STATE; in-line buildTable update per MIN2 wording-fold) | +10 / -5 |
+| `scripts/local/get-agents.sh` | Column refactor (COGNITIVE_TTL + TRANSPORT_TTL replace LIVENESS_STATE per v1.0 fold full-form names); refactor to `source mod.core` + invoke extracted `buildTable()` per Director CLI consolidation ask | +5 / -15 |
+| **`scripts/local/mod.core`** *(NEW v1.0 fold)* | Sourceable bash module; extracted `buildTable()`; first canonical instance of lib-extraction discipline per `feedback_design_phase_lib_extraction_for_substrate_bash.md` | +50 |
+| **`scripts/local/test-mod.core.sh`** *(NEW v1.0 fold)* | Unit tests for `buildTable()` (column alignment edges; empty/mixed-width; deterministic header derivation) | +50 |
 | `scripts/local/tpl/agents.jq` | Column projection update | +5 / -3 |
 | `scripts/local/test-get-agents-cli.sh` | Smoke-test extension | +30 |
 | `docs/missions/m-ttl-liveliness-design-preflight.md` | Phase 6 preflight | +120 |
@@ -662,13 +739,13 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 
 ---
 
-## §9 Architect-flags status (v0.3 per round-2 R4 — addressed/deferred markers added; F4 reframe to component-state truth table)
+## §9 Architect-flags status (v1.0 fold — F3 ADDRESSED upgraded per env-tunable + per-agent-overridable mitigation; v0.3 per round-2 R4 — addressed/deferred markers added; F4 reframe to component-state truth table)
 
-| # | Flag | Status (v0.3) | Architect-recommendation |
+| # | Flag | Status (v1.0) | Architect-recommendation |
 |---|---|---|---|
-| F1 (CRITICAL) | Write-amplification at scale — eager TTL writes mean every transport HB + cognitive signal triggers Agent-record write | **DEFERRED** to engineer round-3 verify (P4 round-1 concur — current-scale OCC headroom; AG-5 anti-goal blocks batching this mission; forward-flag for scale-out) | Per §5.1 + §3.2: ship eager-write v1; instrument; AG-5 anti-goal blocks batching. **Engineer-audit ask (round-3):** validate write-amp doesn't trip Agent-record contention or storage-provider throughput at current scale; verify v0.3 N1 fold's 30s heartbeat timer doesn't compound write-amp meaningfully (heartbeat → refreshHeartbeat → recomputeTransportTTLAndState; ~2 writes/min/agent for transport path alone) |
-| F2 (MEDIUM) | Suppression-discipline correctness — agentPulse "skip if any active mission" edge cases (multi-engagement; completed mission lingering config) | **ADDRESSED** in §3.4 (M3 fold strict-rule; permissive explicitly rejected); §5.2 cross-references §3.4 per round-2 R5 | Per §3.4 + §5.2: suppression rule = `mission.status === 'active' AND agent.id IN (engineerId, architectId)`; multi-engagement = ANY active mission suppresses (OR semantics); completed don't (status drives, not stale config). **Engineer-audit ask (round-3):** validate semantics; flag missed edges |
-| F3 (MEDIUM) | Cognitive-stale threshold against engagement patterns — 60s may false-positive on long-thinking-no-tool-call | **ADDRESSED** in §3.5 (M4 fold collapses to existing PEER_PRESENCE_WINDOW_MS = 60s invariant; 1 invariant not 2) | Per §3.5 + §5.3: ship 60s v1; instrument false-positive rate; raise to 120s in follow-on if needed. **Engineer-audit ask (round-3):** validate threshold; suggest empirical observation strategy |
+| F1 (CRITICAL) | Write-amplification at scale — eager TTL writes mean every transport HB + cognitive signal triggers Agent-record write | **CONCURRED + DEFERRED to post-deployment instrumentation** (round-3 ratified by greg; P4 round-1 concur — current-scale OCC headroom; AG-5 anti-goal blocks batching this mission; forward-flag for scale-out) | Per §5.1 + §3.2: ship eager-write v1; instrument; AG-5 anti-goal blocks batching. v0.3 N1 fold's 30s heartbeat timer adds ~2 writes/min/agent for transport path alone — within order-of-magnitude assessment per round-3 verify. Forward-flag: file follow-on idea M-TTL-Eager-Write-Batching when scale-out triggers |
+| F2 (MEDIUM) | Suppression-discipline correctness — agentPulse "skip if any active mission" edge cases (multi-engagement; completed mission lingering config) | **ADDRESSED** in §3.4 (M3 fold STRICT-rule; permissive explicitly rejected); §5.2 cross-references §3.4 per round-2 R5 (v1.0 fold corrects v0.3 PERMISSIVE/STRICT wording bug per greg's round-3 non-blocking flag) | Per §3.4 + §5.2 (v1.0 fold): STRICT suppression rule = `mission.status === 'active' AND agent.id IN (engineerId, architectId)`; multi-engagement = ANY active mission suppresses (OR semantics); completed don't (status drives, not stale config). Engineer-audit ratified round-3 |
+| F3 (MEDIUM) | Cognitive-stale threshold against engagement patterns — 60s may false-positive on long-thinking-no-tool-call | **ADDRESSED + STRUCTURALLY CLOSED** (v1.0 fold per Director Declarative-Primacy framing) — M4 fold collapses to existing PEER_PRESENCE_WINDOW_MS = 60s invariant; v1.0 fold env-ifies (`PEER_PRESENCE_WINDOW_MS` env var; default 60_000) + per-agent override (`agent.livenessConfig.peerPresenceWindowMs?`); operator can tune via env without code change; specific agents can override at registration. Mitigation strategy now in-mission, NOT deferred to follow-on | Per §3.5 + §5.3 (v1.0 fold): ship 60s default; env-tunable + per-agent overridable; instrument false-positive rate post-deployment; tune env if needed (no code change). Falls under idea-242 Vision (declarative config-as-entities) as interim |
 | F4 (MINOR) | **REFRAMED v0.2 + v0.3:** truth table is for component states (`cognitiveState` × `transportState`), NOT composite-`livenessState` derivation rules. v0.3 per round-2 R4 explicitly: composite stays untouched per C1 fold; F4's "composite derivation rules" framing was v0.1-era and no longer applies — there is no composite derivation in v0.2/v0.3 | **ADDRESSED** via reframe to component-state truth table in §3.1 (incl. registration-instant `(unknown, alive)` edge per MIN1); §5.4 reframes per C1 fold | Per §3.1 + §5.4: 7-row truth table for `cognitiveState × transportState` (NOT composite); registration-instant edge documented. **Engineer-audit ask (round-3):** validate §3.1 truth table; confirm registration-instant edge is naturally-pending; flag any edges §3.1 missed |
 | F5 (PROBE) | Per-agent pulse cadence specific number — Survey-deferred | **CONCUR** (P1 round-1) — 60min default; configurable per-agent at registration | Per §3.4 + §5.5: 60min default; configurable per Agent record. **Engineer-audit ask (round-3):** what cadence does engineer-substrate intuition support; 30/60/120min trade-off |
 | F6-NEW (FORWARD-FLAG; v0.3) | **NEW per round-2 N1 fold:** watchdog escalation logic needs engagement-context (active-mission-vs-not) for cognitive-state interpretation. Idle-agent semantic clarification per §3.3: `cognitiveState=unresponsive` is normal for idle agents (no active mission); only pathological under active engagement | **FORWARD-FLAG** for Phase 8 implementation (watchdog consumer-update scope per §4) | Per §3.3 idle-agent semantic clarification: watchdog logic update consumes engagement-context; idle-vs-stuck disambiguation = active-mission-presence + duration threshold |
@@ -679,7 +756,13 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 
 - **Survey envelope:** `docs/surveys/m-ttl-liveliness-design-survey.md` (commit `f68e23b`; Director-ratified 6 picks across 2 rounds)
 - **Source idea:** idea-225 (status: triaged; will flip incorporated at mission-create)
-- **Sister:** idea-224 / mission-68 (closed; pulse mechanism we consume per AG-1) + idea-216 (sibling concern; review at Phase 4 entry)
+- **Sister:** idea-224 / mission-68 (closed; pulse mechanism we consume per AG-1) + idea-216 (sibling concern; reviewed at Phase 4 entry — note-kind primitive surface gap; unrelated to this mission's Vision)
+- **Downstream Visions surfaced during Director walk-through (2026-05-05):**
+  - **idea-239 (M-RolePulse-Vocabulary-Consolidation)** — collapse engineerPulse + architectPulse + agentPulse into rolePulse(role, engagementContext); AG-1 + AG-7 follow-on; substrate-cleanup-wave class
+  - **idea-240 (M-Agnostic-Transport-Adapter-Hub)** — Vision/umbrella; confine MCP to single Shim↔LocalProxy boundary; agnostic wire transport (WebSocket/gRPC) Adapter↔Hub; AG-2 follow-on; structurally retires v1.0 shim-side `transport_heartbeat` tier filter
+  - **idea-241 (M-Transport-WebSocket-Adapter-Hub)** — first canonical constituent of idea-240; replace MCP wire-protocol with WebSocket; preserve operation contracts initially
+  - **idea-242 (M-Declarative-Agentic-Configurations-Hub)** — Vision/umbrella; replace env-vars-as-primary-config with declarative LivenessConfig + WatchdogConfig + ... entities at Hub; v1.0 env-vars + per-agent override are interim under this Vision
+  - **idea-243 (M-Operator-CLI-Consolidation-mod-core)** — systemic follow-on to v1.0 mod.core extraction; migrate all existing operator CLIs to source mod.core
 - **Pre-ratified macro-architecture:** Director-architect bilateral 2026-05-02 (transport HB owner + cognitive heartbeat composition + hybrid γ pulse architecture + cadence relationship + CLI surface mandate)
 - **Validator readiness:** mission-74 PR #166 multi-pick fix (2026-05-04) — enables validate-envelope.sh to accept Q1=cd; Phase 3 finalize-gate clean post-fix
 - **Methodology:** `docs/methodology/idea-survey.md` v1.0 (Survey methodology consumed; not modified per AG-9 carve-out from mission-69) + `docs/methodology/strategic-review.md` (Idea Triage Protocol; route-(a) skip-direct applied) + `docs/methodology/mission-lifecycle.md` v1.2 (Phase 4 Design entry methodology; substrate-introduction class)
@@ -698,11 +781,13 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
   - `reference_prism_table_pattern.md` — informed §3.6 CLI column projection
   - `feedback_schema_rename_requires_state_migration.md` — informed Q2 migration NOT applying (additive not rename)
   - `feedback_compressed_lifecycle_preflight_currency_checks.md` — applies at Phase 6 preflight
-  - `feedback_design_phase_lib_extraction_for_substrate_bash.md` — applies if Adapter Kernel transport-HB warrants lib-extraction at Design phase (testability)
+  - `feedback_design_phase_lib_extraction_for_substrate_bash.md` — **load-bearing for v1.0 fold** mod.core extraction (Director CLI consolidation ask; first canonical instance of the discipline pattern in this codebase)
+  - `feedback_refactor_introduces_regression_during_fold.md` — load-bearing for round-2 R1-R5 fold-incomplete-regression catch + v0.3 → v1.0 fold cycle
+  - `feedback_review_loop_calibration_surface.md` — composes with §11.4 μ-finding parking; this thread generated 3 calibration data points across rounds
 
 ---
 
-## §11 Multi-round audit fold summary (v0.3 — extends mission-67/68/69/71 round-2 verify discipline to multi-round folds)
+## §11 Multi-round audit fold summary (v1.0 — round-1 + round-2 + round-3 + v1.0 Director-walk-through ratification folds; extends mission-67/68/69/71 round-2 verify discipline to multi-round folds)
 
 ### §11.1 Round-1 audit folds (v0.1 → v0.2; greg; thread-472 round-1; 2026-05-05)
 
@@ -742,25 +827,61 @@ Pros: smaller per-PR review burden; sequenced testing. Cons: intermediate states
 | §0.5-polish-2 | `isPeerPresent(agent)` helper (load-bearing for M4 collapse) absent from inventory | **FOLDED v0.3** — added inventory row (REUSE UNCHANGED; consumers continue using helper unchanged) | §0.5 |
 | §0.5-polish-3 | `activityState` auto-clamp behaviour (mission-62) absent from inventory | **FOLDED v0.3** — added inventory row (REUSE UNCHANGED; orthogonal to liveness component states; KEPT as separate CLI column per Q6=a; not folded) | §0.5 |
 
-### §11.3 Honest substrate-footprint accounting (v0.3 per round-2 N1 fold)
+### §11.3 Round-3 verify (v0.3 → v1.0 ratification; greg; thread-472 round-10; 2026-05-05)
+
+Round-3 verified all v0.3 folds clean. Greg ratified v0.3 as v1.0 with one trivial wording bug flagged as non-blocking follow-up:
+- N1 fold mechanism (option (c) poll-backstop 30s heartbeat timer) ✓
+- touchAgent-bypass discipline (commit `99f6e7d`) — exemplary; closes the cognitive-vs-transport semantic separation invariant ✓
+- R1-R5 fold completeness ✓ (with one §5.2 STRICT/PERMISSIVE wording bug — folded into v1.0 ratification commit per Director walk-through)
+- §0.5 polish 3 added rows + drain/poll-backstop corrections ✓
+- §11 multi-round summary + honest substrate-footprint accounting ✓
+- μ-finding parked correctly per mission-73 §3d wait-for-2nd-canonical-instance discipline ✓
+
+Thread-472 hit round_limit (10/10) at greg's ratification reply but converged substantively (`converged: true; intent: implementation_ready`). Bilateral Phase 4 audit cycle complete.
+
+### §11.4 v1.0 Director-walk-through ratification folds (lily ↔ Director; Phase 4 walk-through; 2026-05-05)
+
+Director walk-through of ratified v0.3 surfaced 5 substantive items folded into the v1.0 ratification commit:
+
+| Item | Class | Architect fold-decision (v1.0) | v1.0 § |
+|---|---|---|---|
+| §3.3 adapter-internal-tool tier discipline | NEW (architectural; tool-tier-separation surface gap) | **FOLDED v1.0** — `transport_heartbeat` PolicyRouter registration carries `tier: "adapter-internal"`; shim-side `list_tools` filter excludes adapter-internal tier from LLM catalogue. Hub remains passive (annotates only); shim is active filter. Interim solution; idea-240 Vision (agnostic-transport) makes structurally unnecessary later | §3.3 + §6.1 + §6.4 + §0.5 + §10 |
+| Field-name corrections (COG_TTL → COGNITIVE_TTL etc.) | NEW (Director feedback per CLI walk-through; deterministic camelCase ↔ SNAKE_CASE round-trip) | **FOLDED v1.0** — full-form names throughout (§2 diagram, §3.6, §4, §6, §7.3); enables `buildTable()` to derive headers programmatically from camelCase field names | §2 + §3.6 + §4 + §6 + §7.3 |
+| §5.2 STRICT/PERMISSIVE wording fix | TRIVIAL (greg round-3 non-blocking flag) | **FOLDED v1.0** — corrects v0.3's §5.2 paraphrase that incorrectly said PERMISSIVE; §3.4's actual rule is STRICT (any active-mission-engagement suppresses; permissive explicitly rejected) | §5.2 |
+| Env-ification + per-agent override (Director Declarative-Primacy framing) | NEW (architectural; closes F3 mitigation strategy structurally) | **FOLDED v1.0** — env-ify PEER_PRESENCE_WINDOW_MS + AGENT_TOUCH_MIN_INTERVAL_MS (defaults match current; backward-compatible); NEW `agent.livenessConfig` sub-object for per-agent override (analogous to existing `pulseConfig` pattern); NEW `resolveLivenessConfig()` helper at consumption-site (precedence: agent → env → builtin). Interim under idea-242 Vision (declarative config-as-entities) | §3.1 + §3.2 + §3.3 + §3.5 + §4 + §6.1 + §6.4 + §7.3 + §9 (F3 status DEFERRED → ADDRESSED) + §0.5 |
+| `scripts/local/mod.core` extraction (Director CLI consolidation ask) | NEW (architectural; first canonical lib-extraction instance per `feedback_design_phase_lib_extraction_for_substrate_bash.md` discipline) | **FOLDED v1.0** — extract `buildTable()` from get-agents.sh into NEW `scripts/local/mod.core` sourceable module; refactor get-agents.sh to source mod.core; NEW `scripts/local/test-mod.core.sh` unit tests. Mission-225 establishes the pattern; idea-243 captures systemic follow-on (migrate all operator CLIs) | §3.6 + §6.3 + §7.3 + §0.5 |
+
+**Five Director-surfaced ideas filed during walk-through (downstream Vision capture):**
+- idea-239 (rolePulse vocabulary consolidation) — substrate-cleanup-wave
+- idea-240 (agnostic-transport Vision) — Vision/umbrella
+- idea-241 (WebSocket transport) — substrate-introduction (constituent of idea-240)
+- idea-242 (declarative agentic configurations) — Vision/umbrella
+- idea-243 (mod.core CLI consolidation) — substrate-cleanup-wave
+
+### §11.5 Honest substrate-footprint accounting (v1.0 — extends v0.3 per N1 fold; v1.0 fold adds env-ification + per-agent override + tier annotation + mod.core)
 
 | Version | Net-new substrate items | Reduction vs v0.1 | Honest framing |
 |---|---|---|---|
 | v0.1 | 5 fields + 2 supporting timestamps + 1 new MCP tool = **8** | (baseline) | Baseline |
-| v0.2 | 4 fields + 0 supporting + 0 new MCP tools = **4** | **claimed 50%** | **INCORRECT claim** — drain isn't periodic; v0.2 didn't deliver periodic transport-HB; "reuse existing" was substrate-reality gap |
-| v0.3 | 4 fields + 0 supporting + 1 new MCP tool (`transport_heartbeat` via poll-backstop substrate; NOT new Adapter Kernel timer) = **5** | **honest 38%** | Honest endpoint per round-2 N1 fold; periodic gap closed; C2 directional intent preserved |
+| v0.2 | 4 fields + 0 supporting + 0 new MCP tools = **4** | claimed 50% | **INCORRECT claim** — drain isn't periodic; v0.2 didn't deliver periodic transport-HB; "reuse existing" was substrate-reality gap |
+| v0.3 | 4 fields + 0 supporting + 1 new MCP tool (`transport_heartbeat` via poll-backstop substrate; NOT new Adapter Kernel timer) = **5** | honest 38% | Round-2 N1 fold endpoint; periodic gap closed; C2 directional intent preserved |
+| **v1.0** | 4 fields + 1 sub-object (livenessConfig) + 0 supporting + 1 new MCP tool + 1 helper (resolveLivenessConfig) + 1 tier annotation (transport_heartbeat tier) + 1 module file (mod.core) = **8** | **honest 0% net** vs v0.1 (same item count; vastly different shape) | v1.0 fold expands substrate to deliver Declarative-Primacy alignment + adapter-internal-tool tier discipline + lib-extraction discipline. Item count returns to v0.1 baseline but the items are RIGHT this time (declarative config sub-object instead of supporting timestamps; tier annotation instead of separate filter; sourceable module instead of in-line code). Substrate-quality > substrate-count |
 
-### §11.4 μ-finding (parked; sister-class to mission-71 μ7-impl4)
+### §11.6 μ-findings (parked; sister-class to mission-71 μ7-impl4)
 
 **μ1-cumulative-fold-regression-class:** R1-R5 represent a sister-class to mission-71 μ7-impl4. v0.2 architectural folds (C1+C2+C3) were correct in directional intent + tabular (§0.5 + §3.1 + §3.3 + §3.5) sections, but doc-internal sections written before the folds (§2 diagram, §4 PR-list, §5.2 cross-refs, §6.4 gates, §9 flags) retained pre-fold framing — fold-incomplete regression class. Round-2 verify is the natural catch-net (per `feedback_refactor_introduces_regression_during_fold.md`). **Diagnostic question for future folds:** "When I introduce architectural reshaping in tabular section X, which doc-internal narrative sections still reference the pre-fold framing?" Architect-discipline + Phase-4 audit-rubric §3d candidate (parked; not promoted to methodology-fold this mission per mission-73 §3d pattern — wait for 2nd canonical instance).
 
-### §11.5 Verdict
+**μ2-design-walkthrough-as-calibration-surface (NEW v1.0 fold):** Director walk-through of ratified v0.3 surfaced 5 substantive folds (3 NEW architectural items + 1 trivial wording + Director's CLI consolidation ask) PLUS 5 downstream Vision/follow-on ideas. The walk-through pattern composes with `feedback_review_loop_calibration_surface.md` — Director-walkthrough-as-design-review surfaces architectural-tension-signals that bilateral round-1+round-2+round-3 audit cycle didn't catch (because greg's engineer-RACI doesn't typically reach into LLM/shim tool-surface boundaries OR Director's tele-alignment framing on Declarative-Primacy). **Diagnostic question for future Phase 4 walkthroughs:** "What architectural-tension-signals did Director surface that engineer-RACI structurally couldn't?" Methodology-fold candidate per mission-73 §3d pattern (parked; not promoted this mission per wait-for-2nd-canonical-instance discipline).
 
-- **Round-1:** all 3 CRITICALs resolved + 4/4 MEDIUMs folded + 2/2 MINORs folded + 4/4 PROBEs concur. v0.2 ready for round-2 verify (delivered).
-- **Round-2:** 1 NEW finding folded (N1 substrate-reality gap on C2 fold) + 5 fold-incomplete regressions folded (R1-R5) + 3 §0.5 polish items folded. v0.3 ready for round-3 verify on thread-472.
+### §11.7 Verdict — v1.0 RATIFIED
 
-Round-3 verify expectation: greg confirms N1 fold mechanism (option (c) poll-backstop 30s heartbeat timer) + R1-R5 doc-internal corrections + §0.5 polish + honest substrate-footprint accounting → if no new findings → ratify v0.3 as v1.0 → Phase 6 preflight entry.
+- **Round-1:** all 3 CRITICALs resolved + 4/4 MEDIUMs folded + 2/2 MINORs folded + 4/4 PROBEs concur. v0.2 delivered.
+- **Round-2:** 1 NEW (N1 substrate-reality gap) + 5 fold-incomplete regressions (R1-R5) + 3 §0.5 polish items folded. v0.3 delivered.
+- **Round-3:** greg ratified v0.3 as v1.0 at thread-472 round-10 (`converged: true; intent: implementation_ready`); 1 trivial wording bug flagged as non-blocking → folded into v1.0 ratification commit.
+- **v1.0 Director walk-through:** 5 substantive folds (§3.3 tier discipline + field-name corrections + §5.2 STRICT/PERMISSIVE + env-ification with per-agent override + mod.core extraction) + 5 downstream Vision/follow-on ideas filed (idea-239/240/241/242/243).
+
+**Mission-225 Phase 4 Design v1.0 RATIFIED. Ready for Phase 6 preflight entry per `mission-lifecycle.md`.**
 
 ---
 
-— Architect: lily / 2026-05-05 (Phase 4 Design v0.3; engineer round-1 + round-2 audits folded — round-2 surfaced 1 NEW (N1 substrate-reality gap) + 5 fold-incomplete regressions (R1-R5) + 3 §0.5 polish items; pending engineer round-3 verify per `mission-lifecycle.md` Phase 4 audit cycle)
+— Architect: lily / 2026-05-05 (Phase 4 Design v1.0 RATIFIED; engineer round-1 + round-2 + round-3 audits folded clean per bilateral audit cycle; Director walk-through 2026-05-05 added 5 v1.0 ratification folds + filed 5 downstream Vision/follow-on ideas; ready for Phase 6 preflight entry)
