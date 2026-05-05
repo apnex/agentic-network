@@ -168,12 +168,23 @@ function dispatchPullRequestReview(
   payload: Record<string, unknown> | undefined,
 ): RepoEventSubkind {
   if (!payload) return "unknown";
-  if (payload.action !== "submitted") return "unknown";
+  // mission-76 W1 (bug-46 closure substrate-investigation finding):
+  // Events API uses action="created" for new review submissions; webhook
+  // delivery uses action="submitted". Both are equivalent — same shape
+  // as bug-44's PushEvent pusher-vs-actor API-vs-webhook mismatch.
+  // Action="dismissed" (review withdrawn after-the-fact) + action="updated"
+  // (review-edit; not new-review-event) continue to route to `unknown`
+  // per architect-judgement: dismissed-review notifications would be
+  // noise (operator already saw original review); updated-review is
+  // review-edit not new-review-event.
+  if (payload.action !== "submitted" && payload.action !== "created") {
+    return "unknown";
+  }
   const review = isRecord(payload.review) ? payload.review : undefined;
   const state = review?.state;
   if (state === "approved") return "pr-review-approved";
   if (state === "commented") return "pr-review-comment";
-  // `changes_requested` and any other submitted state.
+  // `changes_requested` and any other submitted/created state.
   return "pr-review-submitted";
 }
 
