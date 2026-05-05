@@ -121,12 +121,24 @@ export class Watchdog {
       if (agent) {
         await this.stores.engineerRegistry.setLivenessState(agent.id, "unresponsive");
       }
+      // mission-75 v1.0 §3.3 — surface cognitive-vs-transport component
+      // states in the escalation details so operator/Director can
+      // disambiguate idle (transport=alive, cognitive=unresponsive,
+      // no-active-mission) from stuck (active engagement; both stale).
+      // Different remediation paths per macro-architecture: cognitive-
+      // stale + active-mission → reset context / Director escalation;
+      // transport-stale → reconnect / restart shim. Per Design §3.3
+      // F6-NEW forward-flag — watchdog escalation logic update consumes
+      // engagement-context for cognitive-state interpretation.
+      const componentSummary = agent
+        ? ` Component states: cognitiveState=${agent.cognitiveState} (TTL=${agent.cognitiveTTL ?? "null"}s), transportState=${agent.transportState} (TTL=${agent.transportTTL ?? "null"}s).`
+        : "";
       await emitDirectorNotification(this.stores.message, {
         severity: "critical",
         source: "queue_item_escalated",
         sourceRef: item.id,
         title: `Agent ${item.targetAgentId} unresponsive — ${item.dispatchType} on ${item.entityRef}`,
-        details: `Queue item ${item.id} (dispatchType=${item.dispatchType}, entityRef=${item.entityRef}) escalated after 3 deadline misses. Target agent ${item.targetAgentId} is marked unresponsive. Manual intervention required.`,
+        details: `Queue item ${item.id} (dispatchType=${item.dispatchType}, entityRef=${item.entityRef}) escalated after 3 deadline misses. Target agent ${item.targetAgentId} is marked unresponsive. Manual intervention required.${componentSummary}`,
       });
       await this.stores.audit.logEntry(
         "hub",
