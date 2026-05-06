@@ -1589,7 +1589,7 @@ calibrations:
     class: methodology
     title: "Deferred-runtime-gate-becomes-silent-defect-surface — Phase 6 verification §6.4 deferral pattern produces post-substrate runtime-gap bugs (7 canonical instances)"
     origin: post-mission-76-bug-49-cycle
-    surfaced_at: bug-49 (2026-05-05) → bug-50 → bug-51 (mission-76); bug-52 → bug-53 → bug-54 → bug-55 (mission-225)
+    surfaced_at: bug-49 (2026-05-05) → bug-50 → bug-51 (mission-76); bug-52 → bug-53 → bug-54 → bug-55 → bug-56 (mission-225 + post-bug-55 cascade)
     status: open
     closure_mechanism: |
       Architectural-pathology pattern. When mission Phase 6 preflight verification
@@ -1599,7 +1599,7 @@ calibrations:
       manifest as silent defect surfaces only discoverable via prod-audit
       (Director-driven or architect-side dogfood).
 
-      SEVEN canonical instances surfaced 2026-05-05 → 2026-05-06:
+      EIGHT canonical instances surfaced 2026-05-05 → 2026-05-06:
       1. bug-49 — mission-76 W1 PR-event handlers ship dormant on live events
         (Events-API author-extraction null silently skips)
       2. bug-50 — mission-76 sibling defect (type-shape-mismatch + Events-API null
@@ -1610,6 +1610,23 @@ calibrations:
       6. bug-54 — mission-225 TTL projection serves stored-snapshot vs live-compute
       7. bug-55 — mission-225 cognitive TTL leak (transport-tier traffic bumps
         cognitive-tier presence; gate-narrowness-vs-boundary-breadth instance)
+      8. bug-56 — post-bug-55 dispatch regression (selectAgents using cognitive-
+        tier isPeerPresent for routing eligibility; idle-but-online agents
+        excluded from dispatch). **BLAST RADIUS** (per greg's audit on thread-488):
+        bug-56 affected ALL agentId-targeted Hub-internal dispatches routing
+        through selectAgents — bilateral thread_messages + system-author-targeted
+        (pr-opened/merged/review/commit-pushed notifications) + agent_state_changed.
+        Substrate evidence that §6.4 verification gates need broader scope when
+        fixes touch shared infrastructure layers — bug-55 closing test verified
+        the cognitive-drift surface but missed the routing-layer downstream
+        consequence.
+
+      idea-252 §4 (loud-error on zero-match dispatch; SHIPPED PR #186 a1d66ef5)
+      structurally prevents bug-56-class silent-dispatch-failures at the API
+      boundary for explicit-recipient operations. This closes the operationally-
+      critical surface but does NOT replace the broader §6.4 promotion need
+      (selector-based notifications retain warning-only semantic; dispatcher-
+      layer broader gaps remain caught only by deferred §6.4 if not promoted).
 
       Diagnostic signature: substrate ships unit-test-green; host wiring / runtime
       path / Events-API-shape divergence / Director-stated-semantic-vs-implementation-
@@ -1637,10 +1654,11 @@ calibrations:
         instances exceeds threshold by 6x
 
       Methodology promotion of §6.4 to "required-before-Phase-9-closing-audit" is
-      EMPIRICALLY OVERDUE at 7 instances. Proposal next strategic review.
+      EMPIRICALLY OVERDUE at 8 instances. Proposal next strategic review.
 
       Architect-Director ratification: Director directive 2026-05-06 "File the
-      calibrations" + reaffirmation post bug-55 closure.
+      calibrations" + reaffirmation post bug-55 closure + bug-56 reinforcement
+      with broader-scope blast-radius datum.
     pattern_membership:
       - methodology-bypass-becomes-substrate-defect-amplification-loop
       - review-loop-as-calibration-surface
@@ -1774,12 +1792,22 @@ calibrations:
       agentId-keyed surface audit + diagnostic improvement) — idea-252 §4
       operationalizes mechanism (b).
 
+      **CLOSURE (2026-05-06): idea-252 §4 SHIPPED via PR #186 (a1d66ef5).**
+      Mechanism (b) structurally implemented: API-level strict rejection on
+      explicit-recipient ops + dispatch-level zero-match warning. Single
+      `recipient-resolver.ts` helper enforces consistency across thread-policy +
+      message-policy + migrate_agent_queue surfaces. Bug-56-prevention
+      regression test pinned. Class-recurrence structurally prevented at API
+      boundary.
+
       Architect-Director ratification: Director directive 2026-05-06 "Confirmed.
       Approved" post bug-55 closure.
+    closure_pr: 186
     cross_refs:
       - feedback_schema_rename_requires_state_migration.md
-      - idea-252 (name-based dispatch + diagnostic improvement)
+      - idea-252 (name-based dispatch + diagnostic improvement; SHIPPED PR #186 a1d66ef5)
       - bug-55 (sister investigation cycle that surfaced this in thread-485)
+      - hub/src/entities/recipient-resolver.ts (canonical resolver post-closure)
     tele_alignment:
       - tele-6
       - tele-7
@@ -1855,6 +1883,74 @@ calibrations:
     tele_alignment:
       - tele-6
       - tele-3
+
+  - id: 66
+    class: methodology
+    title: "Director-bridged-engineer-approval — substrate-comms-outage fallback discipline (PR-approval relay during bilateral-thread-comms breakdown)"
+    origin: post-bug-56-thread-485-P0-cycle
+    surfaced_at: PR #185 + PR #184 cross-approval during bug-56 outage (2026-05-06)
+    status: open
+    closure_mechanism: |
+      Surfaced live: bug-56 dispatch regression (selectAgents using cognitive-tier
+      isPeerPresent for routing eligibility) silently dropped ALL agentId-targeted
+      Hub dispatches in the ~35min window between PR #183 merge (1464a11a) and
+      bug-56 fix merge (c635db9). During the outage, architect (lily) needed
+      engineer-side cross-approval on PR #185 (the bug-56 hot-patch) + PR #184
+      (calibrations doc-only) for branch-protection unblock — but bilateral
+      thread comms (the architect's normal channel for cross-approval ask) were
+      broken by the very bug being fixed.
+
+      Director relayed the cross-approval ask directly to engineer's session
+      (verbal/UI bridge through Director's terminal); engineer (greg) read the
+      diffs + posted `gh pr review --approve` on both PRs at 06:14:23Z + 06:14:25Z.
+      Architect then admin-merged at c635db93. Cross-approval discipline
+      preserved; merge authority stayed architect-side.
+
+      Pattern: when bilateral thread comms break due to substrate bug, the
+      structurally-correct fallback is Director-relayed APPROVAL-comms (NOT
+      Director-direct-merge). Director becomes a bridge for the comms-outage
+      duration; merge mechanics + RACI stay unchanged.
+
+      Diagnostic signature: substrate-bug breaks bilateral-thread-comms surface;
+      architect needs engineer cross-approval on a PR; architect cannot reach
+      engineer via threads; Director is in a position to relay. Director-bridge
+      preserves discipline: Director DOES NOT merge (per
+      feedback_pr_merge_is_not_director.md); engineer reviews + approves via
+      gh CLI; architect retains admin-merge authority.
+
+      Tele alignment:
+      - tele-7 (Resilient Agentic Operations) — substrate-outage-recovery path
+        defined; doesn't require breaking RACI under pressure
+      - tele-2 (Frictionless Agentic Collaboration) — Director-bridge enables
+        critical work to continue during outage without protocol-violations
+
+      Closure path:
+      (a) PROCEDURAL — feedback memory entry: "when bilateral thread comms
+        break due to substrate bug, request Director-bridge for approval-comms
+        relay; preserve architect-merge-authority discipline"
+      (b) STRUCTURAL — none needed; pattern is procedural-only. The structural
+        fix for the underlying class (silent-dispatch-failures during substrate
+        outages) is idea-252 §4 (loud-error on zero-match dispatch) which
+        prevents the comms-outage from happening silently in the first place
+
+      Composes-with: calibration #62 (deferred-runtime-gate-becomes-silent-
+      defect-surface — bug-56 was the 8th instance), calibration #64 (stale-
+      agentId-architectural-trap — same outage class), feedback_pr_merge_is_
+      not_director.md (RACI preservation during emergency).
+
+      Architect-Director ratification: Director directive 2026-05-06 implicit
+      via the relay action itself (Director performed the bridge; pattern is
+      ratified by demonstration). Engineer (greg) explicitly noted in
+      thread-490 audit-trail: "Director-bridge applied only to approval-comms
+      during outage, not to merge."
+    cross_refs:
+      - bug-56 (substrate outage that motivated the bridge)
+      - feedback_pr_merge_is_not_director.md (RACI preservation)
+      - feedback_thread_vs_github_approval_decoupled.md (sister discipline)
+      - idea-252 §4 (structural prevention — closes the underlying class)
+    tele_alignment:
+      - tele-7
+      - tele-2
 
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
