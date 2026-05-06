@@ -46,11 +46,15 @@ export interface LoadInstanceOptions {
  * path does NOT touch the file, so the two schemes coexist cleanly:
  * toggling the env var off restores the file-derived UUID untouched.
  *
- * This is a pragmatic escape hatch that unblocks multi-agent
- * co-location on a single user account (two Claude instances on one
- * laptop). A richer design — separate agentName metadata plus an
- * agentId derived from multiple inputs — is queued for the Entity
- * Registry SSOT mission.
+ * idea-251 closes the deferred design noted previously here: the
+ * separate `name` field in the handshake payload (sourced from
+ * `OIS_AGENT_NAME`) now carries the display-name semantic, while
+ * `OIS_INSTANCE_ID` retains the identity-escape-hatch role. Operators
+ * who set both get distinct semantics: identity (globalInstanceId) vs
+ * display name (Agent.name surfaced via get_agents). Operators who
+ * only set OIS_INSTANCE_ID still get the legacy combined behavior via
+ * the Hub-side fallback chain `payload.name ?? payload.globalInstanceId
+ * ?? agentId`.
  */
 export function loadOrCreateGlobalInstanceId(
   opts: LoadInstanceOptions = {}

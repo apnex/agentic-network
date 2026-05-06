@@ -475,6 +475,10 @@ async function connectToHub(globalInstanceId: string): Promise<void> {
           version: process.env.OPENCODE_VERSION ?? "unknown",
         }),
         llmModel: process.env.HUB_LLM_MODEL,
+        // idea-251: adapter-advertised display name for get_agents NAME
+        // column. Empty/whitespace → undefined so Hub falls back to
+        // globalInstanceId. Hub-side validation enforces shape + reserved-set.
+        name: process.env.OIS_AGENT_NAME?.trim() || undefined,
         onFatalHalt,
         onPendingTask: (task) => {
           appendNotification(

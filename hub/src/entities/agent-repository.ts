@@ -323,6 +323,7 @@ export class AgentRepository implements IEngineerRegistry {
         clientMetadata: payload.clientMetadata,
         advisoryTags: payload.advisoryTags,
         labels: payload.labels,
+        name: payload.name,
         receiptSla: payload.receiptSla,
         wakeEndpoint: payload.wakeEndpoint,
       },
@@ -395,11 +396,13 @@ export class AgentRepository implements IEngineerRegistry {
           lastHeartbeatAt: now,
           receiptSla: payload.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
           wakeEndpoint: payload.wakeEndpoint ?? null,
-          // Mission-62 W3 — `name` populated from globalInstanceId (which
-          // the M18 handshake derives from the OIS_INSTANCE_ID env var per
-          // Design v1.0 §5.1); falls back to agentId if globalInstanceId
-          // is somehow unavailable.
-          name: payload.globalInstanceId ?? agentId,
+          // idea-251: precedence is payload.name (adapter-advertised display
+          // name from OIS_AGENT_NAME env) → payload.globalInstanceId (legacy
+          // OIS_INSTANCE_ID escape-hatch) → agentId (final defensive fallback).
+          // The `name` field separates display semantics from the stable
+          // identifier (globalInstanceId), closing the deferral noted in
+          // packages/network-adapter/src/kernel/instance.ts:42-54.
+          name: payload.name ?? payload.globalInstanceId ?? agentId,
           activityState: "offline", // first-contact has no SSE stream yet
           sessionStartedAt: null,
           lastToolCallAt: null,
@@ -462,6 +465,14 @@ export class AgentRepository implements IEngineerRegistry {
       const priorLabels = agent.labels ?? {};
       const nextLabels = payload.labels ?? priorLabels;
       const labelsChanged = !shallowEqualLabels(priorLabels, nextLabels);
+      // idea-251 (audit-fold A): name refresh path — same CP3 C5 semantic as
+      // labels. Provided overwrites stored; omitted preserves stored. Without
+      // this, existing agents (created pre-OIS_AGENT_NAME wiring) never pick
+      // up the new advertised name on reconnect — fix would be a no-op for
+      // the agents Director is currently watching.
+      const priorName = agent.name;
+      const nextName = payload.name ?? agent.name;
+      const nameChanged = priorName !== nextName;
       // mission-66 #40 closure: derive advisoryTags.adapterVersion from
       // canonical clientMetadata.proxyVersion on every re-register so
       // version-source-of-truth tracks the running shim.
@@ -474,6 +485,7 @@ export class AgentRepository implements IEngineerRegistry {
         clientMetadata: payload.clientMetadata,
         advisoryTags: refreshedAdvisoryTags,
         labels: nextLabels,
+        name: nextName,
         lastSeenAt: now,
         receiptSla: payload.receiptSla ?? agent.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
         wakeEndpoint: payload.wakeEndpoint ?? agent.wakeEndpoint ?? null,
@@ -494,8 +506,9 @@ export class AgentRepository implements IEngineerRegistry {
       if (sessionId) {
         this.sessionToEngineerId.set(sessionId, updated.id);
       }
-      const changedFields: ("labels" | "advisoryTags" | "clientMetadata")[] = [];
+      const changedFields: ("labels" | "advisoryTags" | "clientMetadata" | "name")[] = [];
       if (labelsChanged) changedFields.push("labels");
+      if (nameChanged) changedFields.push("name");
       return {
         ok: true,
         agentId: updated.id,

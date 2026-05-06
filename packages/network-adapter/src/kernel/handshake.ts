@@ -49,6 +49,12 @@ export interface HandshakePayload {
   clientMetadata: HandshakeClientMetadata;
   advisoryTags: HandshakeAdvisoryTags;
   labels?: Record<string, string>;
+  /**
+   * idea-251: adapter-advertised display name (e.g., "lily", "greg"). Optional;
+   * absent → Hub falls back to globalInstanceId → agentId. Sourced from the
+   * `OIS_AGENT_NAME` env var by the host process; passed through here.
+   */
+  name?: string;
 }
 
 export interface HandshakeResponse {
@@ -153,6 +159,13 @@ export interface HandshakeConfig {
    * When omitted, Hub uses DEFAULT_AGENT_RECEIPT_SLA_MS (30000).
    */
   receiptSla?: number;
+  /**
+   * idea-251: adapter-advertised display name. Operator sets via the
+   * `OIS_AGENT_NAME` env var; host shim passes it through here. When absent,
+   * Hub falls back to globalInstanceId (which itself may be an
+   * `OIS_INSTANCE_ID` escape-hatch string) → agentId.
+   */
+  name?: string;
 }
 
 export interface HandshakeContext {
@@ -230,6 +243,10 @@ export function buildHandshakePayload(config: HandshakeConfig): HandshakePayload
   if (config.labels) payload.labels = config.labels;
   if (config.wakeEndpoint) (payload as unknown as Record<string, unknown>).wakeEndpoint = config.wakeEndpoint;
   if (typeof config.receiptSla === "number") (payload as unknown as Record<string, unknown>).receiptSla = config.receiptSla;
+  // idea-251: only include `name` when set so Hub's `payload.name ?? ...`
+  // fallback chain reads it as absent (preserves stored on reconnect; falls
+  // back to globalInstanceId on first-contact create).
+  if (config.name) payload.name = config.name;
   return payload;
 }
 

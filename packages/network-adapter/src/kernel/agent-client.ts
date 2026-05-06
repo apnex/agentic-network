@@ -116,6 +116,13 @@ export interface AgentHandshakeConfig {
   sdkVersion: string;
   getClientInfo: () => { name: string; version: string };
   llmModel?: string;
+  /**
+   * idea-251: adapter-advertised display name (e.g., "lily", "greg"). Sourced
+   * from the `OIS_AGENT_NAME` env var by the host shim. Optional; when absent
+   * the Hub falls back to globalInstanceId → agentId. Refreshed on every
+   * reconnect (CP3 C5 semantic).
+   */
+  name?: string;
   /** Fatal-code halt (agent_thrashing_detected / role_mismatch). */
   onFatalHalt?: (err: HandshakeFatalError) => void;
   /** Successful handshake callback — useful for shim state tracking. */

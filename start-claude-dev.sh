@@ -8,6 +8,10 @@
 # agentIds, so two Claude sessions on the same laptop can coexist as
 # independent engineers (required for engineer↔engineer peer threads).
 #
+# idea-251: also exported as OIS_AGENT_NAME, which surfaces in get_agents
+# as the display-name (NAME column). Setting both keeps identity and
+# display name aligned for operator readability.
+#
 # Usage: ./start-claude.sh <name>
 # Example: ./start-claude.sh kate
 #
@@ -21,7 +25,8 @@ if [ "$#" -ne 1 ] || [ -z "${1:-}" ]; then
 fi
 
 export OIS_INSTANCE_ID="$1"
+export OIS_AGENT_NAME="$1"
 export OIS_HUB_LABELS='{"env":"dev"}'
-echo "[start-claude] OIS_INSTANCE_ID=$OIS_INSTANCE_ID"
+echo "[start-claude] OIS_INSTANCE_ID=$OIS_INSTANCE_ID OIS_AGENT_NAME=$OIS_AGENT_NAME"
 
 exec claude --dangerously-load-development-channels plugin:agent-adapter@agentic-network

@@ -54,6 +54,20 @@ export OIS_HUB_ROLE="engineer"
 
 These `OIS_` variables are shared across all OIS plugins.
 
+#### Optional identity + display name
+
+```bash
+# Stable identity (used as globalInstanceId on the wire). When unset,
+# the adapter generates a UUID at ~/.ois/instance.json.
+export OIS_INSTANCE_ID="greg"
+
+# idea-251: adapter-advertised display name (surfaced in get_agents NAME
+# column). 1-32 chars, alphanumeric + `_-`. Reserved names rejected:
+# director / system / hub / engineer / architect (case-insensitive).
+# When unset, Hub falls back to globalInstanceId, then agentId.
+export OIS_AGENT_NAME="greg"
+```
+
 ### 2. Install the plugin
 
 Run the install script (idempotent — safe to re-run):
@@ -99,6 +113,11 @@ You should see Hub tools available when you type `/` in Claude Code. The adapter
 | `hubUrl` | Yes | — | Full URL of the Hub instance |
 | `hubToken` | Yes | — | Bearer token for Hub authentication |
 | `role` | No | `engineer` | Agent role: `engineer` or `architect` |
+
+| Env var | Required | Default | Description |
+|---|---|---|---|
+| `OIS_INSTANCE_ID` | No | UUID at `~/.ois/instance.json` | Stable identity (globalInstanceId on the wire). Set to a human-readable string when running multiple agents on one user account. |
+| `OIS_AGENT_NAME` | No | falls back to `OIS_INSTANCE_ID` then agentId | idea-251: display name surfaced in get_agents NAME column. 1-32 chars, alphanumeric + `_-`. Reserved: director/system/hub/engineer/architect. |
 
 ## Troubleshooting
 

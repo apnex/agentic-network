@@ -19,6 +19,19 @@ function coerceAgentRole(role: string): AgentRole | null {
   return null;
 }
 
+// idea-251: reserved display names — collide semantically with role/system
+// concepts and would mislead operators reading get_agents output. Case-
+// insensitive match. Keep minimum-viable; expand on collision evidence.
+const RESERVED_NAMES = new Set(["director", "system", "hub", "engineer", "architect"]);
+
+// idea-251: validation regex + length bounds for the advertised display name.
+// Mirrors the zod schema description on register_role; applied explicitly in
+// the handler since PolicyRouter doesn't auto-enforce schemas (router.ts:223
+// invokes the handler with raw args).
+const NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+const NAME_MIN_LEN = 1;
+const NAME_MAX_LEN = 32;
+
 async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
   const role = args.role as string;
   const sid = ctx.sessionId;
@@ -26,6 +39,10 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
   const clientMetadataArg = args.clientMetadata as AgentClientMetadata | undefined;
   const advisoryTags = args.advisoryTags as Record<string, unknown> | undefined;
   const labels = args.labels as Record<string, string> | undefined;
+  // idea-251: optional adapter-advertised display name. Trim + treat
+  // empty/whitespace as absent. Schema regex enforces shape; reserved-name
+  // check below enforces semantics.
+  const nameArg = (args.name as string | undefined)?.trim() || undefined;
 
   // M18 path: the proxy sent the full Agent handshake payload.
   if (globalInstanceId && clientMetadataArg) {
@@ -39,6 +56,50 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
         isError: true,
       };
     }
+    // idea-251: validate name shape (length + regex) before any state
+    // mutation. Reject with structured error so adapter can log + surface
+    // to operator.
+    if (nameArg) {
+      if (nameArg.length < NAME_MIN_LEN || nameArg.length > NAME_MAX_LEN) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: false,
+              code: "invalid_name",
+              message: `Name '${nameArg}' length ${nameArg.length} outside allowed range [${NAME_MIN_LEN}, ${NAME_MAX_LEN}].`,
+            }),
+          }],
+          isError: true,
+        };
+      }
+      if (!NAME_REGEX.test(nameArg)) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: false,
+              code: "invalid_name",
+              message: `Name '${nameArg}' contains disallowed characters. Allowed: alphanumeric, underscore, dash.`,
+            }),
+          }],
+          isError: true,
+        };
+      }
+      if (RESERVED_NAMES.has(nameArg.toLowerCase())) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: false,
+              code: "reserved_name",
+              message: `Name '${nameArg}' is reserved (matches a role or system concept). Choose a different OIS_AGENT_NAME value. Reserved set: ${[...RESERVED_NAMES].join(", ")}.`,
+            }),
+          }],
+          isError: true,
+        };
+      }
+    }
     const payload: RegisterAgentPayload = {
       globalInstanceId,
       role: tokenRole,
@@ -48,6 +109,9 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
       // omitted labels on this handshake (store preserves stored set); a provided
       // object (including `{}`) is an explicit refresh signal.
       labels: labels,
+      // idea-251: name follows the same CP3 C5 semantic — provided overwrites
+      // stored on reconnect; absent preserves stored.
+      name: nameArg,
     };
     // M-Session-Claim-Separation (mission-40) T2: protocol cutover.
     // register_role no longer claims a session. It calls assertIdentity
@@ -66,6 +130,7 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
         clientMetadata: payload.clientMetadata,
         advisoryTags: payload.advisoryTags,
         labels: payload.labels,
+        name: payload.name,
         receiptSla: payload.receiptSla,
         wakeEndpoint: payload.wakeEndpoint,
       },
@@ -611,6 +676,7 @@ export function registerSessionPolicy(router: PolicyRouter): void {
         .describe("M18: Mutable metadata about the client driving this session."),
       advisoryTags: z.record(z.string(), z.unknown()).optional().describe("M18: Launch-time-only tags (e.g., llmModel). Explicitly drift-prone; do NOT route on these values."),
       labels: z.record(z.string(), z.string()).optional().describe("Mission-19: routing labels (e.g., {env: 'smoke-test', team: 'billing'}). CP3 C5 (bug-16): refreshed on every reconnect from the handshake payload — a provided object overwrites stored labels; omitting labels preserves the stored set. Reserved key 'ois.io/namespace' has no v1 semantics."),
+      name: z.string().min(1).max(32).regex(/^[a-zA-Z0-9_-]+$/).optional().describe("idea-251: adapter-advertised display name (e.g., 'lily', 'greg'). Falls back to globalInstanceId then agentId when absent. Per-agent override via OIS_AGENT_NAME env var. Refreshed on reconnect (CP3 C5 semantic). Reserved set rejected: director/system/hub/engineer/architect (case-insensitive)."),
     },
     registerRole,
   );

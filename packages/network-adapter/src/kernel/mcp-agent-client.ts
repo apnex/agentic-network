@@ -572,6 +572,9 @@ export class McpAgentClient implements IAgentClient {
         labels: this.cfg.labels,
         wakeEndpoint: handshake.wakeEndpoint,
         receiptSla: handshake.receiptSla,
+        // idea-251: thread the adapter-advertised display name through to
+        // the wire payload (handshake.ts:buildHandshakePayload).
+        name: handshake.name,
       },
       previousEpoch: this._lastEpoch,
       log: this.log,

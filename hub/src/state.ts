@@ -357,6 +357,11 @@ export interface RegisterAgentPayload {
   clientMetadata: AgentClientMetadata;
   advisoryTags?: AgentAdvisoryTags;
   labels?: AgentLabels;
+  // idea-251: adapter-advertised display name (e.g., "lily", "greg"). Optional;
+  // absent → fallback chain payload.globalInstanceId → agentId. Refreshed on
+  // reconnect (CP3 C5 semantic). Per-agent override via OIS_AGENT_NAME env var.
+  // Closes the OIS_INSTANCE_ID escape-hatch deferral noted in instance.ts:42-54.
+  name?: string;
   // ADR-017 additions: optional liveness-layer configuration.
   wakeEndpoint?: string;
   receiptSla?: number;
@@ -375,7 +380,7 @@ export interface RegisterAgentSuccess {
   // the top-level keys that differ (e.g., ["labels"]); `priorLabels` is
   // the pre-refresh snapshot when labels change, for audit-diff reporting.
   // Absent on first-contact creation and on no-op reconnects.
-  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata")[];
+  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata" | "name")[];
   priorLabels?: AgentLabels;
   // M-Session-Claim-Separation (mission-40) T1: populated when the internal
   // claimSession call evicted a prior session. Used by the policy layer to
@@ -408,6 +413,9 @@ export interface AssertIdentityPayload {
   clientMetadata: AgentClientMetadata;
   advisoryTags?: AgentAdvisoryTags;
   labels?: AgentLabels;
+  // idea-251: adapter-advertised display name; carried through to first-contact
+  // create + reconnect-refresh per the same CP3 C5 semantic as labels.
+  name?: string;
   // ADR-017 mutable config carried through the same handshake-refresh path:
   wakeEndpoint?: string;
   receiptSla?: number;
@@ -421,7 +429,7 @@ export interface AssertIdentitySuccess {
   advisoryTags: AgentAdvisoryTags;
   labels: AgentLabels;
   // bug-16 C5 label-refresh diff (only present on reconnect with changes):
-  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata")[];
+  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata" | "name")[];
   priorLabels?: AgentLabels;
 }
 
