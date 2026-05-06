@@ -54,19 +54,29 @@ export OIS_HUB_ROLE="engineer"
 
 These `OIS_` variables are shared across all OIS plugins.
 
-#### Optional identity + display name
+#### Per-agent identity (idea-251 D-prime)
+
+The canonical per-agent config surface is `~/.config/apnex-agents/{name}.env`
+— operator-managed file (chmod 600), one per agent identity, sourced by the
+operator's per-name `start-{name}.sh` wrapper:
 
 ```bash
-# Stable identity (used as globalInstanceId on the wire). When unset,
-# the adapter generates a UUID at ~/.ois/instance.json.
-export OIS_INSTANCE_ID="greg"
-
-# idea-251: adapter-advertised display name (surfaced in get_agents NAME
-# column). 1-32 chars, alphanumeric + `_-`. Reserved names rejected:
-# director / system / hub / engineer / architect (case-insensitive).
-# When unset, Hub falls back to globalInstanceId, then agentId.
-export OIS_AGENT_NAME="greg"
+# ~/.config/apnex-agents/greg.env
+OIS_AGENT_NAME=greg                # Identity (drives agentId derivation
+                                   # in Hub: agent-{8-char-hash-of-name}).
+                                   # 1-32 chars, alphanumeric + `_-`.
+                                   # Reserved names rejected:
+                                   # director / system / hub / engineer / architect
+                                   # (case-insensitive).
+GH_TOKEN=github_pat_...            # Other per-agent secrets / config
 ```
+
+When `OIS_AGENT_NAME` is unset and `globalInstanceId` is also unset, the
+Hub rejects the handshake (loud-error so the misconfiguration is visible).
+
+> **Retired (idea-251 D-prime):** the legacy `OIS_INSTANCE_ID` env-var
+> override is no longer read by the adapter. If still set in your wrappers,
+> it is ignored. Use `OIS_AGENT_NAME` for identity instead.
 
 ### 2. Install the plugin
 
@@ -116,8 +126,8 @@ You should see Hub tools available when you type `/` in Claude Code. The adapter
 
 | Env var | Required | Default | Description |
 |---|---|---|---|
-| `OIS_INSTANCE_ID` | No | UUID at `~/.ois/instance.json` | Stable identity (globalInstanceId on the wire). Set to a human-readable string when running multiple agents on one user account. |
-| `OIS_AGENT_NAME` | No | falls back to `OIS_INSTANCE_ID` then agentId | idea-251: display name surfaced in get_agents NAME column. 1-32 chars, alphanumeric + `_-`. Reserved: director/system/hub/engineer/architect. |
+| `OIS_AGENT_NAME` | Yes (or transitional `globalInstanceId`) | — | idea-251 D-prime: identity input. Drives agentId derivation (`agent-{8-char-hash}`) and is surfaced as the display name in get_agents. 1-32 chars, alphanumeric + `_-`. Reserved: director/system/hub/engineer/architect. Set in `~/.config/apnex-agents/{name}.env`. |
+| `OIS_INSTANCE_ID` | — | — | RETIRED (idea-251 D-prime). Ignored by adapter; remove from wrappers. |
 
 ## Troubleshooting
 

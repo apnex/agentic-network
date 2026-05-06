@@ -85,9 +85,9 @@ describe("loadOrCreateGlobalInstanceId", () => {
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  // ── OIS_INSTANCE_ID env override ───────────────────────────────────
+  // ── OIS_INSTANCE_ID env override RETIRED (idea-251 D-prime Phase 1) ──
 
-  describe("OIS_INSTANCE_ID env override", () => {
+  describe("OIS_INSTANCE_ID env override RETIRED (idea-251 D-prime Phase 1)", () => {
     let originalEnv: string | undefined;
     beforeEach(() => {
       originalEnv = process.env.OIS_INSTANCE_ID;
@@ -97,44 +97,14 @@ describe("loadOrCreateGlobalInstanceId", () => {
       else process.env.OIS_INSTANCE_ID = originalEnv;
     });
 
-    it("returns the env value verbatim when set, bypassing the file", () => {
+    it("env var is IGNORED post-retirement — file-persisted UUID returned regardless", () => {
       process.env.OIS_INSTANCE_ID = "greg";
       const id = loadOrCreateGlobalInstanceId({ instanceFile });
-      expect(id).toBe("greg");
-      // file is not created — env path does not persist
-      expect(existsSync(instanceFile)).toBe(false);
-    });
-
-    it("env override is idempotent across calls", () => {
-      process.env.OIS_INSTANCE_ID = "kate";
-      const a = loadOrCreateGlobalInstanceId({ instanceFile });
-      const b = loadOrCreateGlobalInstanceId({ instanceFile });
-      expect(a).toBe("kate");
-      expect(b).toBe("kate");
-    });
-
-    it("env override trims whitespace", () => {
-      process.env.OIS_INSTANCE_ID = "  jill  ";
-      const id = loadOrCreateGlobalInstanceId({ instanceFile });
-      expect(id).toBe("jill");
-    });
-
-    it("empty env value falls through to file-based UUID (not adopted)", () => {
-      process.env.OIS_INSTANCE_ID = "   ";
-      const id = loadOrCreateGlobalInstanceId({ instanceFile });
+      // Identity now flows from OIS_AGENT_NAME → handshake.name. The env
+      // var is no longer read; file UUID is returned even when set.
+      expect(id).not.toBe("greg");
       expect(id).toMatch(/^[0-9a-f-]{36}$/);
       expect(existsSync(instanceFile)).toBe(true);
-    });
-
-    it("env override does not mutate an existing instance file", () => {
-      // Pre-seed the file with a known UUID.
-      const seeded = loadOrCreateGlobalInstanceId({ instanceFile });
-      process.env.OIS_INSTANCE_ID = "greg";
-      const overridden = loadOrCreateGlobalInstanceId({ instanceFile });
-      expect(overridden).toBe("greg");
-      // File content unchanged.
-      const body = JSON.parse(readFileSync(instanceFile, "utf-8"));
-      expect(body.globalInstanceId).toBe(seeded);
     });
   });
 });

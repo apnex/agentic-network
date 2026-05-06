@@ -347,7 +347,7 @@ describe("SessionPolicy", () => {
 
   // ── M24-T10 Director integration (ADR-014 §77) ────────────────
 
-  it("register_role as director (M18) mints an agentId with the director-* prefix", async () => {
+  it("register_role as director (M18) mints an agentId with the unified agent-* prefix (idea-251 D-prime)", async () => {
     const directorHandshake = {
       role: "director",
       globalInstanceId: "test-gid-director-1",
@@ -362,9 +362,10 @@ describe("SessionPolicy", () => {
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.ok).toBe(true);
-    expect(parsed.agent.id).toMatch(/^director-/);
-    // Engineer + architect stay on the eng-* prefix for backward compatibility
-    // with existing audit trails + label selectors.
+    // idea-251 D-prime Phase 1: role-prefix dropped; all roles get the unified
+    // `agent-{8-hex-chars}` format. Role surfaces as separate field.
+    expect(parsed.agent.id).toMatch(/^agent-[0-9a-f]{8}$/);
+    expect(parsed.agent.id).not.toMatch(/^director-/);
     expect(parsed.agent.id).not.toMatch(/^eng-/);
   });
 
@@ -380,10 +381,10 @@ describe("SessionPolicy", () => {
     expect(ctx.stores.engineerRegistry.getRole(ctx.sessionId)).toBe("director");
   });
 
-  it("director and engineer with same agent-name coexist without collision", async () => {
-    // Different globalInstanceIds → different fingerprints → different agent IDs,
-    // but both derive their prefix from their role declaration. Verifies that
-    // the prefix selection is role-driven, not fingerprint-prefix-driven.
+  it("director and engineer with different identities coexist (different agentIds; idea-251 D-prime unified prefix)", async () => {
+    // idea-251 D-prime Phase 1: role-prefix dropped. Different identities
+    // (different name OR globalInstanceId) → different fingerprints → different
+    // agentIds, regardless of role. Role surfaces as separate field, not prefix.
     const engResult = await router.handle("register_role", {
       role: "engineer", globalInstanceId: "gid-same-1",
       clientMetadata: { clientName: "c", clientVersion: "0", proxyName: "p", proxyVersion: "0" },
@@ -395,8 +396,11 @@ describe("SessionPolicy", () => {
       clientMetadata: { clientName: "c", clientVersion: "0", proxyName: "p", proxyVersion: "0" },
     }, dirCtx);
 
-    expect(JSON.parse(engResult.content[0].text).agent.id).toMatch(/^eng-/);
-    expect(JSON.parse(dirResult.content[0].text).agent.id).toMatch(/^director-/);
+    const engId = JSON.parse(engResult.content[0].text).agent.id;
+    const dirId = JSON.parse(dirResult.content[0].text).agent.id;
+    expect(engId).toMatch(/^agent-[0-9a-f]{8}$/);
+    expect(dirId).toMatch(/^agent-[0-9a-f]{8}$/);
+    expect(engId).not.toBe(dirId);
   });
 
   it("touchAgent bumps lastSeenAt and flips drifted status back to online", async () => {

@@ -361,7 +361,20 @@ export class AgentRepository implements IEngineerRegistry {
     sessionId?: string,
     _address?: string,
   ): Promise<AssertIdentityResult> {
-    const fingerprint = computeFingerprint(payload.globalInstanceId);
+    // idea-251 D-prime Phase 1: identity input precedence is `name → globalInstanceId`.
+    // name (from OIS_AGENT_NAME env via M18 handshake) becomes the canonical
+    // identity input per Director's "name IS identity" framing. globalInstanceId
+    // remains accepted as transitional alias for non-adapter callers (vertex-cloudrun,
+    // scripts/architect-client, cognitive-layer/bench) — those migrate in Phase 2.
+    const identityInput = payload.name ?? payload.globalInstanceId;
+    if (!identityInput) {
+      return {
+        ok: false,
+        code: "role_mismatch",
+        message: "name (or transitional globalInstanceId) required for assertIdentity",
+      };
+    }
+    const fingerprint = computeFingerprint(identityInput);
     const path = fpPath(fingerprint);
     // Two attempts: natural + retry on OCC contention. Matches legacy budget.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -370,8 +383,15 @@ export class AgentRepository implements IEngineerRegistry {
 
       if (!existing) {
         // First-contact create: NO session bound (claimSession's job).
-        const agentIdPrefix = payload.role === "director" ? "director" : "eng";
-        const agentId = `${agentIdPrefix}-${shortHash(fingerprint)}`;
+        // idea-251 D-prime Phase 1: agentId derives as `agent-{8-hex-chars-of-fingerprint}`
+        // per Director's stated format. Role-prefix dropped (role surfaces as
+        // separate field in projection). 8 chars (not 12) per Director's spec —
+        // collision risk ~65k names before 50% probability; acceptable at
+        // current operational scale (<100 agents). Existing eng-*/director-*
+        // records keep their prefix on reconnect (this branch only fires for
+        // new records); operator can `rm` local-state/agents/{eng,director}-*
+        // + corresponding fpPath records to force re-creation under new format.
+        const agentId = `agent-${fingerprint.slice(0, 8)}`;
         // mission-66 #40 closure: Hub-side canonical projection derives
         // advisoryTags.adapterVersion from clientMetadata.proxyVersion.
         // Single source-of-truth at the Hub; consumers read advisoryTags.
@@ -465,14 +485,13 @@ export class AgentRepository implements IEngineerRegistry {
       const priorLabels = agent.labels ?? {};
       const nextLabels = payload.labels ?? priorLabels;
       const labelsChanged = !shallowEqualLabels(priorLabels, nextLabels);
-      // idea-251 (audit-fold A): name refresh path — same CP3 C5 semantic as
-      // labels. Provided overwrites stored; omitted preserves stored. Without
-      // this, existing agents (created pre-OIS_AGENT_NAME wiring) never pick
-      // up the new advertised name on reconnect — fix would be a no-op for
-      // the agents Director is currently watching.
-      const priorName = agent.name;
-      const nextName = payload.name ?? agent.name;
-      const nameChanged = priorName !== nextName;
+      // idea-251 D-prime Phase 1: `name` is identity (fingerprint = sha256(name)).
+      // Reconnect-refresh of name is a no-op by construction: a different name
+      // produces a different fingerprint → different lookup path → this reconnect
+      // branch wouldn't fire (would be first-contact-create on the new fingerprint
+      // path). So name carries over from the existing record unchanged. Reverts
+      // the audit-fold A name-in-stamped-spread that was scoped under the
+      // mutable-name model — replaced by name-as-identity-immutable here.
       // mission-66 #40 closure: derive advisoryTags.adapterVersion from
       // canonical clientMetadata.proxyVersion on every re-register so
       // version-source-of-truth tracks the running shim.
@@ -485,7 +504,6 @@ export class AgentRepository implements IEngineerRegistry {
         clientMetadata: payload.clientMetadata,
         advisoryTags: refreshedAdvisoryTags,
         labels: nextLabels,
-        name: nextName,
         lastSeenAt: now,
         receiptSla: payload.receiptSla ?? agent.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
         wakeEndpoint: payload.wakeEndpoint ?? agent.wakeEndpoint ?? null,
@@ -506,9 +524,8 @@ export class AgentRepository implements IEngineerRegistry {
       if (sessionId) {
         this.sessionToEngineerId.set(sessionId, updated.id);
       }
-      const changedFields: ("labels" | "advisoryTags" | "clientMetadata" | "name")[] = [];
+      const changedFields: ("labels" | "advisoryTags" | "clientMetadata")[] = [];
       if (labelsChanged) changedFields.push("labels");
-      if (nameChanged) changedFields.push("name");
       return {
         ok: true,
         agentId: updated.id,

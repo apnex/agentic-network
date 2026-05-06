@@ -240,7 +240,7 @@ describe("Mission-19 Selector — bug-35 lastSeenAt-vs-lastHeartbeatAt presence 
     // agent remains reachable.
     const peers = await reg.selectAgents({ roles: ["engineer"] });
     expect(peers).toHaveLength(1);
-    expect(peers[0].id).toMatch(/^eng-/);
+    expect(peers[0].id).toMatch(/^agent-/); // idea-251 D-prime Phase 1: unified prefix
   });
 
   it("excludes agent with stale lastSeenAt (presence window aged out)", async () => {

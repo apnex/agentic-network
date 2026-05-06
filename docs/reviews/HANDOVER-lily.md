@@ -11,7 +11,7 @@ You are running from a **dedicated git worktree**, isolated from greg:
 - **Hub**: `http://localhost:8080/mcp` (Docker container `ois-hub-local`, local only)
 - **Adapter config**: `.ois/adapter-config.json` (flat — no `.ois/lily/.ois/` nesting anymore)
 - **WORK_DIR**: equals your worktree root; set automatically by `start-lily.sh`
-- **Identity**: `OIS_INSTANCE_ID=lily`, role=architect, env=prod
+- **Identity**: `OIS_AGENT_NAME=lily` (in `~/.config/apnex-agents/lily.env`), role=architect, env=prod. (idea-251 D-prime: `OIS_INSTANCE_ID` retired — use `OIS_AGENT_NAME` for identity. Drives agentId derivation `agent-{8-char-hash-of-name}`.)
 - **Auto-memory dir**: `~/.claude/projects/-home-apnex-taceng-agentic-network-lily/memory/` — **a fresh empty pool**, isolated from greg's and from any prior shared pool
 
 greg (engineer) runs from a sibling worktree at `/home/apnex/taceng/agentic-network-greg` on branch `agent/greg`, with her own isolated memory.

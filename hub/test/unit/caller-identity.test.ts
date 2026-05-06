@@ -14,7 +14,7 @@ describe("resolveCreatedBy", () => {
 
     const prov = await resolveCreatedBy(ctx);
     expect(prov.role).toBe("architect");
-    expect(prov.agentId).toMatch(/^eng-/); // resolved agent id
+    expect(prov.agentId).toMatch(/^agent-/); // resolved agent id (idea-251 D-prime Phase 1: unified prefix)
   });
 
   it("returns anonymous-<role> placeholder when role is set but no agent record exists", async () => {

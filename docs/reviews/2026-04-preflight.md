@@ -203,7 +203,7 @@ cd /home/apnex/taceng/agentic-network
 ./start-lily.sh
 ```
 
-These wrap `OIS_INSTANCE_ID=<name>` + `OIS_HUB_LABELS='{"env":"prod"}'` + `WORK_DIR=<repo>/.ois/<name>` + the required `--dangerously-load-development-channels plugin:agent-adapter@agentic-network` flag. Scripts validate the per-agent config exists before launching; passthrough args forward to `claude` (e.g. `./start-greg.sh -p "Read docs/reviews/HANDOVER-greg.md"` for scripted first-turn).
+These source `~/.config/apnex-agents/<name>.env` (operator-personal; chmod 600) which carries `OIS_AGENT_NAME=<name>` (identity per idea-251 D-prime) + secrets (GH_TOKEN). Wrappers also export `OIS_HUB_LABELS='{"env":"prod"}'` + `WORK_DIR=<repo>/.ois/<name>` + the required `--dangerously-load-development-channels plugin:agent-adapter@agentic-network` flag. (Note: legacy `OIS_INSTANCE_ID` retired per idea-251 D-prime; ignored if still set.) Scripts validate the per-agent config exists before launching; passthrough args forward to `claude` (e.g. `./start-greg.sh -p "Read docs/reviews/HANDOVER-greg.md"` for scripted first-turn).
 
 Why the `WORK_DIR` split: shim.ts reads `.ois/adapter-config.json` relative to `$WORK_DIR` and also writes a per-session `global-instance-id` + notification log there. If both agents shared one `.ois/` dir, they'd overwrite each other's agent identity and log streams. Separating via per-agent `WORK_DIR` (inside a single `.ois/` parent for operational tidiness) gives each its own state directory while both read the same git repo source.
 

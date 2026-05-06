@@ -39,33 +39,24 @@ export interface LoadInstanceOptions {
  * Returns the UUID (or the env-provided string override). Idempotent
  * across calls within a process.
  *
- * Precedence: `OIS_INSTANCE_ID` env var wins outright — used when the
- * operator wants a stable, human-meaningful identity (e.g. "greg" or
- * "kate") and is responsible for uniqueness themselves. Absent that,
- * falls back to the file-persisted UUID (original behaviour). The env
- * path does NOT touch the file, so the two schemes coexist cleanly:
- * toggling the env var off restores the file-derived UUID untouched.
- *
- * idea-251 closes the deferred design noted previously here: the
- * separate `name` field in the handshake payload (sourced from
- * `OIS_AGENT_NAME`) now carries the display-name semantic, while
- * `OIS_INSTANCE_ID` retains the identity-escape-hatch role. Operators
- * who set both get distinct semantics: identity (globalInstanceId) vs
- * display name (Agent.name surfaced via get_agents). Operators who
- * only set OIS_INSTANCE_ID still get the legacy combined behavior via
- * the Hub-side fallback chain `payload.name ?? payload.globalInstanceId
- * ?? agentId`.
+ * idea-251 D-prime Phase 1: `OIS_INSTANCE_ID` env-var override RETIRED
+ * per Director's "legacy" framing (2026-05-06). Identity now comes from
+ * the `name` field in the handshake payload (sourced from `OIS_AGENT_NAME`
+ * env via the host shim). This file's role is reduced to file-persistent
+ * UUID for non-adapter callers (vertex-cloudrun production agent,
+ * scripts/architect-client, cognitive-layer/bench) — those will migrate
+ * in Phase 2 (idea-TBD; full identity-primitive rebuild). Adapter-driven
+ * sessions ignore this UUID — Hub keys identity off `payload.name`.
  */
 export function loadOrCreateGlobalInstanceId(
   opts: LoadInstanceOptions = {}
 ): string {
   const log = opts.log ?? (() => { /* silent */ });
 
-  const envOverride = process.env.OIS_INSTANCE_ID?.trim();
-  if (envOverride) {
-    log(`[instance] Using OIS_INSTANCE_ID from env: ${envOverride}`);
-    return envOverride;
-  }
+  // idea-251 D-prime Phase 1: OIS_INSTANCE_ID env override REMOVED. Identity
+  // now flows from OIS_AGENT_NAME → handshake.name → fingerprint. This
+  // function is kept for non-adapter callers that still need a UUID
+  // (vertex-cloudrun, scripts, bench); they migrate in Phase 2.
 
   const file = opts.instanceFile ?? DEFAULT_INSTANCE_FILE;
   const dir = file.substring(0, file.lastIndexOf("/")) || DEFAULT_INSTANCE_DIR;

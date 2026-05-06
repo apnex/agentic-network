@@ -45,7 +45,12 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
   const nameArg = (args.name as string | undefined)?.trim() || undefined;
 
   // M18 path: the proxy sent the full Agent handshake payload.
-  if (globalInstanceId && clientMetadataArg) {
+  // idea-251 D-prime Phase 1: enter M18 path when EITHER name or
+  // globalInstanceId is present (with clientMetadata). name is the canonical
+  // identity input; globalInstanceId is the transitional alias for non-adapter
+  // callers (vertex-cloudrun, scripts/architect-client, cognitive-layer/bench)
+  // that haven't migrated to OIS_AGENT_NAME yet.
+  if ((globalInstanceId || nameArg) && clientMetadataArg) {
     const tokenRole = coerceAgentRole(role);
     if (!tokenRole) {
       return {
@@ -101,7 +106,12 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
       }
     }
     const payload: RegisterAgentPayload = {
-      globalInstanceId,
+      // idea-251 D-prime Phase 1: globalInstanceId carried through for
+      // transitional callers; assertIdentity uses `name ?? globalInstanceId`
+      // as the identity input for fingerprint computation. Empty-string when
+      // unset since RegisterAgentPayload's globalInstanceId is currently
+      // typed required (Phase 2 makes it optional + drops it from wire).
+      globalInstanceId: globalInstanceId ?? "",
       role: tokenRole,
       clientMetadata: clientMetadataArg,
       advisoryTags: advisoryTags ?? {},
@@ -109,8 +119,10 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
       // omitted labels on this handshake (store preserves stored set); a provided
       // object (including `{}`) is an explicit refresh signal.
       labels: labels,
-      // idea-251: name follows the same CP3 C5 semantic — provided overwrites
-      // stored on reconnect; absent preserves stored.
+      // idea-251 D-prime: name is identity. Used as fingerprint input when
+      // present; immutable post-create. Reconnect-refresh does NOT mutate
+      // stored name (different name → different fingerprint → different
+      // lookup path → first-contact-create on new path).
       name: nameArg,
     };
     // M-Session-Claim-Separation (mission-40) T2: protocol cutover.

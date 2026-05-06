@@ -145,7 +145,7 @@ describe("idea-251 — schema validation (regex + length)", () => {
   });
 });
 
-describe("idea-251 — reconnect-refresh (audit-fold A)", () => {
+describe("idea-251 D-prime Phase 1 — name as identity (immutable post-create)", () => {
   let router: PolicyRouter;
   let ctx: TestPolicyContext;
 
@@ -155,38 +155,69 @@ describe("idea-251 — reconnect-refresh (audit-fold A)", () => {
     ctx = createTestContext();
   });
 
-  it("reconnect with new name overwrites stored name", async () => {
-    // First registration with name="oldname"
-    await router.handle("register_role", { ...baseHandshake, name: "oldname" }, ctx);
-    // Reconnect with a new name
-    const second = await router.handle("register_role", { ...baseHandshake, name: "newname" }, ctx);
-    expect(second.isError).toBeUndefined();
-    const parsed = JSON.parse(second.content[0].text);
-    expect(parsed.agent.name).toBe("newname");
-  });
-
-  it("reconnect with no name preserves stored name (CP3 C5 semantic)", async () => {
-    // First register with name="lily"
-    await router.handle("register_role", { ...baseHandshake, name: "lily" }, ctx);
-    // Reconnect omitting name (e.g. operator unset OIS_AGENT_NAME)
-    const second = await router.handle("register_role", baseHandshake, ctx);
-    expect(second.isError).toBeUndefined();
-    const parsed = JSON.parse(second.content[0].text);
-    // Stored name preserved — same CP3 C5 semantic as labels
-    expect(parsed.agent.name).toBe("lily");
-  });
-
-  it("reconnect heals existing agent created before name was wired (greg/lily real-world case)", async () => {
-    // First register with NO name field → name persists as globalInstanceId
-    // (reproduces the pre-idea-251 state of greg/lily registrations)
-    const first = await router.handle("register_role", baseHandshake, ctx);
+  it("reconnect with same name finds existing agent record (deterministic fingerprint)", async () => {
+    // First registration with name="lily"
+    const first = await router.handle("register_role", { ...baseHandshake, name: "lily" }, ctx);
+    expect(first.isError).toBeUndefined();
     const firstParsed = JSON.parse(first.content[0].text);
-    expect(firstParsed.agent.name).toBe("test-gid-idea-251");
-    // Operator now sets OIS_AGENT_NAME and restarts the adapter — reconnect
-    // sends name="greg" in the handshake. Without audit-fold A this would
-    // be a no-op; with the fold it heals on first reconnect.
+    const firstAgentId = firstParsed.agent.id;
+    expect(firstAgentId).toMatch(/^agent-/);
+    // Reconnect with the same name
+    const second = await router.handle("register_role", { ...baseHandshake, name: "lily" }, ctx);
+    expect(second.isError).toBeUndefined();
+    const secondParsed = JSON.parse(second.content[0].text);
+    // Same fingerprint → same lookup path → same agentId returned
+    expect(secondParsed.agent.id).toBe(firstAgentId);
+    expect(secondParsed.agent.name).toBe("lily");
+  });
+
+  it("registration with different name creates a NEW agent record (distinct fingerprint)", async () => {
+    const first = await router.handle("register_role", { ...baseHandshake, name: "lily" }, ctx);
+    const firstParsed = JSON.parse(first.content[0].text);
+    const firstAgentId = firstParsed.agent.id;
+    // A different name produces a different fingerprint → first-contact-create
+    // on a new path. Old "lily" record remains intact (orphaned to agent-reaper
+    // unless operator manually rm's it). Hub does NOT mutate the old record.
     const second = await router.handle("register_role", { ...baseHandshake, name: "greg" }, ctx);
     const secondParsed = JSON.parse(second.content[0].text);
     expect(secondParsed.agent.name).toBe("greg");
+    expect(secondParsed.agent.id).not.toBe(firstAgentId);
+    expect(secondParsed.agent.id).toMatch(/^agent-/);
+  });
+
+  it("reconnect with no name (transitional) finds record via globalInstanceId fingerprint", async () => {
+    // Pre-Phase-2 transitional path: callers that don't yet send name
+    // (vertex-cloudrun, scripts/architect-client, cognitive-layer/bench)
+    // send only globalInstanceId. fingerprint computes from globalInstanceId.
+    const first = await router.handle("register_role", baseHandshake, ctx);
+    expect(first.isError).toBeUndefined();
+    const firstParsed = JSON.parse(first.content[0].text);
+    const firstAgentId = firstParsed.agent.id;
+    // Reconnect with same globalInstanceId (still no name) → same fingerprint
+    const second = await router.handle("register_role", baseHandshake, ctx);
+    const secondParsed = JSON.parse(second.content[0].text);
+    expect(secondParsed.agent.id).toBe(firstAgentId);
+    // Stored name is whatever the create-path fallback produced
+    // (payload.name ?? payload.globalInstanceId ?? agentId)
+    expect(secondParsed.agent.name).toBe("test-gid-idea-251");
+  });
+
+  it("agentId format is `agent-{8-hex-chars}` (role-prefix dropped per Director)", async () => {
+    const result = await router.handle("register_role", { ...baseHandshake, name: "lily" }, ctx);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.agent.id).toMatch(/^agent-[0-9a-f]{8}$/);
+  });
+
+  it("agentId derivation is deterministic: same name → same agentId across registrations", async () => {
+    // Two fresh contexts (separate stores); both register name="kate".
+    const ctxA = createTestContext();
+    const ctxB = createTestContext();
+    const a = await router.handle("register_role", { ...baseHandshake, name: "kate" }, ctxA);
+    const b = await router.handle("register_role", { ...baseHandshake, name: "kate" }, ctxB);
+    const aParsed = JSON.parse(a.content[0].text);
+    const bParsed = JSON.parse(b.content[0].text);
+    // Same name → same fingerprint → same agentId in both stores
+    expect(aParsed.agent.id).toBe(bParsed.agent.id);
+    expect(aParsed.agent.id).toMatch(/^agent-[0-9a-f]{8}$/);
   });
 });

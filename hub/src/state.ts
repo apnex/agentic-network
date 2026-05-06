@@ -380,7 +380,7 @@ export interface RegisterAgentSuccess {
   // the top-level keys that differ (e.g., ["labels"]); `priorLabels` is
   // the pre-refresh snapshot when labels change, for audit-diff reporting.
   // Absent on first-contact creation and on no-op reconnects.
-  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata" | "name")[];
+  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata")[];
   priorLabels?: AgentLabels;
   // M-Session-Claim-Separation (mission-40) T1: populated when the internal
   // claimSession call evicted a prior session. Used by the policy layer to
@@ -429,7 +429,7 @@ export interface AssertIdentitySuccess {
   advisoryTags: AgentAdvisoryTags;
   labels: AgentLabels;
   // bug-16 C5 label-refresh diff (only present on reconnect with changes):
-  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata" | "name")[];
+  changedFields?: readonly ("labels" | "advisoryTags" | "clientMetadata")[];
   priorLabels?: AgentLabels;
 }
 

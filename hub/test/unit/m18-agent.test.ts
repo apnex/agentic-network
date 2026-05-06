@@ -91,7 +91,9 @@ describe("AgentRepository.registerAgent", () => {
     if (!result.ok) return;
     expect(result.wasCreated).toBe(true);
     expect(result.sessionEpoch).toBe(1);
-    expect(result.agentId).toBe(`eng-${shortHash(computeFingerprint("uuid-a"))}`);
+    // idea-251 D-prime Phase 1: agentId format is `agent-{first-8-hex-of-fingerprint}`;
+    // role prefix dropped (role surfaces as separate field). 8 chars per Director's spec.
+    expect(result.agentId).toBe(`agent-${computeFingerprint("uuid-a").slice(0, 8)}`);
   });
 
   it("same globalInstanceId maps to the same agentId across calls", async () => {
