@@ -27,6 +27,7 @@ import {
   type FieldAccessors,
 } from "./list-filters.js";
 import { runCascade } from "./cascade.js";
+import { resolveRecipient } from "../entities/recipient-resolver.js";
 // Side-effect import: registers per-action-type cascade handlers
 // (create_task, create_proposal, create_idea) with the cascade
 // registry at module-load time. Adding a new handler type: append
@@ -69,12 +70,12 @@ const THREAD_MESSAGE_PREVIEW_CHARS = 200;
  */
 function validateRoutingModeArgs(
   routingMode: ThreadRoutingMode,
-  recipientAgentId: string | null,
+  hasRecipientInput: boolean,
   context: ThreadContext | null,
 ): string | null {
   if (routingMode === "unicast") {
-    if (!recipientAgentId) {
-      return `routingMode="unicast" requires recipientAgentId — one-to-one dialogue must pin the counterparty. For pool-discovery by role+labels, set routingMode="broadcast" explicitly.`;
+    if (!hasRecipientInput) {
+      return `routingMode="unicast" requires recipientName or recipientAgentId — one-to-one dialogue must pin the counterparty. For pool-discovery by role+labels, set routingMode="broadcast" explicitly.`;
     }
     if (context !== null) {
       return `routingMode="unicast" must not set context — context is only for multicast threads.`;
@@ -82,8 +83,8 @@ function validateRoutingModeArgs(
     return null;
   }
   if (routingMode === "broadcast") {
-    if (recipientAgentId) {
-      return `routingMode="broadcast" must not set recipientAgentId — broadcast is pool-discovery by role/labels, not a pinned target.`;
+    if (hasRecipientInput) {
+      return `routingMode="broadcast" must not set recipientName or recipientAgentId — broadcast is pool-discovery by role/labels, not a pinned target.`;
     }
     if (context !== null) {
       return `routingMode="broadcast" must not set context — context is only for multicast threads.`;
@@ -94,8 +95,8 @@ function validateRoutingModeArgs(
     if (!context || typeof context.entityType !== "string" || !context.entityType || typeof context.entityId !== "string" || !context.entityId) {
       return `routingMode="multicast" requires context={entityType, entityId} with non-empty strings.`;
     }
-    if (recipientAgentId) {
-      return `routingMode="multicast" must not set recipientAgentId — participants resolve from the bound entity's assignee.`;
+    if (hasRecipientInput) {
+      return `routingMode="multicast" must not set recipientName or recipientAgentId — participants resolve from the bound entity's assignee.`;
     }
     return null;
   }
@@ -110,25 +111,50 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
   const maxRounds = (args.maxRounds as number) || 10;
   const correlationId = args.correlationId as string | undefined;
   const _semanticIntent = args.semanticIntent as string | undefined;
-  const recipientAgentId = (args.recipientAgentId as string | undefined) ?? null;
+  const recipientAgentIdArg = (args.recipientAgentId as string | undefined) ?? null;
+  const recipientNameArg = (args.recipientName as string | undefined) ?? null;
   const routingMode = ((args.routingMode as ThreadRoutingMode | undefined) ?? "unicast");
   const context = (args.context as ThreadContext | undefined) ?? null;
 
   // Mission-24 Phase 2 (INV-TH18): validate routing mode ↔ mode-specific
-  // field consistency before any store mutation. Exactly one targeting
-  // channel per mode; inconsistent combinations reject at open.
-  const modeError = validateRoutingModeArgs(routingMode, recipientAgentId, context);
+  // field consistency BEFORE recipient resolution. Order matters: when a
+  // user supplies recipientAgentId on a broadcast/multicast thread, the
+  // mode-shape error is the actionable signal — surfacing "agent not
+  // found" first would mask the real shape violation.
+  const hasRecipientInput = !!(recipientAgentIdArg || recipientNameArg);
+  const modeError = validateRoutingModeArgs(routingMode, hasRecipientInput, context);
   if (modeError) {
     logShadowInvariantBreach("INV-TH18", `routing-mode validation failed on create_thread: ${modeError}`, ctx, {
-      extra: { routingMode, hasRecipient: !!recipientAgentId, hasContext: !!context },
+      extra: { routingMode, hasRecipient: hasRecipientInput, hasContext: !!context },
     });
     ctx.metrics.increment("create_thread.routing_mode_rejected", {
-      routingMode, hasRecipient: !!recipientAgentId, hasContext: !!context,
+      routingMode, hasRecipient: hasRecipientInput, hasContext: !!context,
     });
     return {
       content: [{ type: "text" as const, text: JSON.stringify({ success: false, error: modeError }) }],
       isError: true,
     };
+  }
+
+  // idea-252 §1+§4 — resolve `{recipientName?, recipientAgentId?}` to a
+  // canonical agentId via single helper. Loud-fail at API boundary on
+  // unknown / conflict (closes calibration #64 + bug-56-class silent-
+  // dispatch for explicit-recipient ops). Resolver runs only after
+  // routingMode validation has accepted the recipient-presence shape.
+  let recipientAgentId: string | null = null;
+  if (hasRecipientInput) {
+    const resolution = await resolveRecipient(ctx.stores.engineerRegistry, {
+      name: recipientNameArg,
+      agentId: recipientAgentIdArg,
+    });
+    if (!resolution.ok) {
+      ctx.metrics.increment("create_thread.recipient_rejected", { code: resolution.code });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ success: false, code: resolution.code, error: resolution.message }) }],
+        isError: true,
+      };
+    }
+    recipientAgentId = resolution.agentId;
   }
 
   const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
@@ -1161,7 +1187,8 @@ export function registerThreadPolicy(router: PolicyRouter): void {
       maxRounds: z.number().optional().describe("Maximum rounds before auto-escalation (default: 10)"),
       correlationId: z.string().optional().describe("Optional correlation ID to link this thread to related tasks/proposals"),
       semanticIntent: z.enum(["seek_rigorous_critique", "seek_approval", "collaborative_brainstorm", "inform", "seek_consensus", "rubber_duck", "educate", "mediate", "post_mortem"]).optional().describe("Communication semantics: how should the recipient frame their response"),
-      recipientAgentId: z.string().optional().describe("Targeted routingMode only: pin the open-time thread_message dispatch to this specific agentId. Required for engineer↔engineer threads when ambiguity exists; optional for architect↔engineer threads where role + labels disambiguate."),
+      recipientAgentId: z.string().optional().describe("Targeted routingMode only: pin the open-time thread_message dispatch to this specific agentId. Required for engineer↔engineer threads when ambiguity exists; optional for architect↔engineer threads where role + labels disambiguate. idea-252: prefer `recipientName` (operator-friendly); supplying both rejects with `recipient.conflict` if they don't resolve to the same agent."),
+      recipientName: z.string().optional().describe("idea-252 §1: name-based dispatch — name IS identity per idea-251. Server-side resolution: name → agentId via deterministic derivation. Targeted routingMode only (mutually-exclusive with recipientAgentId modulo same-agent equivalence). Rejects with `recipient.unknown` if no agent registered under this name; `recipient.conflict` if both fields provided and they disagree."),
       routingMode: z.enum(["unicast", "broadcast", "multicast"]).optional().describe("ADR-016 IP-routing terminology (INV-TH18 + INV-TH28): declared at open, immutable for thread life. unicast = one-to-one pinned dialogue (default; REQUIRES recipientAgentId); broadcast = explicit pool-discovery by role+labels, coerces to unicast on first reply; multicast = one-to-group, membership resolved from bound entity's assignee (requires context)."),
       context: z.object({
         entityType: z.string().describe("Entity type: task | mission | proposal | idea"),

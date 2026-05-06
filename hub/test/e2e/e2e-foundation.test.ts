@@ -263,7 +263,6 @@ describe("E2E Foundation", () => {
         "get_turn",
         "leave_thread",
         "list_audit_entries",
-        "list_available_peers",
         "list_documents",
         "list_ideas",
         "list_messages",

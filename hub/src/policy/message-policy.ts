@@ -47,6 +47,7 @@ import {
   type CreateMessageInput,
 } from "../entities/index.js";
 import { findRepoEventHandler } from "./repo-event-handlers.js";
+import { resolveRecipient } from "../entities/recipient-resolver.js";
 
 // ── list_messages ────────────────────────────────────────────────────
 
@@ -109,7 +110,9 @@ async function createMessage(
   ctx: IPolicyContext,
 ): Promise<PolicyResult> {
   const kind = args.kind as MessageKind;
-  const target = args.target as MessageTarget | null;
+  // idea-252 §1: tool-input target may carry `name` alongside `agentId`;
+  // the stored Message.target keeps only {role?, agentId?}. Resolve below.
+  const targetArg = args.target as (MessageTarget & { name?: string }) | null;
   const delivery = (args.delivery as MessageDelivery | undefined) ?? "push-immediate";
   const payload = args.payload;
   const intent = args.intent as string | undefined;
@@ -117,6 +120,31 @@ async function createMessage(
   const fireAt = args.fireAt as string | undefined;
   const precondition = args.precondition;
   const priorAuthorAgentId = args.priorAuthorAgentId as string | undefined;
+
+  // idea-252 §1+§4 — resolve `target.name` / `target.agentId` to canonical
+  // agentId. Loud-fail at API boundary on unknown / conflict (closes
+  // calibration #64 + bug-56-class silent-dispatch for explicit-recipient
+  // ops). Role-only targets bypass resolution (legitimate fanout pattern).
+  let target: MessageTarget | null = null;
+  if (targetArg) {
+    if (targetArg.name || targetArg.agentId) {
+      const resolution = await resolveRecipient(ctx.stores.engineerRegistry, {
+        name: targetArg.name ?? null,
+        agentId: targetArg.agentId ?? null,
+      });
+      if (!resolution.ok) {
+        ctx.metrics.increment("create_message.recipient_rejected", { code: resolution.code });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: resolution.message, code: resolution.code, subtype: "recipient" }) }],
+          isError: true,
+        };
+      }
+      target = { ...(targetArg.role ? { role: targetArg.role } : {}), agentId: resolution.agentId };
+    } else {
+      // role-only target (e.g., role: "engineer" fanout). Preserve as-is.
+      target = { ...(targetArg.role ? { role: targetArg.role } : {}) };
+    }
+  }
 
   // Resolve caller identity from policy context.
   const callerRole = ctx.stores.engineerRegistry.getRole(ctx.sessionId);
@@ -612,10 +640,13 @@ export function registerMessagePolicy(router: PolicyRouter): void {
         .object({
           role: z.enum(MESSAGE_AUTHOR_ROLES).optional(),
           agentId: z.string().optional(),
+          name: z.string().optional(),
         })
         .nullable()
         .describe(
-          "Target audience. null = broadcast. Otherwise role and/or agentId pinpoint.",
+          "Target audience. null = broadcast. Otherwise role and/or agentId pinpoint. " +
+            "idea-252 §1: prefer `name` (operator-friendly; resolved server-side via deterministic name→agentId). " +
+            "Supplying both `name` + `agentId` rejects with `recipient.conflict` if they don't resolve to the same agent.",
         ),
       delivery: z
         .enum(MESSAGE_DELIVERY_MODES)

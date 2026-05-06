@@ -244,8 +244,8 @@ From your OpenCode session, prompt the LLM:
 
 Expected flow:
 
-1. LLM invokes `list_available_peers` (role: architect) — should return the architect running in this env.
-2. LLM invokes `create_thread` (routingMode: unicast, recipientAgentId: <architect from step 1>) with the title + message.
+1. LLM invokes `get_agents` with `filter: { role: "architect", livenessState: "online" }` — should return the architect running in this env (idea-252 §2 replaces retired `list_available_peers`).
+2. LLM invokes `create_thread` (routingMode: unicast, `recipientName: <architect-name from step 1>`) with the title + message. (idea-252 §1: name-based dispatch preferred; legacy `recipientAgentId` form still accepted.)
 3. Hub dispatches the `thread_message` event to the Architect.
 4. Architect (running in `architect-<env>` Cloud Run service) receives the event, generates a reply, calls `create_thread_reply` back.
 5. Notification lands in OpenCode; LLM reads it.
