@@ -223,7 +223,16 @@ function applyLivenessRecompute(a: Agent, nowMs: number): Agent {
  *  - livenessState === "offline" → no (explicit teardown via markAgentOffline,
  *    or stored offline; sticky per ADR-017)
  *  - lastSeenAt within resolved peerPresenceWindowMs → yes (recent tool-call)
- *  - else → no (stale; agent has gone quiet) */
+ *  - else → no (stale; agent has gone quiet)
+ *
+ *  bug-56 NOTE: this is a COGNITIVE-tier check (uses lastSeenAt). Use
+ *  `isAgentReachable` for routing/dispatch eligibility — routing decisions
+ *  are transport-tier (can-we-deliver-to-this-agent) NOT cognitive-tier
+ *  (is-LLM-engaged). Per mission-225 v1.0 §3.3 cognitive-vs-transport
+ *  semantic separation; bug-55 fix correctly drifts cognitive state for
+ *  idle agents, so isPeerPresent now excludes idle-but-online agents —
+ *  which is correct for cognitive-presence queries (e.g., agentPulse) but
+ *  WRONG for routing/dispatch (would silently exclude reachable agents). */
 function isPeerPresent(a: Agent, nowMs: number): boolean {
   if (a.archived) return false;
   if (a.livenessState === "offline") return false;
@@ -231,6 +240,24 @@ function isPeerPresent(a: Agent, nowMs: number): boolean {
   if (!Number.isFinite(lastSeenMs)) return false;
   const windowMs = resolveLivenessConfig(a, "peerPresenceWindowMs", PEER_PRESENCE_WINDOW_MS_DEFAULT);
   return nowMs - lastSeenMs <= windowMs;
+}
+
+/** bug-56: TRANSPORT-tier reachability predicate for `selectAgents` routing path.
+ *  Mirror of isPeerPresent but uses `lastHeartbeatAt` (transport heartbeat) instead
+ *  of `lastSeenAt` (cognitive activity). Per mission-225 v1.0 §3.3:
+ *  routing decisions = transport-tier (can-we-deliver); cognitive-tier =
+ *  is-LLM-engaged. After bug-55 fix correctly drifted cognitive state for
+ *  idle agents, dispatch using cognitive presence excluded reachable-but-idle
+ *  agents → P0 dispatch regression. This predicate restores correct routing
+ *  semantics: agent is reachable iff transport heartbeat fired within window. */
+function isAgentReachable(a: Agent, nowMs: number): boolean {
+  if (a.archived) return false;
+  if (a.livenessState === "offline") return false;
+  if (!a.lastHeartbeatAt) return false;
+  const lastHeartbeatMs = Date.parse(a.lastHeartbeatAt);
+  if (!Number.isFinite(lastHeartbeatMs)) return false;
+  const windowMs = resolveLivenessConfig(a, "peerPresenceWindowMs", PEER_PRESENCE_WINDOW_MS_DEFAULT);
+  return nowMs - lastHeartbeatMs <= windowMs;
 }
 
 type GetWithToken = (path: string) => Promise<{ data: Uint8Array; token: string } | null>;
@@ -709,7 +736,10 @@ export class AgentRepository implements IEngineerRegistry {
     if (selector.agentId) {
       const a = await this.getAgent(selector.agentId);
       if (!a) return [];
-      if (!isPeerPresent(a, nowMs)) return [];
+      // bug-56: routing eligibility = transport-tier (can-we-deliver),
+      // not cognitive-tier (is-LLM-engaged). isPeerPresent uses lastSeenAt
+      // which post-bug-55 drifts for idle-but-online agents.
+      if (!isAgentReachable(a, nowMs)) return [];
       if (agentIdSet && !agentIdSet.has(a.id)) return [];
       if (selector.roles && !selector.roles.includes(a.role)) return [];
       if (!labelsMatch(a.labels ?? {}, selector.matchLabels)) return [];
@@ -721,7 +751,7 @@ export class AgentRepository implements IEngineerRegistry {
       for (const id of agentIdSet) {
         const a = await this.getAgent(id);
         if (!a) continue;
-        if (!isPeerPresent(a, nowMs)) continue;
+        if (!isAgentReachable(a, nowMs)) continue;  // bug-56
         if (selector.roles && !selector.roles.includes(a.role)) continue;
         if (!labelsMatch(a.labels ?? {}, selector.matchLabels)) continue;
         out.push(a);
@@ -730,7 +760,7 @@ export class AgentRepository implements IEngineerRegistry {
     }
     const all = await this.listAgents();
     return all.filter((a) => {
-      if (!isPeerPresent(a, nowMs)) return false;
+      if (!isAgentReachable(a, nowMs)) return false;  // bug-56
       if (selector.roles && !selector.roles.includes(a.role)) return false;
       if (!labelsMatch(a.labels ?? {}, selector.matchLabels)) return false;
       return true;

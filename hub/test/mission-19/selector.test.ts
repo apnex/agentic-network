@@ -205,11 +205,20 @@ describe("Mission-19 Selector — selectAgents", () => {
   });
 });
 
-// bug-35 fix: presence-projection filter must gate on lastSeenAt (tool-call
-// recency) rather than lastHeartbeatAt (queue-drain liveness FSM). Agents
-// that are actively tool-calling but haven't drained their pending-actions
-// queue recently must remain reachable for new dispatch.
-describe("Mission-19 Selector — bug-35 lastSeenAt-vs-lastHeartbeatAt presence projection", () => {
+// bug-35 → bug-56 evolution: presence-projection filter at the routing layer
+// has been REVISED. bug-35 originally chose lastSeenAt because lastHeartbeatAt
+// reflected queue-drain cadence at that time (unreliable). Post-bug-53 wired
+// the transport_heartbeat host integration (every 30s reliably) + post-bug-55
+// decoupled cognitive (lastSeenAt) from transport heartbeats — making
+// lastHeartbeatAt the genuine TRANSPORT-tier reachability signal. Per
+// mission-225 v1.0 §3.3 cognitive-vs-transport invariant, routing decisions
+// = transport-tier (can-we-deliver), so selectAgents now uses
+// `isAgentReachable` (lastHeartbeatAt-based) rather than `isPeerPresent`
+// (lastSeenAt-based / cognitive-tier). The bug-35 invariant ("fresh tool-call
+// + stale heartbeat = reachable") no longer fires in the post-bug-53 world
+// because heartbeats are reliable. Tests below cover the post-bug-56
+// transport-tier routing predicate.
+describe("Mission-19 Selector — bug-56 transport-tier presence projection (post-bug-53/55)", () => {
   let reg: AgentRepository;
 
   beforeEach(async () => {
@@ -224,65 +233,71 @@ describe("Mission-19 Selector — bug-35 lastSeenAt-vs-lastHeartbeatAt presence 
     vi.useRealTimers();
   });
 
-  it("includes agent with stale lastHeartbeatAt but fresh lastSeenAt (regression: bug-35)", async () => {
-    // Register set lastSeenAt + lastHeartbeatAt to T0. Advance past 2 * receiptSla
-    // (default 60s → 120s threshold) so the FSM would demote livenessState
-    // to "unresponsive" via computeLivenessState.
-    vi.advanceTimersByTime(5 * 60 * 1000); // T+5min
-    // Tool-call simulation: bump lastSeenAt without touching lastHeartbeatAt.
-    // touchAgent is rate-limited via lastTouchAt; claimSession set it at T0,
-    // 5min later we are well past AGENT_TOUCH_MIN_INTERVAL_MS (30s).
-    await reg.touchAgent("sess-eng");
+  it("includes idle agent with stale lastSeenAt but fresh lastHeartbeatAt (bug-56 invariant)", async () => {
+    // Post-bug-55 cognitive-vs-transport separation: lastSeenAt drifts when
+    // agent is cognitively idle (only heartbeat traffic). lastHeartbeatAt
+    // stays fresh via 30s transport_heartbeat. Routing must remain available.
+    vi.advanceTimersByTime(5 * 60 * 1000); // T+5min — lastSeenAt now 5min stale
+    // Simulate transport heartbeat firing post-bug-55 (refreshHeartbeat bumps
+    // lastHeartbeatAt; bypass keeps lastSeenAt unchanged per Tier 2 fix).
+    {
+      const all = await reg.listAgents();
+      await reg.refreshHeartbeat(all[0].id);
+    }
 
-    // Pre-fix the recompute would demote status to "offline" (lastHeartbeatAt
-    // 5min stale > 2*receiptSla=120s) and selectAgents drops the agent.
-    // Post-fix selectAgents gates on lastSeenAt presence-window, so the
-    // agent remains reachable.
+    // Pre-bug-56 the routing-tier filter (isPeerPresent on lastSeenAt) would
+    // drop this agent. Post-bug-56 fix uses isAgentReachable on
+    // lastHeartbeatAt → idle-but-online agent remains reachable.
     const peers = await reg.selectAgents({ roles: ["engineer"] });
     expect(peers).toHaveLength(1);
     expect(peers[0].id).toMatch(/^agent-/); // idea-251 D-prime Phase 1: unified prefix
   });
 
-  it("excludes agent with stale lastSeenAt (presence window aged out)", async () => {
-    // Advance past the presence window (60s) without any tool-call activity.
-    vi.advanceTimersByTime(2 * 60 * 1000); // T+2min — both heartbeat and lastSeenAt stale
+  it("excludes agent with stale lastHeartbeatAt (transport presence aged out)", async () => {
+    // Advance past the presence window (60s) WITHOUT any heartbeat refresh.
+    // Transport is genuinely stale → unreachable.
+    vi.advanceTimersByTime(2 * 60 * 1000); // T+2min — both fields stale
     const peers = await reg.selectAgents({ roles: ["engineer"] });
     expect(peers).toHaveLength(0);
   });
 
-  it("preserves explicit teardown — markAgentOffline still excludes regardless of lastSeenAt", async () => {
+  it("preserves explicit teardown — markAgentOffline still excludes", async () => {
     await reg.markAgentOffline("sess-eng");
-    // markAgentOffline bumps lastSeenAt, so a naive lastSeenAt-only filter
-    // would incorrectly include the just-torn-down agent. The
-    // livenessState==="offline" sticky check guards against that.
+    // Even if lastHeartbeatAt is recent, livenessState==="offline" sticky
+    // check guards against returning a torn-down agent.
     const peers = await reg.selectAgents({ roles: ["engineer"] });
     expect(peers).toHaveLength(0);
   });
 
-  it("agentIds pin path also honours the presence projection", async () => {
-    // Bug-35 site: hub-networking dispatcher selector resolution uses
-    // agentIds pin. Same projection contract as the broadcast path.
+  it("agentIds pin path also honours transport-tier projection (bug-56)", async () => {
     const all = await reg.listAgents();
     const target = all[0];
 
+    // Idle agent: stale lastSeenAt, fresh lastHeartbeatAt (post-bug-55 cycle).
     vi.advanceTimersByTime(5 * 60 * 1000);
-    await reg.touchAgent("sess-eng");
+    {
+      const all = await reg.listAgents();
+      await reg.refreshHeartbeat(all[0].id);
+    }
 
     const pinnedActive = await reg.selectAgents({ agentIds: [target.id] });
     expect(pinnedActive).toHaveLength(1);
 
-    // Now let lastSeenAt age out without touching, then verify pin returns empty.
+    // Now let lastHeartbeatAt age out without refresh → genuinely unreachable.
     vi.advanceTimersByTime(5 * 60 * 1000);
     const pinnedStale = await reg.selectAgents({ agentIds: [target.id] });
     expect(pinnedStale).toHaveLength(0);
   });
 
-  it("single-agentId fast path also honours the presence projection", async () => {
+  it("single-agentId fast path also honours transport-tier projection (bug-56)", async () => {
     const all = await reg.listAgents();
     const target = all[0];
 
     vi.advanceTimersByTime(5 * 60 * 1000);
-    await reg.touchAgent("sess-eng");
+    {
+      const all = await reg.listAgents();
+      await reg.refreshHeartbeat(all[0].id);
+    }
 
     const fast = await reg.selectAgents({ agentId: target.id });
     expect(fast).toHaveLength(1);
