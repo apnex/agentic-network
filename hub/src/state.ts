@@ -337,8 +337,8 @@ export interface Agent {
   // (cognitive) and `refreshHeartbeat` (transport). See Design v1.0 §3.1
   // truth table for `cognitiveState × transportState` semantics including
   // the registration-instant `(unknown, alive)` edge.
-  cognitiveTTL: number | null;       // seconds since lastSeenAt; null when lastSeenAt unset
-  transportTTL: number | null;       // seconds since lastHeartbeatAt; null when lastHeartbeatAt unset
+  cognitiveTTL: number | null;       // bug-52: seconds remaining in cognitive presence window (counts down from windowMs); null when lastSeenAt unset; 0 when expired
+  transportTTL: number | null;       // bug-52: seconds remaining in transport presence window (counts down from windowMs); null when lastHeartbeatAt unset; 0 when expired
   cognitiveState: ComponentState;    // alive | unresponsive | unknown
   transportState: ComponentState;    // alive | unresponsive | unknown
 
@@ -1489,17 +1489,23 @@ function camelToSnakeUpper(s: string): string {
 }
 
 /**
- * Derive a `ComponentState` from a TTL (seconds) + window (ms). Per
- * Design v1.0 §3.2 — single canonical derivation consumed by both
- * cognitive (touchAgent post-bump) + transport (refreshHeartbeat
- * post-bump) recompute hooks.
+ * Derive a `ComponentState` from a TTL (seconds remaining) + window (ms).
+ * Per Design v1.0 §3.2 + bug-52 correction (countdown-to-expiry semantic;
+ * inverted from v1.0's AGE-since-event codification): single canonical
+ * derivation consumed by both cognitive (touchAgent post-bump) + transport
+ * (refreshHeartbeat post-bump) recompute hooks. windowMs retained in the
+ * signature to preserve calling-convention compatibility (callers pass it
+ * for self-documenting code; threshold logic is window-independent post-fix).
  */
 export function deriveStateFromTTL(
   ttlSeconds: number | null,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   windowMs: number,
 ): ComponentState {
   if (ttlSeconds === null) return "unknown";
-  return ttlSeconds >= windowMs / 1000 ? "unresponsive" : "alive";
+  // bug-52: countdown semantic — ttl <= 0 means window expired (unresponsive);
+  // any positive ttl means time remaining = alive.
+  return ttlSeconds <= 0 ? "unresponsive" : "alive";
 }
 
 /**
@@ -1523,8 +1529,8 @@ export function computeComponentStates(
   nowMs: number,
 ): ComponentStateSnapshot {
   const windowMs = resolveLivenessConfig(agent, "peerPresenceWindowMs", PEER_PRESENCE_WINDOW_MS_DEFAULT);
-  const cognitiveTTL = ttlSecondsFromIso(agent.lastSeenAt, nowMs);
-  const transportTTL = ttlSecondsFromIso(agent.lastHeartbeatAt, nowMs);
+  const cognitiveTTL = ttlRemainingFromIso(agent.lastSeenAt, nowMs, windowMs);
+  const transportTTL = ttlRemainingFromIso(agent.lastHeartbeatAt, nowMs, windowMs);
   return {
     cognitiveTTL,
     cognitiveState: deriveStateFromTTL(cognitiveTTL, windowMs),
@@ -1533,11 +1539,27 @@ export function computeComponentStates(
   };
 }
 
-function ttlSecondsFromIso(iso: string | null | undefined, nowMs: number): number | null {
+/**
+ * bug-52: countdown TTL — counts down from windowMs to 0 (expired). Returns
+ * seconds remaining in the presence window:
+ *   - just-bumped (ageMs ≈ 0)         → ttl ≈ windowMs/1000 (full window)
+ *   - mid-window  (ageMs < windowMs)  → ttl > 0   (alive)
+ *   - expired     (ageMs >= windowMs) → ttl = 0   (unresponsive; clamped non-negative)
+ *
+ * Director's stated example: 14s after a tool call with 60s window →
+ * cognitiveTTL = 46. v1.0 codified the inverted (AGE-since-event) formula;
+ * bug-52 corrects to standard network-TTL countdown convention.
+ */
+function ttlRemainingFromIso(
+  iso: string | null | undefined,
+  nowMs: number,
+  windowMs: number,
+): number | null {
   if (!iso) return null;
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return null;
-  return Math.max(0, Math.floor((nowMs - ms) / 1000));
+  const ageMs = nowMs - ms;
+  return Math.max(0, Math.floor((windowMs - ageMs) / 1000));
 }
 
 // Mission-56 W5: `Notification` entity + `NotificationRepository` +

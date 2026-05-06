@@ -223,6 +223,8 @@ NOTE: composite `livenessState` 4-state FSM is independent of this truth table; 
 
 ### §3.2 Hub-side TTL computation (reuse lastSeenAt + lastHeartbeatAt per round-1 C3 fold)
 
+> **bug-52 correction (2026-05-06):** v1.0 codified `cognitiveTTL = now - lastSeenAt` (AGE-since-event; counts UP from 0). This was inverted from standard network-TTL convention (countdown-to-expiry). Substrate corrected per bug-52: `cognitiveTTL = max(0, floor((windowMs - (now - lastSeenAt)) / 1000))`. Counts down from `windowMs/1000` to 0 (expired). Threshold logic flipped: `ttl <= 0 → unresponsive`. Director's stated example: 14s after a tool call with 60s window → cognitiveTTL = 46. Same correction applies to `transportTTL` (counts down from same `peerPresenceWindowMs` — single liveness window per agent; heartbeat cadence is independent of window size). Architecture unchanged: lazy-compute on read; no background timer; field-comments updated at `hub/src/state.ts:340-341`.
+
 **Per Q5=a eager strategy + C3 fold option (a) reuse existing 2-signal model.**
 
 Computation flow piggybacks on existing primitives that already update timestamps. NO new timestamps; v0.2 just adds eager TTL/state derivation alongside existing updates.
