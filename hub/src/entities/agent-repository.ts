@@ -62,6 +62,7 @@ import {
   AGENT_TOUCH_MIN_INTERVAL_MS,
   DEFAULT_AGENT_RECEIPT_SLA_MS,
   computeFingerprint,
+  deriveAgentId,
   shortHash,
   THRASHING_THRESHOLD,
   THRASHING_WINDOW_MS,
@@ -318,7 +319,7 @@ export class AgentRepository implements IEngineerRegistry {
 
     const identity = await this.assertIdentity(
       {
-        globalInstanceId: payload.globalInstanceId,
+        name: payload.name,
         role: tokenRole,
         clientMetadata: payload.clientMetadata,
         advisoryTags: payload.advisoryTags,
@@ -330,7 +331,11 @@ export class AgentRepository implements IEngineerRegistry {
       address,
     );
     if (!identity.ok) {
-      return identity;
+      // idea-251 D-prime Phase 2: AssertIdentityFailure code union widened
+      // with `name_collision`; RegisterAgentFailure also accepts it (extended
+      // for the same reason — surface to register_role callers as identity-
+      // assertion failure semantic).
+      return identity as RegisterAgentResult;
     }
     const claim = await this.claimSession(identity.agentId, sessionId, "sse_subscribe");
     if (!claim.ok) {
@@ -360,7 +365,16 @@ export class AgentRepository implements IEngineerRegistry {
     sessionId?: string,
     _address?: string,
   ): Promise<AssertIdentityResult> {
-    const fingerprint = computeFingerprint(payload.globalInstanceId);
+    // idea-251 D-prime Phase 2: name IS identity. globalInstanceId retired
+    // (no transitional alias; hard cutover per Director's "legacy" framing).
+    if (!payload.name) {
+      return {
+        ok: false,
+        code: "role_mismatch",
+        message: "name required for assertIdentity (idea-251 D-prime: identity input is OIS_AGENT_NAME via M18 handshake)",
+      };
+    }
+    const fingerprint = computeFingerprint(payload.name);
     const path = fpPath(fingerprint);
     // Two attempts: natural + retry on OCC contention. Matches legacy budget.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -369,8 +383,10 @@ export class AgentRepository implements IEngineerRegistry {
 
       if (!existing) {
         // First-contact create: NO session bound (claimSession's job).
-        const agentIdPrefix = payload.role === "director" ? "director" : "eng";
-        const agentId = `${agentIdPrefix}-${shortHash(fingerprint)}`;
+        // idea-251 D-prime Phase 2: deterministic agentId via deriveAgentId helper.
+        // `agent-{first-8-hex-of-sha256(name)}` — same name always produces same
+        // id across stores. Role-prefix dropped; role is a separate field.
+        const agentId = deriveAgentId(payload.name);
         // mission-66 #40 closure: Hub-side canonical projection derives
         // advisoryTags.adapterVersion from clientMetadata.proxyVersion.
         // Single source-of-truth at the Hub; consumers read advisoryTags.
@@ -395,11 +411,10 @@ export class AgentRepository implements IEngineerRegistry {
           lastHeartbeatAt: now,
           receiptSla: payload.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
           wakeEndpoint: payload.wakeEndpoint ?? null,
-          // Mission-62 W3 — `name` populated from globalInstanceId (which
-          // the M18 handshake derives from the OIS_INSTANCE_ID env var per
-          // Design v1.0 §5.1); falls back to agentId if globalInstanceId
-          // is somehow unavailable.
-          name: payload.globalInstanceId ?? agentId,
+          // idea-251 D-prime Phase 2: name is identity. Always non-empty here
+          // (assertIdentity rejected absent name above). Stored verbatim;
+          // immutable post-create (different name → different fingerprint).
+          name: payload.name,
           activityState: "offline", // first-contact has no SSE stream yet
           sessionStartedAt: null,
           lastToolCallAt: null,
@@ -457,11 +472,34 @@ export class AgentRepository implements IEngineerRegistry {
         };
       }
 
+      // idea-251 D-prime Phase 2: name-collision detection. Same name from a
+      // different host = operator misconfiguration (two machines both claiming
+      // identity "greg"). Loud-error so the collision is visible rather than
+      // silently last-write-wins-stomping the prior host's clientMetadata.
+      // Only checks when both sides have a hostname (defensive vs partial
+      // metadata).
+      const priorHost = agent.clientMetadata?.hostname;
+      const newHost = payload.clientMetadata?.hostname;
+      if (priorHost && newHost && priorHost !== newHost) {
+        return {
+          ok: false,
+          code: "name_collision",
+          message: `Agent '${payload.name}' already registered from host '${priorHost}'; cannot re-register from host '${newHost}'. Rename this instance (set OIS_AGENT_NAME differently) or stop the other instance.`,
+        };
+      }
+
       // CP3 C5 (bug-16): labels refresh path — provided overwrites stored;
       // omitted preserves stored. Defensive migration for agents lacking labels.
       const priorLabels = agent.labels ?? {};
       const nextLabels = payload.labels ?? priorLabels;
       const labelsChanged = !shallowEqualLabels(priorLabels, nextLabels);
+      // idea-251 D-prime Phase 1: `name` is identity (fingerprint = sha256(name)).
+      // Reconnect-refresh of name is a no-op by construction: a different name
+      // produces a different fingerprint → different lookup path → this reconnect
+      // branch wouldn't fire (would be first-contact-create on the new fingerprint
+      // path). So name carries over from the existing record unchanged. Reverts
+      // the audit-fold A name-in-stamped-spread that was scoped under the
+      // mutable-name model — replaced by name-as-identity-immutable here.
       // mission-66 #40 closure: derive advisoryTags.adapterVersion from
       // canonical clientMetadata.proxyVersion on every re-register so
       // version-source-of-truth tracks the running shim.

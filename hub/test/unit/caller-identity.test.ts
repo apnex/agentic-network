@@ -8,13 +8,13 @@ describe("resolveCreatedBy", () => {
     ctx.role = "architect";
     // Register an architect session so engineerRegistry.getAgentForSession resolves.
     await ctx.stores.engineerRegistry.registerAgent(ctx.sessionId, "architect", {
-      globalInstanceId: "arch-test-1",
+      name: "arch-test-1",
       transport: "stdio",
     } as any, "127.0.0.1");
 
     const prov = await resolveCreatedBy(ctx);
     expect(prov.role).toBe("architect");
-    expect(prov.agentId).toMatch(/^eng-/); // resolved agent id
+    expect(prov.agentId).toMatch(/^agent-/); // resolved agent id (idea-251 D-prime Phase 1: unified prefix)
   });
 
   it("returns anonymous-<role> placeholder when role is set but no agent record exists", async () => {

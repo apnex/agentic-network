@@ -39,7 +39,7 @@ async function registerUnresponsiveArchitect(ctx: TestPolicyContext): Promise<st
     ctx.sessionId,
     "architect",
     {
-      globalInstanceId: `inst-arch-${ctx.sessionId}`,
+      name: `inst-arch-${ctx.sessionId}`,
       role: "architect",
       clientMetadata: CLIENT,
       labels: { env: "test" },
@@ -58,7 +58,7 @@ async function registerEngineer(ctx: TestPolicyContext) {
     ctx.sessionId,
     "engineer",
     {
-      globalInstanceId: `inst-eng-${ctx.sessionId}`,
+      name: `inst-eng-${ctx.sessionId}`,
       role: "engineer",
       clientMetadata: CLIENT,
       labels: { env: "test" },

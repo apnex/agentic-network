@@ -54,6 +54,30 @@ export OIS_HUB_ROLE="engineer"
 
 These `OIS_` variables are shared across all OIS plugins.
 
+#### Per-agent identity (idea-251 D-prime)
+
+The canonical per-agent config surface is `~/.config/apnex-agents/{name}.env`
+— operator-managed file (chmod 600), one per agent identity, sourced by the
+operator's per-name `start-{name}.sh` wrapper:
+
+```bash
+# ~/.config/apnex-agents/greg.env
+OIS_AGENT_NAME=greg                # Identity (drives agentId derivation
+                                   # in Hub: agent-{8-char-hash-of-name}).
+                                   # 1-32 chars, alphanumeric + `_-`.
+                                   # Reserved names rejected:
+                                   # director / system / hub / engineer / architect
+                                   # (case-insensitive).
+GH_TOKEN=github_pat_...            # Other per-agent secrets / config
+```
+
+When `OIS_AGENT_NAME` is unset and `globalInstanceId` is also unset, the
+Hub rejects the handshake (loud-error so the misconfiguration is visible).
+
+> **Retired (idea-251 D-prime):** the legacy `OIS_INSTANCE_ID` env-var
+> override is no longer read by the adapter. If still set in your wrappers,
+> it is ignored. Use `OIS_AGENT_NAME` for identity instead.
+
 ### 2. Install the plugin
 
 Run the install script (idempotent — safe to re-run):
@@ -99,6 +123,11 @@ You should see Hub tools available when you type `/` in Claude Code. The adapter
 | `hubUrl` | Yes | — | Full URL of the Hub instance |
 | `hubToken` | Yes | — | Bearer token for Hub authentication |
 | `role` | No | `engineer` | Agent role: `engineer` or `architect` |
+
+| Env var | Required | Default | Description |
+|---|---|---|---|
+| `OIS_AGENT_NAME` | Yes (or transitional `globalInstanceId`) | — | idea-251 D-prime: identity input. Drives agentId derivation (`agent-{8-char-hash}`) and is surfaced as the display name in get_agents. 1-32 chars, alphanumeric + `_-`. Reserved: director/system/hub/engineer/architect. Set in `~/.config/apnex-agents/{name}.env`. |
+| `OIS_INSTANCE_ID` | — | — | RETIRED (idea-251 D-prime). Ignored by adapter; remove from wrappers. |
 
 ## Troubleshooting
 

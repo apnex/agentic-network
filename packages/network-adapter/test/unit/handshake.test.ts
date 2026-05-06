@@ -29,7 +29,7 @@ import {
 
 const baseConfig: HandshakeConfig = {
   role: "engineer",
-  globalInstanceId: "uuid-test",
+  name: "uuid-test",
   clientInfo: { name: "claude-code", version: "0.1.0" },
   proxyName: "@apnex/claude-plugin",
   proxyVersion: "1.0.0",
@@ -142,7 +142,7 @@ describe("buildHandshakePayload", () => {
   it("constructs a well-formed payload", () => {
     const payload = buildHandshakePayload(baseConfig);
     expect(payload.role).toBe("engineer");
-    expect(payload.globalInstanceId).toBe("uuid-test");
+    expect(payload.name).toBe("uuid-test");
     expect(payload.clientMetadata.clientName).toBe("claude-code");
     expect(payload.clientMetadata.proxyName).toBe("@apnex/claude-plugin");
     expect(payload.clientMetadata.pid).toBe(process.pid);
@@ -245,7 +245,7 @@ describe("performHandshake", () => {
 
     expect(executeTool).toHaveBeenCalledWith("register_role", expect.objectContaining({
       role: "engineer",
-      globalInstanceId: "uuid-test",
+      name: "uuid-test",
     }));
     expect(result.response).toEqual<HandshakeResponse>({ agentId: "eng-abc", sessionEpoch: 1, wasCreated: true });
     expect(result.epoch).toBe(1);

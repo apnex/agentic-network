@@ -109,7 +109,13 @@ export interface AgentClientCallbacks {
  * collapse to the bare register_role call.
  */
 export interface AgentHandshakeConfig {
-  globalInstanceId: string;
+  /**
+   * idea-251 D-prime Phase 2: name IS identity. REQUIRED. Sourced from
+   * `OIS_AGENT_NAME` env var by the host shim. Drives agentId derivation
+   * `agent-{8-hex-of-sha256(name)}` on Hub side. globalInstanceId field
+   * RETIRED (was pre-D-prime fingerprint input).
+   */
+  name: string;
   proxyName: string;
   proxyVersion: string;
   transport: string;

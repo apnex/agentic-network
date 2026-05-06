@@ -53,7 +53,7 @@ async function createAgent(
     {
       role: "engineer",
       handshake: {
-        globalInstanceId: `cog-int-${randomUUID()}`,
+        name: `cog-int-${randomUUID()}`,
         proxyName: "cognitive-integration-test",
         proxyVersion: "0.0.0",
         transport: "loopback",
@@ -144,7 +144,7 @@ describe("McpAgentClient cognitive integration", () => {
       {
         role: "engineer",
         handshake: {
-          globalInstanceId: `cb-${randomUUID()}`,
+          name: `cb-${randomUUID()}`,
           proxyName: "cb-test",
           proxyVersion: "0.0.0",
           transport: "loopback",
@@ -198,7 +198,7 @@ describe("McpAgentClient cognitive integration", () => {
       {
         role: "engineer",
         handshake: {
-          globalInstanceId: `std-${randomUUID()}`,
+          name: `std-${randomUUID()}`,
           proxyName: "std-pipeline-test",
           proxyVersion: "0.0.0",
           transport: "loopback",
@@ -263,7 +263,7 @@ describe("McpAgentClient cognitive integration", () => {
       {
         role: "engineer",
         handshake: {
-          globalInstanceId: `err-${randomUUID()}`,
+          name: `err-${randomUUID()}`,
           proxyName: "err-test",
           proxyVersion: "0.0.0",
           transport: "loopback",

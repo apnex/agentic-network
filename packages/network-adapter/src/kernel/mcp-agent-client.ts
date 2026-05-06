@@ -562,7 +562,8 @@ export class McpAgentClient implements IAgentClient {
       executeTool: (n, a) => this.transport.request(n, a),
       config: {
         role: this.cfg.role,
-        globalInstanceId: handshake.globalInstanceId,
+        // idea-251 D-prime Phase 2: name is the sole identity input.
+        name: handshake.name,
         clientInfo: handshake.getClientInfo(),
         proxyName: handshake.proxyName,
         proxyVersion: handshake.proxyVersion,

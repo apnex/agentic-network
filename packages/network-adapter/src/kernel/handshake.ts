@@ -5,8 +5,9 @@
  * (which proves the wire is alive and the session is bound), the agent
  * performs this enriched handshake on entry to the `synchronizing` state. It:
  *
- *   1. Re-calls `register_role` with full payload (globalInstanceId,
- *      clientMetadata, advisoryTags).
+ *   1. Re-calls `register_role` with full payload (name, clientMetadata,
+ *      advisoryTags). idea-251 D-prime Phase 2: name IS identity (was
+ *      globalInstanceId pre-D-prime; that field RETIRED).
  *   2. Parses the response for `agentId`/`sessionEpoch`/`wasCreated`.
  *   3. Tracks epoch displacement across reconnects.
  *   4. Halts on fatal codes (`agent_thrashing_detected`, `role_mismatch`).
@@ -45,10 +46,16 @@ export interface HandshakeAdvisoryTags {
 
 export interface HandshakePayload {
   role: string;
-  globalInstanceId: string;
   clientMetadata: HandshakeClientMetadata;
   advisoryTags: HandshakeAdvisoryTags;
   labels?: Record<string, string>;
+  /**
+   * idea-251 D-prime Phase 2: name IS identity. REQUIRED. Sourced from the
+   * `OIS_AGENT_NAME` env var by the host process; passed through here. Drives
+   * agentId derivation `agent-{8-hex-of-sha256(name)}` on the Hub side.
+   * (`globalInstanceId` field RETIRED in D-prime — name replaces it.)
+   */
+  name: string;
 }
 
 export interface HandshakeResponse {
@@ -125,7 +132,6 @@ export function parseHandshakeResponse(result: unknown): HandshakeResponse | nul
 
 export interface HandshakeConfig {
   role: string;
-  globalInstanceId: string;
   clientInfo: { name: string; version: string };
   proxyName: string;
   proxyVersion: string;
@@ -153,6 +159,12 @@ export interface HandshakeConfig {
    * When omitted, Hub uses DEFAULT_AGENT_RECEIPT_SLA_MS (30000).
    */
   receiptSla?: number;
+  /**
+   * idea-251 D-prime Phase 2: name IS identity. REQUIRED. Operator sets via
+   * `OIS_AGENT_NAME` env var; host shim passes through. Hub derives
+   * `agent-{8-hex-of-sha256(name)}` agentId from this.
+   */
+  name: string;
 }
 
 export interface HandshakeContext {
@@ -211,7 +223,7 @@ export function resolveClientVersion(raw: string | undefined, proxyVersion: stri
 export function buildHandshakePayload(config: HandshakeConfig): HandshakePayload {
   const payload: HandshakePayload = {
     role: config.role,
-    globalInstanceId: config.globalInstanceId,
+    name: config.name,
     clientMetadata: {
       clientName: resolveClientName(config.clientInfo.name, config.proxyName),
       clientVersion: resolveClientVersion(config.clientInfo.version, config.proxyVersion),

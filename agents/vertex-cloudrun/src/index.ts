@@ -38,7 +38,8 @@ if (!GCS_BUCKET) {
 const CONTEXT_PREFIX = process.env.CONTEXT_PREFIX || "architect-context/";
 const EVENT_LOOP_ENABLED =
   (process.env.EVENT_LOOP_ENABLED || "true").toLowerCase() !== "false";
-const GLOBAL_INSTANCE_ID = process.env.OIS_GLOBAL_INSTANCE_ID;
+// idea-251 D-prime Phase 2: OIS_GLOBAL_INSTANCE_ID retired; replaced by
+// OIS_AGENT_NAME (read inline below at HubAdapter construction).
 const SERVICE_NAME = process.env.K_SERVICE || "architect-cloudrun";
 const PROXY_VERSION = process.env.K_REVISION || "0.0.0";
 // ADR-017: Hub posts here to cold-start the architect on queue-deadline
@@ -68,7 +69,10 @@ function parseLabels(raw: string | undefined): Record<string, string> | undefine
 
 const hub = new HubAdapter(HUB_URL, HUB_TOKEN, "architect", {
   labels: parseLabels(process.env.OIS_HUB_LABELS),
-  globalInstanceId: GLOBAL_INSTANCE_ID,
+  // idea-251 D-prime Phase 2: name IS identity (was OIS_GLOBAL_INSTANCE_ID
+  // pre-D-prime). Cloud Run terraform now exports OIS_AGENT_NAME (e.g.
+  // "lily-prod"). Hub derives `agent-{8-hex-of-sha256(name)}` agentId.
+  agentName: process.env.OIS_AGENT_NAME,
   serviceName: SERVICE_NAME,
   proxyVersion: PROXY_VERSION,
   wakeEndpoint: WAKE_ENDPOINT,

@@ -19,16 +19,36 @@ function coerceAgentRole(role: string): AgentRole | null {
   return null;
 }
 
+// idea-251: reserved display names — collide semantically with role/system
+// concepts and would mislead operators reading get_agents output. Case-
+// insensitive match. Keep minimum-viable; expand on collision evidence.
+const RESERVED_NAMES = new Set(["director", "system", "hub", "engineer", "architect"]);
+
+// idea-251: validation regex + length bounds for the advertised display name.
+// Mirrors the zod schema description on register_role; applied explicitly in
+// the handler since PolicyRouter doesn't auto-enforce schemas (router.ts:223
+// invokes the handler with raw args).
+const NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+const NAME_MIN_LEN = 1;
+const NAME_MAX_LEN = 32;
+
 async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
   const role = args.role as string;
   const sid = ctx.sessionId;
-  const globalInstanceId = args.globalInstanceId as string | undefined;
   const clientMetadataArg = args.clientMetadata as AgentClientMetadata | undefined;
   const advisoryTags = args.advisoryTags as Record<string, unknown> | undefined;
   const labels = args.labels as Record<string, string> | undefined;
+  // idea-251 D-prime Phase 2: name IS identity. Required field.
+  // Trim + treat empty/whitespace as absent. Validation (regex + length +
+  // reserved-name) below enforces shape + semantics; loud-error if absent
+  // from M18 path (`name_required`).
+  const nameArg = (args.name as string | undefined)?.trim() || undefined;
 
   // M18 path: the proxy sent the full Agent handshake payload.
-  if (globalInstanceId && clientMetadataArg) {
+  // idea-251 D-prime Phase 2: name + clientMetadata required. globalInstanceId
+  // RETIRED — not read; not accepted as identity input. Hub returns
+  // `name_required` if name is absent on this path.
+  if (nameArg && clientMetadataArg) {
     const tokenRole = coerceAgentRole(role);
     if (!tokenRole) {
       return {
@@ -39,8 +59,54 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
         isError: true,
       };
     }
+    // idea-251: validate name shape (length + regex) before any state
+    // mutation. Reject with structured error so adapter can log + surface
+    // to operator.
+    if (nameArg) {
+      if (nameArg.length < NAME_MIN_LEN || nameArg.length > NAME_MAX_LEN) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: false,
+              code: "invalid_name",
+              message: `Name '${nameArg}' length ${nameArg.length} outside allowed range [${NAME_MIN_LEN}, ${NAME_MAX_LEN}].`,
+            }),
+          }],
+          isError: true,
+        };
+      }
+      if (!NAME_REGEX.test(nameArg)) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: false,
+              code: "invalid_name",
+              message: `Name '${nameArg}' contains disallowed characters. Allowed: alphanumeric, underscore, dash.`,
+            }),
+          }],
+          isError: true,
+        };
+      }
+      if (RESERVED_NAMES.has(nameArg.toLowerCase())) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: false,
+              code: "reserved_name",
+              message: `Name '${nameArg}' is reserved (matches a role or system concept). Choose a different OIS_AGENT_NAME value. Reserved set: ${[...RESERVED_NAMES].join(", ")}.`,
+            }),
+          }],
+          isError: true,
+        };
+      }
+    }
     const payload: RegisterAgentPayload = {
-      globalInstanceId,
+      // idea-251 D-prime Phase 2: name IS identity. globalInstanceId field
+      // RETIRED. nameArg is non-empty here (M18-path entry condition).
+      name: nameArg,
       role: tokenRole,
       clientMetadata: clientMetadataArg,
       advisoryTags: advisoryTags ?? {},
@@ -61,7 +127,7 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
     ctx.stores.engineerRegistry.setSessionRole(sid, tokenRole as "engineer" | "architect" | "director");
     const identity = await ctx.stores.engineerRegistry.assertIdentity(
       {
-        globalInstanceId: payload.globalInstanceId,
+        name: payload.name,
         role: tokenRole,
         clientMetadata: payload.clientMetadata,
         advisoryTags: payload.advisoryTags,
@@ -591,10 +657,10 @@ async function signalQuotaRecovered(_args: Record<string, unknown>, ctx: IPolicy
 export function registerSessionPolicy(router: PolicyRouter): void {
   router.register(
     "register_role",
-    "[Any] Register this session's role and, optionally (M18), the full Agent handshake payload (globalInstanceId, clientMetadata, advisoryTags) to obtain a stable agentId with displacement-safe session rebinding.",
+    "[Any] Register this session's role and, optionally (M18), the full Agent handshake payload (name, clientMetadata, advisoryTags) to obtain a stable agentId with displacement-safe session rebinding. idea-251 D-prime: name is the canonical identity input (was globalInstanceId pre-D-prime; that field RETIRED).",
     {
       role: z.enum(["engineer", "architect", "director"]).describe("The role of this session: 'engineer', 'architect', or 'director'"),
-      globalInstanceId: z.string().optional().describe("M18: Client-side stable UUID from ~/.ois/instance.json. When present, triggers the Agent handshake path."),
+      name: z.string().min(1).max(32).regex(/^[a-zA-Z0-9_-]+$/).optional().describe("idea-251 D-prime: identity input (e.g., 'lily', 'greg'). Required for the M18 enriched-handshake path. Drives agentId derivation `agent-{8-hex-of-sha256(name)}`. 1-32 chars, alphanumeric + `_-`. Reserved set rejected (case-insensitive): director/system/hub/engineer/architect. Sourced from OIS_AGENT_NAME env var via the host shim."),
       clientMetadata: z
         .object({
           clientName: z.string(),

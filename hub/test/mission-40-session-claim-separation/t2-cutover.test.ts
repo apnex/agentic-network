@@ -32,7 +32,7 @@ import type { IPolicyContext } from "../../src/policy/types.js";
 
 const ENGINEER_HANDSHAKE = {
   role: "engineer",
-  globalInstanceId: "test-gid-engineer",
+  name: "test-gid-engineer",
   clientMetadata: {
     clientName: "test-client",
     clientVersion: "0.0.0",

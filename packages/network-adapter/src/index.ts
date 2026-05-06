@@ -40,8 +40,9 @@ export {
   createDedupFilter,
 } from "./kernel/event-router.js";
 
-export { loadOrCreateGlobalInstanceId } from "./kernel/instance.js";
-export type { LoadInstanceOptions } from "./kernel/instance.js";
+// idea-251 D-prime Phase 2: instance.ts deleted. Identity now flows from
+// OIS_AGENT_NAME env → handshake.name → Hub-side fingerprint(name).
+// Operators set OIS_AGENT_NAME in ~/.config/apnex-agents/{name}.env.
 
 export {
   FATAL_CODES,

@@ -285,7 +285,7 @@ describe("SessionPolicy", () => {
 
   const engineerHandshake = {
     role: "engineer",
-    globalInstanceId: "test-gid-engineer",
+    name: "test-gid-engineer",
     clientMetadata: {
       clientName: "test-client",
       clientVersion: "0.0.0",
@@ -347,10 +347,10 @@ describe("SessionPolicy", () => {
 
   // ── M24-T10 Director integration (ADR-014 §77) ────────────────
 
-  it("register_role as director (M18) mints an agentId with the director-* prefix", async () => {
+  it("register_role as director (M18) mints an agentId with the unified agent-* prefix (idea-251 D-prime)", async () => {
     const directorHandshake = {
       role: "director",
-      globalInstanceId: "test-gid-director-1",
+      name: "test-gid-director-1",
       clientMetadata: {
         clientName: "director-chat",
         clientVersion: "0.0.0",
@@ -362,16 +362,17 @@ describe("SessionPolicy", () => {
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.ok).toBe(true);
-    expect(parsed.agent.id).toMatch(/^director-/);
-    // Engineer + architect stay on the eng-* prefix for backward compatibility
-    // with existing audit trails + label selectors.
+    // idea-251 D-prime Phase 1: role-prefix dropped; all roles get the unified
+    // `agent-{8-hex-chars}` format. Role surfaces as separate field.
+    expect(parsed.agent.id).toMatch(/^agent-[0-9a-f]{8}$/);
+    expect(parsed.agent.id).not.toMatch(/^director-/);
     expect(parsed.agent.id).not.toMatch(/^eng-/);
   });
 
   it("registered director SessionRole is 'director' (not mapped to 'unknown')", async () => {
     const directorHandshake = {
       role: "director",
-      globalInstanceId: "test-gid-director-2",
+      name: "test-gid-director-2",
       clientMetadata: {
         clientName: "d", clientVersion: "0", proxyName: "@apnex/d", proxyVersion: "0",
       },
@@ -380,23 +381,26 @@ describe("SessionPolicy", () => {
     expect(ctx.stores.engineerRegistry.getRole(ctx.sessionId)).toBe("director");
   });
 
-  it("director and engineer with same agent-name coexist without collision", async () => {
-    // Different globalInstanceIds → different fingerprints → different agent IDs,
-    // but both derive their prefix from their role declaration. Verifies that
-    // the prefix selection is role-driven, not fingerprint-prefix-driven.
+  it("director and engineer with different identities coexist (different agentIds; idea-251 D-prime unified prefix)", async () => {
+    // idea-251 D-prime Phase 1: role-prefix dropped. Different identities
+    // (different name OR globalInstanceId) → different fingerprints → different
+    // agentIds, regardless of role. Role surfaces as separate field, not prefix.
     const engResult = await router.handle("register_role", {
-      role: "engineer", globalInstanceId: "gid-same-1",
+      role: "engineer", name: "gid-same-1",
       clientMetadata: { clientName: "c", clientVersion: "0", proxyName: "p", proxyVersion: "0" },
     }, createTestContext({ stores: ctx.stores, sessionId: "eng-session" }));
 
     const dirCtx = createTestContext({ stores: ctx.stores, sessionId: "dir-session" });
     const dirResult = await router.handle("register_role", {
-      role: "director", globalInstanceId: "gid-same-2",
+      role: "director", name: "gid-same-2",
       clientMetadata: { clientName: "c", clientVersion: "0", proxyName: "p", proxyVersion: "0" },
     }, dirCtx);
 
-    expect(JSON.parse(engResult.content[0].text).agent.id).toMatch(/^eng-/);
-    expect(JSON.parse(dirResult.content[0].text).agent.id).toMatch(/^director-/);
+    const engId = JSON.parse(engResult.content[0].text).agent.id;
+    const dirId = JSON.parse(dirResult.content[0].text).agent.id;
+    expect(engId).toMatch(/^agent-[0-9a-f]{8}$/);
+    expect(dirId).toMatch(/^agent-[0-9a-f]{8}$/);
+    expect(engId).not.toBe(dirId);
   });
 
   it("touchAgent bumps lastSeenAt and flips drifted status back to online", async () => {
@@ -479,7 +483,7 @@ describe("SessionPolicy", () => {
 
   const architectHandshake = {
     role: "architect",
-    globalInstanceId: "test-gid-architect",
+    name: "test-gid-architect",
     clientMetadata: {
       clientName: "test-arch-client",
       clientVersion: "0.0.0",
@@ -523,7 +527,7 @@ describe("SessionPolicy", () => {
     const dirCtx = createTestContext({ stores: ctx.stores, sessionId: "dir-session" });
     await router.handle("register_role", {
       role: "director",
-      globalInstanceId: "test-gid-director",
+      name: "test-gid-director",
       clientMetadata: {
         clientName: "dir-client", clientVersion: "0",
         proxyName: "@apnex/test-plugin", proxyVersion: "0",
@@ -556,7 +560,7 @@ describe("SessionPolicy", () => {
   it("list_available_peers honours matchLabels (subset equality)", async () => {
     await router.handle("register_role", {
       ...engineerHandshake,
-      globalInstanceId: "gid-eng-a",
+      name: "gid-eng-a",
       labels: { team: "billing", env: "prod" },
     }, ctx);
     await router.handle("claim_session", {}, ctx);
@@ -564,7 +568,7 @@ describe("SessionPolicy", () => {
     const eng2 = createTestContext({ stores: ctx.stores, sessionId: "eng2" });
     await router.handle("register_role", {
       ...engineerHandshake,
-      globalInstanceId: "gid-eng-b",
+      name: "gid-eng-b",
       labels: { team: "shipping", env: "prod" },
     }, eng2);
     await router.handle("claim_session", {}, eng2);
@@ -589,7 +593,7 @@ describe("SessionPolicy", () => {
     const otherCtx = createTestContext({ stores: ctx.stores, sessionId: "other" });
     await router.handle("register_role", {
       ...engineerHandshake,
-      globalInstanceId: "gid-other",
+      name: "gid-other",
     }, otherCtx);
     await router.handle("claim_session", {}, otherCtx);
 

@@ -42,7 +42,7 @@ function identityPayload(
   labels?: AgentLabels,
 ): AssertIdentityPayload {
   return {
-    globalInstanceId: instanceId,
+    name: instanceId,
     role,
     clientMetadata: CLIENT,
     labels,
@@ -113,7 +113,7 @@ describe("M-Session-Claim-Separation T1 — assertIdentity (Memory)", () => {
   it("bug-16 C5: omitted labels preserve stored set", async () => {
     await reg.assertIdentity(identityPayload("inst-A", "engineer", { team: "platform" }));
     const second = await reg.assertIdentity({
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "engineer",
       clientMetadata: CLIENT,
       // labels intentionally omitted
@@ -200,7 +200,7 @@ describe("M-Session-Claim-Separation T1 — registerAgent external behavior pres
 
   it("first-contact registerAgent returns sessionEpoch=1, wasCreated=true, status online", async () => {
     const result = await reg.registerAgent("sess-1", "engineer", {
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "engineer",
       clientMetadata: CLIENT,
       labels: { team: "platform" },
@@ -221,7 +221,7 @@ describe("M-Session-Claim-Separation T1 — registerAgent external behavior pres
 
   it("reconnect registerAgent increments epoch + reports displacedPriorSession", async () => {
     const first = await reg.registerAgent("sess-1", "engineer", {
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "engineer",
       clientMetadata: CLIENT,
     });
@@ -229,7 +229,7 @@ describe("M-Session-Claim-Separation T1 — registerAgent external behavior pres
     if (!first.ok) return;
 
     const second = await reg.registerAgent("sess-2", "engineer", {
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "engineer",
       clientMetadata: CLIENT,
     });
@@ -242,13 +242,13 @@ describe("M-Session-Claim-Separation T1 — registerAgent external behavior pres
 
   it("reconnect with refreshed labels still emits changedFields + priorLabels (bug-16 C5 preserved)", async () => {
     await reg.registerAgent("sess-1", "engineer", {
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "engineer",
       clientMetadata: CLIENT,
       labels: { team: "platform" },
     });
     const second = await reg.registerAgent("sess-2", "engineer", {
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "engineer",
       clientMetadata: CLIENT,
       labels: { team: "infra", env: "prod" },
@@ -262,12 +262,12 @@ describe("M-Session-Claim-Separation T1 — registerAgent external behavior pres
 
   it("role mismatch on reconnect surfaces the same role_mismatch code as pre-T1", async () => {
     await reg.registerAgent("sess-1", "engineer", {
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "engineer",
       clientMetadata: CLIENT,
     });
     const wrong = await reg.registerAgent("sess-2", "architect", {
-      globalInstanceId: "inst-A",
+      name: "inst-A",
       role: "architect",
       clientMetadata: CLIENT,
     });

@@ -39,7 +39,7 @@ describe("bug-18 — unicast thread dispatch is not label-gated", () => {
       archCtx.sessionId,
       "architect",
       {
-        globalInstanceId: `inst-arch-${archCtx.sessionId}`,
+        name: `inst-arch-${archCtx.sessionId}`,
         role: "architect",
         clientMetadata: CLIENT,
         labels: { env: "prod" },
@@ -53,7 +53,7 @@ describe("bug-18 — unicast thread dispatch is not label-gated", () => {
       "session-kate",
       "engineer",
       {
-        globalInstanceId: "inst-kate",
+        name: "inst-kate",
         role: "engineer",
         clientMetadata: CLIENT,
         labels: { env: "dev" },

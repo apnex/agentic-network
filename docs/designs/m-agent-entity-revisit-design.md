@@ -21,7 +21,7 @@ Restructure the Hub's Agent entity into a coherent, queryable, live operational 
 interface Agent {
   // Identity
   id: string;                          // "agent-XXXX" (renamed from engineerId)
-  name: string;                        // "lily" / "greg" / "kate" / "tom" — set via OIS_INSTANCE_ID env
+  name: string;                        // "lily" / "greg" / "kate" / "tom" — set via OIS_AGENT_NAME env (idea-251 D-prime; OIS_INSTANCE_ID retired)
   role: "architect" | "engineer" | "director" | "system";
   labels: Record<string, string>;      // {env: "prod", ...} — extensible
 
@@ -290,7 +290,7 @@ Adapters maintain a local cache of the agent population, refreshed on `agent_sta
 ### §5.1 Handshake (SSE-stream-open)
 
 Adapter signals to Hub at handshake:
-- `name` (from `OIS_INSTANCE_ID` env)
+- `name` (from `OIS_AGENT_NAME` env; idea-251 D-prime — OIS_INSTANCE_ID retired)
 - `role` (already signaled today)
 - `labels` (already signaled today)
 - `clientMetadata.{...}` (already signaled today)

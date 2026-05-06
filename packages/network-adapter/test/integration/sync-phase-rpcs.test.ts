@@ -60,7 +60,7 @@ describe("Invariant #10 — sync phase RPCs", () => {
         role: "engineer",
         logger: log.logger,
         handshake: {
-          globalInstanceId: "test-instance-uuid-10",
+          name: "test-instance-uuid-10",
           proxyName: "@apnex/test",
           proxyVersion: "1.0.0",
           transport: "test-mcp",
@@ -97,7 +97,7 @@ describe("Invariant #10 — sync phase RPCs", () => {
     // bootstrap call from McpAgentClient.runHandshake).
     expect(registerRoleCalls.length).toBeGreaterThanOrEqual(2);
     const enrichedRegister = registerRoleCalls[1];
-    expect(enrichedRegister.args.globalInstanceId).toBe("test-instance-uuid-10");
+    expect(enrichedRegister.args.name).toBe("test-instance-uuid-10");
 
     expect(getTaskCalls.length).toBeGreaterThanOrEqual(1);
     expect(getPendingCalls.length).toBeGreaterThanOrEqual(1);
@@ -114,7 +114,7 @@ describe("Invariant #10 — sync phase RPCs", () => {
     // must appear before both sync RPCs.
     const fullLog = hub.getToolCallLog();
     const enrichedIdx = fullLog.findIndex(
-      (c) => c.tool === "register_role" && c.args.globalInstanceId === "test-instance-uuid-10"
+      (c) => c.tool === "register_role" && c.args.name === "test-instance-uuid-10"
     );
     const getTaskIdx = fullLog.findIndex((c) => c.tool === "get_task");
     const getPendingIdx = fullLog.findIndex((c) => c.tool === "get_pending_actions");

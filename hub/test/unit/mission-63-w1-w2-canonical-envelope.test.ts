@@ -19,7 +19,7 @@ const noop = () => {};
 
 const handshake = {
   role: "engineer",
-  globalInstanceId: "test-gid-mission-63-canonical",
+  name: "test-gid-mission-63-canonical",
   clientMetadata: {
     clientName: "test-client",
     clientVersion: "0.0.0",
@@ -212,8 +212,14 @@ describe("register_role canonical envelope (Design §3.1)", () => {
     expect(parsed.session.claimed).toBe(false);
     expect(parsed.session.epoch).toBe(0);
     expect(parsed.session.trigger).toBeUndefined();
-    // agent canonical projection
-    expect(parsed.agent.id).toMatch(/^eng-/);
+    // agent canonical projection. idea-251 D-prime Phase 1: agentId derives
+    // as `agent-{8-char-hash-of-name-or-globalInstanceId}` — role-prefix
+    // dropped; role surfaces as separate field. This handshake passes
+    // globalInstanceId only (no name field) → fingerprint from globalInstanceId
+    // → agentId = "agent-{shortHash}". The handshake-payload value is
+    // additionally surfaced as `agent.name` via the Hub's create-path
+    // fallback chain `payload.name ?? payload.globalInstanceId ?? agentId`.
+    expect(parsed.agent.id).toMatch(/^agent-/);
     expect(parsed.agent.name).toBe("test-gid-mission-63-canonical");
     expect(parsed.agent.role).toBe("engineer");
     expect(parsed.agent.labels).toEqual({ env: "smoke-test", team: "billing" });

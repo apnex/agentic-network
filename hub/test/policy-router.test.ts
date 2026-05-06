@@ -111,7 +111,7 @@ describe("PolicyRouter", () => {
         ctx.sessionId,
         role,
         {
-          globalInstanceId: `test-gid-${ctx.sessionId}-${role}`,
+          name: `test-gid-${ctx.sessionId}-${role}`,
           proxyName: "test",
           proxyVersion: "0",
           clientName: "test",
@@ -503,7 +503,7 @@ describe("TaskPolicy", () => {
       archCtx.sessionId,
       "architect",
       {
-        globalInstanceId: `test-gid-${archCtx.sessionId}`,
+        name: `test-gid-${archCtx.sessionId}`,
         proxyName: "test",
         proxyVersion: "0",
         clientName: "test",

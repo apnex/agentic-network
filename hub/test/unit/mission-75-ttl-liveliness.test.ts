@@ -60,7 +60,7 @@ const CLIENT: AgentClientMetadata = {
 
 function payload(instanceId: string, role: "engineer" | "architect" = "engineer"): RegisterAgentPayload {
   return {
-    globalInstanceId: instanceId,
+    name: instanceId,
     role,
     clientMetadata: CLIENT,
     advisoryTags: { llmModel: "claude-opus-4-7" },

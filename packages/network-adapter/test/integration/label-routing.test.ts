@@ -42,7 +42,7 @@ async function createActor(
       role,
       labels,
       handshake: {
-        globalInstanceId: `loopback-${role}-${randomUUID()}`,
+        name: `loopback-${role}-${randomUUID()}`,
         proxyName: "policy-loopback",
         proxyVersion: "0.0.0",
         transport: "loopback",
@@ -190,10 +190,10 @@ describe("Mission-19 — label routing (loopback E2E)", () => {
       await transport2.connect();
       const sid = transport2.getSessionId()!;
       // Reuse the first client's globalInstanceId so the fingerprint matches.
-      const firstGii = (hub.getToolCalls("register_role")[0].args.globalInstanceId as string);
+      const firstGii = (hub.getToolCalls("register_role")[0].args.name as string);
       await hub.dispatch(sid, "register_role", {
         role: "engineer",
-        globalInstanceId: firstGii,
+        name: firstGii,
         clientMetadata: {
           clientName: "relabel-attempt",
           clientVersion: "0.0.0",

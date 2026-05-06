@@ -40,7 +40,7 @@ describe("Invariant #9 — plain vs enriched register_role", () => {
         role: "engineer",
         logger: log.logger,
         handshake: {
-          globalInstanceId: "test-instance-uuid-9",
+          name: "test-instance-uuid-9",
           proxyName: "@apnex/test",
           proxyVersion: "1.0.0",
           transport: "test-mcp",
@@ -64,14 +64,14 @@ describe("Invariant #9 — plain vs enriched register_role", () => {
     // Call 1: plain — only `role`, nothing else.
     const plain = calls[0].args;
     expect(plain.role).toBe("engineer");
-    expect(plain.globalInstanceId).toBeUndefined();
+    expect(plain.name).toBeUndefined();
     expect(plain.clientMetadata).toBeUndefined();
     expect(plain.advisoryTags).toBeUndefined();
 
     // Call 2: enriched — carries the full M18 handshake payload.
     const enriched = calls[1].args;
     expect(enriched.role).toBe("engineer");
-    expect(enriched.globalInstanceId).toBe("test-instance-uuid-9");
+    expect(enriched.name).toBe("test-instance-uuid-9");
     expect(enriched.clientMetadata).toBeTruthy();
     expect(enriched.advisoryTags).toBeTruthy();
 

@@ -40,7 +40,10 @@ async function createAgent(
     {
       role,
       handshake: {
-        globalInstanceId: `bench-${role}-${randomUUID()}`,
+        // idea-251 D-prime Phase 2: name IS identity (was globalInstanceId).
+        // Random per-invocation; bench mints fresh identities. Sliced to fit
+        // 32-char name limit (`bench-${role}-${8-hex}` = ≤21 chars).
+        name: `bench-${role}-${randomUUID().slice(0, 8)}`,
         proxyName: "cognitive-bench",
         proxyVersion: "0.0.0",
         transport: "loopback",

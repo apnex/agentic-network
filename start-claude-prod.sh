@@ -8,6 +8,12 @@
 # agentIds, so two Claude sessions on the same laptop can coexist as
 # independent engineers (required for engineer↔engineer peer threads).
 #
+# idea-251 D-prime: per-agent identity (OIS_AGENT_NAME) belongs in the
+# operator's per-agent env file at ~/.config/apnex-agents/{name}.env
+# (canonical config surface for ALL per-agent vars; secrets + non-secrets).
+# This generic wrapper does NOT export OIS_AGENT_NAME — operators set it
+# in their per-agent env file alongside other per-agent config.
+#
 # Usage: ./start-claude.sh <name>
 # Example: ./start-claude.sh kate
 #
