@@ -91,8 +91,24 @@ export interface PollBackstopOptions {
    * `DispatcherNotificationHooks.onActionableEvent` so the dispatcher
    * can wire poll output through the same MessageRouter as the SSE
    * inline path (preserving seen-id LRU dedup across both paths).
+   *
+   * bug-53: optional when `firstTimerEnabled === false` — heartbeat-only
+   * hosts (claude-plugin/opencode-plugin per current SSE-driven message
+   * delivery) don't need the poll-side callback. Default is no-op so
+   * existing required-callback callers continue to work.
    */
-  onPolledMessage: (event: AgentEvent) => void;
+  onPolledMessage?: (event: AgentEvent) => void;
+
+  /**
+   * bug-53: enable/disable the FIRST timer (periodic `list_messages`
+   * polling). Defaults to true for backwards-compat with mission-56 W3.3
+   * Pull-mode wiring. Set to `false` for heartbeat-only hosts (current
+   * shim/opencode adapters use SSE for inline message delivery; the
+   * first-timer's list_messages poll would introduce a second polling
+   * source competing with SSE — out of scope until a separate first-timer
+   * wiring audit per round-2 design decision).
+   */
+  firstTimerEnabled?: boolean;
 
   /**
    * mission-75 v1.0 §3.3 — heartbeat timer interval in milliseconds.
@@ -221,11 +237,13 @@ function parseListMessagesResult(raw: unknown): ListMessagesBody | null {
  */
 export class PollBackstop {
   private readonly opts: Required<
-    Omit<PollBackstopOptions, "cursorFile" | "heartbeatIntervalMs" | "heartbeatEnabled">
+    Omit<PollBackstopOptions, "cursorFile" | "heartbeatIntervalMs" | "heartbeatEnabled" | "firstTimerEnabled" | "onPolledMessage">
   > & {
     cursorFile?: string;
     heartbeatIntervalMs: number;
     heartbeatEnabled: boolean;
+    firstTimerEnabled: boolean;
+    onPolledMessage: (event: AgentEvent) => void;
   };
   private timer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -254,29 +272,43 @@ export class PollBackstop {
     );
     const heartbeatEnabled = opts.heartbeatEnabled ??
       (process.env.TRANSPORT_HEARTBEAT_ENABLED === "false" ? false : true);
+    // bug-53: firstTimerEnabled defaults true for backwards-compat with
+    // existing mission-56 W3.3 Pull-mode callers; heartbeat-only hosts pass
+    // false to skip the first-timer scheduling.
+    const firstTimerEnabled = opts.firstTimerEnabled ?? true;
     this.opts = {
       role: opts.role,
       cadenceSeconds: cadence,
       cursorFile: opts.cursorFile,
       log: opts.log ?? (() => {}),
-      onPolledMessage: opts.onPolledMessage,
+      onPolledMessage: opts.onPolledMessage ?? (() => {}),
       heartbeatIntervalMs,
       heartbeatEnabled,
+      firstTimerEnabled,
     };
   }
 
   /** Start the periodic poll + heartbeat (if enabled). Idempotent. */
   start(getAgent: () => IAgentClient | null): void {
-    if (this.timer) return;
+    // Idempotency guard: if EITHER timer is already set, treat as started.
+    // bug-53: previously checked only `this.timer`; under heartbeat-only
+    // mode (firstTimerEnabled=false) timer is null but heartbeatTimer may
+    // be set — guard against duplicate-start re-scheduling the heartbeat.
+    if (this.timer || this.heartbeatTimer) return;
     const cadenceMs = this.opts.cadenceSeconds * 1000;
     this.opts.log(
-      `[poll-backstop] starting (role=${this.opts.role}, cadenceS=${this.opts.cadenceSeconds}, heartbeatMs=${this.opts.heartbeatEnabled ? this.opts.heartbeatIntervalMs : "disabled"})`,
+      `[poll-backstop] starting (role=${this.opts.role}, cadenceS=${this.opts.firstTimerEnabled ? this.opts.cadenceSeconds : "disabled"}, heartbeatMs=${this.opts.heartbeatEnabled ? this.opts.heartbeatIntervalMs : "disabled"})`,
     );
-    this.timer = setInterval(() => {
-      // Fire-and-forget; tick() handles its own errors.
-      void this.tick(getAgent);
-    }, cadenceMs);
-    if (this.timer.unref) this.timer.unref();
+    // bug-53: skip first-timer scheduling when firstTimerEnabled === false
+    // (heartbeat-only hosts; current shim/opencode adapters use SSE for
+    // inline message delivery; first-timer Pull-mode wiring deferred).
+    if (this.opts.firstTimerEnabled) {
+      this.timer = setInterval(() => {
+        // Fire-and-forget; tick() handles its own errors.
+        void this.tick(getAgent);
+      }, cadenceMs);
+      if (this.timer.unref) this.timer.unref();
+    }
     // mission-75 v1.0 §3.3 — second timer for transport_heartbeat. Only
     // started when heartbeatEnabled === true (TRANSPORT_HEARTBEAT_ENABLED
     // env-disable path; tests opt-out).

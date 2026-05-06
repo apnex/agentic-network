@@ -16,6 +16,7 @@ import {
   buildPromptText,
   makeStdioFatalHalt,
   createSharedDispatcher,
+  assertHostWiringComplete,
   isCacheValid,
   readCache,
   writeCache,
@@ -344,6 +345,10 @@ function appendPendingActionLog(item: DrainedPendingAction): void {
 // ── Graceful Shutdown ───────────────────────────────────────────────
 
 let agent: McpAgentClient | null = null;
+// bug-53: module-scoped pollBackstop reference so shutdown() can stop the
+// timers cleanly (the inner main() dispatcherRef is function-scoped and
+// not visible here).
+let shutdownPollBackstop: (() => void) | null = null;
 let shuttingDown = false;
 
 async function shutdown(reason?: "signal_term" | "signal_int" | "internal_error"): Promise<void> {
@@ -361,6 +366,10 @@ async function shutdown(reason?: "signal_term" | "signal_int" | "internal_error"
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   try {
+    // bug-53: stop pollBackstop timers before tearing down the agent so
+    // tickHeartbeat doesn't race with agent.stop() / try to call against
+    // a torn-down stream.
+    shutdownPollBackstop?.();
     if (agent) await agent.stop();
   } catch (err) {
     log(`Shutdown error: ${err}`);
@@ -618,6 +627,17 @@ async function main(): Promise<void> {
         appendActionableLog(event, `[INFO] ${buildPromptText(event.event, event.data, { toolPrefix: "mcp__plugin_agent-adapter_proxy__" })}`);
       },
     },
+    // bug-53: opt into pollBackstop heartbeat-second-timer so transport_heartbeat
+    // fires periodically (mission-75 §3.3 substrate). Heartbeat-only mode —
+    // first-timer (list_messages Pull-mode) deferred per round-2 design
+    // decision; SSE inline path delivers messages today, no second polling
+    // source. Env vars (TRANSPORT_HEARTBEAT_INTERVAL_MS / _ENABLED) plumbed
+    // through PollBackstop's constructor.
+    pollBackstop: {
+      role: config.role,
+      firstTimerEnabled: false,
+      log,
+    },
   });
   dispatcherRef = dispatcher;
 
@@ -637,6 +657,20 @@ async function main(): Promise<void> {
     await agent.start();
     resolveSyncReady();
     log("Hub connection established (full sync done)");
+
+    // bug-53: §6.4-equivalent gate — fail-fast at boot if pollBackstop wiring
+    // is missing (would otherwise silently freeze lastHeartbeatAt at adapter-
+    // startup, taking ~96 minutes to surface clinically per the original
+    // bug-53 evidence). TRANSPORT_HEARTBEAT_ENABLED=false is the explicit
+    // opt-out path.
+    assertHostWiringComplete(dispatcher, log);
+
+    // bug-53: now that handshake completed and agent is in 'streaming' state,
+    // start the pollBackstop heartbeat timer (and first-timer if opted in).
+    // Idempotent — duplicate start() calls are no-ops.
+    dispatcher.pollBackstop?.start(() => agent);
+    // bug-53: register stop-callback so shutdown() can clean up timers.
+    shutdownPollBackstop = () => dispatcher.pollBackstop?.stop();
   } catch (err) {
     rejectIdentityReady(err);
     rejectSessionReady(err);
