@@ -120,30 +120,36 @@ describe("mission-75 §3.2 — resolveLivenessConfig precedence", () => {
   });
 });
 
-describe("mission-75 §3.2 — deriveStateFromTTL", () => {
+describe("mission-75 §3.2 — deriveStateFromTTL (bug-52 countdown semantic)", () => {
   it("returns 'unknown' when ttl is null", () => {
     expect(deriveStateFromTTL(null, 60_000)).toBe("unknown");
   });
 
-  it("returns 'alive' when ttl is below window/1000", () => {
-    expect(deriveStateFromTTL(0, 60_000)).toBe("alive");
+  it("returns 'unresponsive' when ttl is 0 (window expired)", () => {
+    // bug-52: countdown semantic — ttl=0 means seconds-remaining hit zero
+    // (presence window expired). v1.0's AGE semantic had ttl=0 → "alive" (just-bumped); INVERTED.
+    expect(deriveStateFromTTL(0, 60_000)).toBe("unresponsive");
+  });
+
+  it("returns 'alive' when ttl is positive (seconds remaining > 0)", () => {
+    // Any positive ttl = time remaining = alive. Window arg unused post-bug-52
+    // (kept in signature for self-documenting code).
+    expect(deriveStateFromTTL(1, 60_000)).toBe("alive");
     expect(deriveStateFromTTL(30, 60_000)).toBe("alive");
     expect(deriveStateFromTTL(59, 60_000)).toBe("alive");
+    expect(deriveStateFromTTL(60, 60_000)).toBe("alive"); // full window remaining
   });
 
-  it("returns 'unresponsive' when ttl is at or beyond window/1000", () => {
-    expect(deriveStateFromTTL(60, 60_000)).toBe("unresponsive");
-    expect(deriveStateFromTTL(120, 60_000)).toBe("unresponsive");
-  });
-
-  it("respects per-agent windowMs override (e.g. 120s)", () => {
+  it("respects positive ttl regardless of windowMs arg (window-independent post-bug-52)", () => {
     expect(deriveStateFromTTL(90, 120_000)).toBe("alive");
-    expect(deriveStateFromTTL(120, 120_000)).toBe("unresponsive");
+    expect(deriveStateFromTTL(120, 120_000)).toBe("alive");
   });
 });
 
-describe("mission-75 §3.2 — computeComponentStates", () => {
-  it("computes 0-second TTLs for just-stamped timestamps (alive, alive)", () => {
+describe("mission-75 §3.2 — computeComponentStates (bug-52 countdown semantic)", () => {
+  it("computes full-window TTLs for just-stamped timestamps (alive, alive)", () => {
+    // bug-52: just-bumped agent has full window remaining
+    // (peerPresenceWindowMs default = 60_000 → ttl = 60).
     const now = Date.now();
     const agent = {
       lastSeenAt: new Date(now).toISOString(),
@@ -151,10 +157,42 @@ describe("mission-75 §3.2 — computeComponentStates", () => {
       livenessConfig: undefined,
     };
     const snap = computeComponentStates(agent, now);
-    expect(snap.cognitiveTTL).toBe(0);
-    expect(snap.transportTTL).toBe(0);
+    expect(snap.cognitiveTTL).toBe(60);
+    expect(snap.transportTTL).toBe(60);
     expect(snap.cognitiveState).toBe("alive");
     expect(snap.transportState).toBe("alive");
+  });
+
+  it("Director's stated example: 14s after bump → cognitiveTTL=46 (countdown by 14)", () => {
+    // bug-52 pin-the-mental-model fixture: 60s window, 14s elapsed since
+    // bump → 46s remaining. Matches Director's stated intent for countdown
+    // semantic.
+    const now = Date.now();
+    const agent = {
+      lastSeenAt: new Date(now - 14_000).toISOString(),
+      lastHeartbeatAt: new Date(now - 14_000).toISOString(),
+      livenessConfig: undefined,
+    };
+    const snap = computeComponentStates(agent, now);
+    expect(snap.cognitiveTTL).toBe(46);
+    expect(snap.transportTTL).toBe(46);
+    expect(snap.cognitiveState).toBe("alive");
+    expect(snap.transportState).toBe("alive");
+  });
+
+  it("60s after bump → TTL=0 → state=unresponsive (window expired)", () => {
+    // bug-52: at exactly window boundary (ageMs == windowMs), ttl clamps to 0.
+    const now = Date.now();
+    const agent = {
+      lastSeenAt: new Date(now - 60_000).toISOString(),
+      lastHeartbeatAt: new Date(now - 60_000).toISOString(),
+      livenessConfig: undefined,
+    };
+    const snap = computeComponentStates(agent, now);
+    expect(snap.cognitiveTTL).toBe(0);
+    expect(snap.transportTTL).toBe(0);
+    expect(snap.cognitiveState).toBe("unresponsive");
+    expect(snap.transportState).toBe("unresponsive");
   });
 
   it("treats null/empty timestamps as TTL=null → state=unknown", () => {
@@ -171,29 +209,35 @@ describe("mission-75 §3.2 — computeComponentStates", () => {
     expect(snap.transportState).toBe("unknown");
   });
 
-  it("flips to unresponsive once TTL >= peerPresenceWindowMs/1000", () => {
+  it("mid-window vs past-window TTLs (bug-52 countdown semantic)", () => {
+    // bug-52: lastSeenAt 90s ago with 60s window → expired (ttl=0, unresponsive);
+    // lastHeartbeatAt 30s ago with 60s window → 30s remaining (ttl=30, alive).
     const now = Date.now();
     const agent = {
-      lastSeenAt: new Date(now - 90_000).toISOString(), // 90s ago
-      lastHeartbeatAt: new Date(now - 30_000).toISOString(), // 30s ago
+      lastSeenAt: new Date(now - 90_000).toISOString(), // 90s ago — past window
+      lastHeartbeatAt: new Date(now - 30_000).toISOString(), // 30s ago — mid window
       livenessConfig: undefined,
     };
     const snap = computeComponentStates(agent, now);
-    expect(snap.cognitiveTTL).toBe(90);
+    expect(snap.cognitiveTTL).toBe(0);
     expect(snap.transportTTL).toBe(30);
     expect(snap.cognitiveState).toBe("unresponsive");
     expect(snap.transportState).toBe("alive");
   });
 
-  it("clamps TTL to ≥0 for forward-clock-skew safety", () => {
+  it("forward-clock-skew handled cleanly (negative ageMs → ttl > window/1000; still alive)", () => {
+    // bug-52: future timestamp → ageMs negative → (windowMs - ageMs) > windowMs
+    // → ttl exceeds windowMs/1000. Counts as alive (positive ttl); no max-clamp
+    // applied per Design v1.0 §1 (only min-clamp at 0). Director-acknowledged
+    // edge case; produces no harm — just reports more headroom than nominal.
     const now = Date.now();
     const agent = {
-      lastSeenAt: new Date(now + 5_000).toISOString(), // future timestamp
+      lastSeenAt: new Date(now + 5_000).toISOString(), // 5s future
       lastHeartbeatAt: new Date(now).toISOString(),
       livenessConfig: undefined,
     };
     const snap = computeComponentStates(agent, now);
-    expect(snap.cognitiveTTL).toBe(0); // clamped, not negative
+    expect(snap.cognitiveTTL).toBe(65); // windowMs/1000 + 5s skew
     expect(snap.cognitiveState).toBe("alive");
   });
 });
@@ -208,7 +252,7 @@ describe("mission-75 §3.2 — AgentRepository touchAgent post-bump hook", () =>
     delete process.env.PEER_PRESENCE_WINDOW_MS;
   });
 
-  it("touchAgent populates cognitiveTTL=0 + cognitiveState='alive' on the agent record", async () => {
+  it("touchAgent populates cognitiveTTL=full-window + cognitiveState='alive' on the agent record (bug-52 countdown)", async () => {
     const result = await reg.registerAgent("sess-1", "engineer", payload("uuid-touch"));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -219,18 +263,20 @@ describe("mission-75 §3.2 — AgentRepository touchAgent post-bump hook", () =>
     await reg.touchAgent("sess-1");
     const stored = await reg.getAgent(result.agentId);
     expect(stored).not.toBeNull();
-    expect(stored!.cognitiveTTL).toBe(0);
+    // bug-52: just-bumped → full window remaining (60s default).
+    expect(stored!.cognitiveTTL).toBe(60);
     expect(stored!.cognitiveState).toBe("alive");
   });
 
-  it("refreshHeartbeat populates transportTTL=0 + transportState='alive'", async () => {
+  it("refreshHeartbeat populates transportTTL=full-window + transportState='alive' (bug-52 countdown)", async () => {
     const result = await reg.registerAgent("sess-1", "engineer", payload("uuid-hb"));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     await reg.refreshHeartbeat(result.agentId);
     const stored = await reg.getAgent(result.agentId);
     expect(stored).not.toBeNull();
-    expect(stored!.transportTTL).toBe(0);
+    // bug-52: just-bumped → full window remaining (60s default).
+    expect(stored!.transportTTL).toBe(60);
     expect(stored!.transportState).toBe("alive");
     expect(stored!.livenessState).toBe("online"); // existing FSM behaviour preserved
   });
@@ -313,8 +359,9 @@ describe("mission-75 §3.3 — transport_heartbeat handler", () => {
       Date.parse(before!.lastHeartbeatAt),
     );
     // transport state recomputed (fold via refreshHeartbeat post-bump hook)
+    // bug-52: countdown — just-bumped → full window remaining (60s default).
     expect(after!.transportState).toBe("alive");
-    expect(after!.transportTTL).toBe(0);
+    expect(after!.transportTTL).toBe(60);
   });
 });
 
@@ -447,7 +494,8 @@ describe("mission-75 §3.1 — truth-table registration-instant edge", () => {
     // codebase's lastSeenAt-on-create model.
     expect(stored!.cognitiveState).toBe("alive");
     expect(stored!.transportState).toBe("alive");
-    expect(stored!.cognitiveTTL).toBe(0);
-    expect(stored!.transportTTL).toBe(0);
+    // bug-52: just-registered → just-bumped → full window remaining (60s default).
+    expect(stored!.cognitiveTTL).toBe(60);
+    expect(stored!.transportTTL).toBe(60);
   });
 });
