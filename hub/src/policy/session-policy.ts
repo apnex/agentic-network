@@ -679,6 +679,13 @@ export function registerSessionPolicy(router: PolicyRouter): void {
       labels: z.record(z.string(), z.string()).optional().describe("Mission-19: routing labels (e.g., {env: 'smoke-test', team: 'billing'}). CP3 C5 (bug-16): refreshed on every reconnect from the handshake payload — a provided object overwrites stored labels; omitting labels preserves the stored set. Reserved key 'ois.io/namespace' has no v1 semantics."),
     },
     registerRole,
+    undefined, // no deprecated alias
+    // bug-55 Tier 1: register_role is adapter-shim handshake-tier; the
+    // shim's handshake.ts owns the call. Tagging adapter-internal makes
+    // the dispatcher-entry cognitive-bump gate skip touchAgent AND
+    // excludes it from the LLM-visible tool catalogue (mcp-binding
+    // marker → shim-side filter).
+    "adapter-internal",
   );
 
   router.register(
@@ -686,6 +693,12 @@ export function registerSessionPolicy(router: PolicyRouter): void {
     "[Any] M-Session-Claim-Separation (mission-40) T2: explicit session claim. Binds the caller's MCP session as the active session for the asserted identity (created via register_role). Increments sessionEpoch, evicts any prior session for the same agentId, makes the agent eligible for SSE notification dispatch. Returns sessionClaimed=true. The verb 'claim_session' is committed as stable across future API v2.0 envelope migration (idea-121 may wrap but must not rename). Probes (claude mcp list) MUST NOT call this tool — that defeats the bug-26 structural fix. Use only when the caller intends to be the active session.",
     {},
     claimSessionTool,
+    undefined, // no deprecated alias
+    // bug-55 Tier 1: claim_session is transport-tier — it binds the wire
+    // session to the asserted identity. Adapter handshake owns the call;
+    // tagging adapter-internal gates the cognitive-bump and removes it
+    // from the LLM-visible catalogue.
+    "adapter-internal",
   );
 
   router.register(

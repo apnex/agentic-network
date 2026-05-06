@@ -512,14 +512,21 @@ export class AgentRepository implements IEngineerRegistry {
         clientMetadata: payload.clientMetadata,
         advisoryTags: refreshedAdvisoryTags,
         labels: nextLabels,
-        lastSeenAt: now,
+        // bug-55 Tier 2: assertIdentity-on-reconnect proves transport
+        // presence (wire is alive) but is NOT cognitive proof-of-life.
+        // Bump lastHeartbeatAt (transport-tier) so transportTTL refreshes
+        // immediately on reconnect; do NOT bump lastSeenAt — cognitive
+        // presence must drift naturally if no LLM work is happening.
+        lastHeartbeatAt: now,
         receiptSla: payload.receiptSla ?? agent.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
         wakeEndpoint: payload.wakeEndpoint ?? agent.wakeEndpoint ?? null,
-        // INVARIANT (T1): do NOT touch sessionEpoch/currentSessionId/status/
-        // livenessState/lastHeartbeatAt. Identity assertion is identity-only.
+        // INVARIANT (T1, post-mission-75): do NOT touch sessionEpoch/
+        // currentSessionId/status/livenessState — those are claim-session-
+        // tier fields. lastHeartbeatAt is mission-75 transport-tier and
+        // bumped here per bug-55 Tier 2.
       };
       // mission-75 v1.0 §3.2 — recompute component states post-bump (folded
-      // into single OCC write). Cognitive-side bumped here; transport-side
+      // into single OCC write). Transport-side bumped here; cognitive-side
       // unchanged but recomputed for freshness.
       const updated: Agent = { ...stamped, ...computeComponentStates(stamped, Date.parse(now)) };
 
@@ -602,7 +609,11 @@ export class AgentRepository implements IEngineerRegistry {
         sessionEpoch: agent.sessionEpoch + 1,
         currentSessionId: sessionId,
         status: "online",
-        lastSeenAt: now,
+        // bug-55 Tier 2: claimSession (explicit + sse_subscribe +
+        // first_tool_call auto-claim paths) is a transport-tier signal —
+        // session-state-change, not cognitive work. Bump lastHeartbeatAt
+        // (transport-tier); do NOT bump lastSeenAt — cognitive presence
+        // must drift naturally if no LLM work is happening.
         livenessState: "online",
         lastHeartbeatAt: now,
         activityState: "online_idle",
@@ -612,10 +623,11 @@ export class AgentRepository implements IEngineerRegistry {
         restartHistoryMs,
         restartCount,
       };
-      // mission-75 v1.0 §3.2 — claimSession bumps both lastSeenAt +
-      // lastHeartbeatAt; recompute both component states (folded into the
-      // single OCC write). Per Design §3.1 truth-table this gives
-      // (alive, alive) at session-claim instant.
+      // mission-75 v1.0 §3.2 — claimSession bumps lastHeartbeatAt only
+      // (bug-55 Tier 2 decouples cognitive-tier from session-claim).
+      // Recompute both component states (folded into the single OCC
+      // write). Per Design §3.1 truth-table this gives transport=alive
+      // at session-claim instant; cognitive remains as-was.
       const updated: Agent = { ...stamped, ...computeComponentStates(stamped, nowMs) };
       const result = await this.provider.putIfMatch(path, encode(updated), existing.token);
       if (!result.ok) {

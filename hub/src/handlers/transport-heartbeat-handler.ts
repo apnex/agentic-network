@@ -11,10 +11,11 @@
  * Critical invariant (Design §3.3 v0.3):
  *
  *   This handler MUST NOT bump `lastSeenAt` (would collapse cognitive-vs-
- *   transport semantic separation). PolicyRouter consults
- *   AGENT_TOUCH_BYPASS_TOOLS at the dispatcher entry to skip the standard
- *   `touchAgent` invocation for this tool — but THIS handler likewise
- *   must not invoke `touchAgent` directly, only `refreshHeartbeat`.
+ *   transport semantic separation). The dispatcher-entry cognitive-bump
+ *   gate (`shouldTouchAgent` in hub-networking.ts) consults the tool's
+ *   tier — `adapter-internal` here — and skips the standard `touchAgent`
+ *   invocation. THIS handler likewise must not invoke `touchAgent`
+ *   directly, only `refreshHeartbeat`.
  *
  * Tier annotation (Design §3.3 v1.0 fold):
  *

@@ -11,8 +11,9 @@
  *  - Truth-table edges per Design v1.0 §3.1 (registration-instant
  *    `(unknown, alive)` documented as naturally-pending)
  *  - transport_heartbeat handler: invokes refreshHeartbeat; rejects
- *    unbound session; integrates with AGENT_TOUCH_BYPASS_TOOLS
+ *    unbound session
  *  - PolicyRouter tier annotation registration + getToolTier accessor
+ *    (canonical cognitive-bump gate per bug-55 inversion)
  *  - mcp-binding TIER_ANNOTATION_MARKER prefix discipline
  *
  * Per Design v1.0 §6.1 verification gates (subset; comprehensive
@@ -30,7 +31,6 @@ import {
   computeComponentStates,
   PEER_PRESENCE_WINDOW_MS_DEFAULT,
   AGENT_PULSE_KIND,
-  AGENT_TOUCH_BYPASS_TOOLS,
   computeFingerprint,
   type Agent,
   type AgentClientMetadata,
@@ -366,20 +366,7 @@ describe("mission-75 §3.3 — transport_heartbeat handler", () => {
   });
 });
 
-// ── AGENT_TOUCH_BYPASS_TOOLS contract ─────────────────────────────────
-
-describe("mission-75 §3.3 — AGENT_TOUCH_BYPASS_TOOLS allow-list", () => {
-  it("contains transport_heartbeat", () => {
-    expect(AGENT_TOUCH_BYPASS_TOOLS.has("transport_heartbeat")).toBe(true);
-  });
-
-  it("does not contain non-bypass tools", () => {
-    expect(AGENT_TOUCH_BYPASS_TOOLS.has("create_task")).toBe(false);
-    expect(AGENT_TOUCH_BYPASS_TOOLS.has("drain_pending_actions")).toBe(false);
-  });
-});
-
-// ── PolicyRouter tier annotation (Design §3.3) ────────────────────────
+// ── PolicyRouter tier annotation (Design §3.3 / bug-55 cognitive-bump gate) ──
 
 describe("mission-75 §3.3 — PolicyRouter tier annotation", () => {
   let router: PolicyRouter;
@@ -495,8 +482,12 @@ describe("mission-75 §3.1 — truth-table registration-instant edge", () => {
     // codebase's lastSeenAt-on-create model.
     expect(stored!.cognitiveState).toBe("alive");
     expect(stored!.transportState).toBe("alive");
-    // bug-52: just-registered → just-bumped → full window remaining (60s default).
-    expect(stored!.cognitiveTTL).toBe(60);
+    // bug-55 Tier 2: claimSession no longer bumps lastSeenAt, so cognitiveTTL
+    // reflects elapsed time since first-contact-create's lastSeenAt write
+    // (typically <1s into the test, hence 59-60). Transport-tier still bumps
+    // at claim, so transportTTL is full-window.
+    expect(stored!.cognitiveTTL).toBeGreaterThan(0);
+    expect(stored!.cognitiveTTL).toBeLessThanOrEqual(60);
     expect(stored!.transportTTL).toBe(60);
   });
 });
