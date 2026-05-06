@@ -58,7 +58,7 @@ Remember: you operate at **spec level, not code**. Don't read source files to an
    - `list_tele` (expect 11 teles, `tele-0`..`tele-10`)
    - `list_threads` (recent — last 14 days or relevant ones)
 5. **Role registration is automatic** via the adapter handshake from `.ois/adapter-config.json`. Do NOT call `register_role`.
-6. Check `list_available_peers` — greg should already be visible as engineer/env=prod (he runs concurrently in his own worktree). If he is not visible, flag it to the Director before proceeding.
+6. Check `get_agents` with `filter: { role: "engineer", livenessState: "online" }` — greg should already be visible as engineer/env=prod (he runs concurrently in his own worktree). If he is not visible, flag it to the Director before proceeding.
 
 ## After cold-start — report readiness
 

@@ -399,6 +399,22 @@ export class HubNetworking {
     const selStr = JSON.stringify(selector);
     this.log(`[Dispatch] Persisted notif-${notification.id}: ${event} selector=${selStr} matched=${matched.length} agent(s)`);
 
+    // idea-252 §4 (dispatch-level warning): when an EXPLICIT-recipient
+    // selector resolves to zero matches, surface loud-warning. Defense-in-
+    // depth complement to the API-level `recipient.unknown` rejection in
+    // create_thread / create_message — that path catches "agent doesn't
+    // exist at request time"; this catches "agent went offline/unreachable
+    // between API request and dispatch" (rare race) plus any internal
+    // dispatch caller that bypasses resolveRecipient. Pattern-match-zero
+    // for selector-based (roles/labels) is a legitimate cohort-broadcast
+    // pattern — only warn on explicit-id selectors.
+    if (matched.length === 0 && (selector.agentId || (selector.agentIds && selector.agentIds.length > 0))) {
+      console.warn(
+        `[Dispatch] zero_match for explicit-recipient selector — event=${event} selector=${selStr} notif=${notification.id}. ` +
+          `Recipient may be unregistered, archived, offline, or unreachable. Per idea-252 §4 this is loud-logged for diagnostic visibility.`,
+      );
+    }
+
     let notified = 0;
     for (const agent of matched) {
       const sessionId = agent.currentSessionId;

@@ -11,6 +11,7 @@ import type { IPolicyContext, PolicyResult } from "./types.js";
 import type { AgentRole, RegisterAgentPayload, AgentClientMetadata } from "../state.js";
 import { projectAgent } from "./agent-projection.js";
 import type { AgentProjection, SessionBindingState } from "./agent-projection.js";
+import { resolveRecipient } from "../entities/recipient-resolver.js";
 
 // ── M18 Handshake: register_role ────────────────────────────────────
 
@@ -339,8 +340,30 @@ async function claimSessionTool(_args: Record<string, unknown>, ctx: IPolicyCont
 }
 
 async function migrateAgentQueue(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
-  const sourceEngineerId = args.sourceEngineerId as string;
-  const targetEngineerId = args.targetEngineerId as string;
+  // idea-252 §1: name-friendly inputs — `sourceName` + `targetName` resolve
+  // to canonical agentIds via single resolver. Loud-fail at API boundary.
+  const sourceResolution = await resolveRecipient(ctx.stores.engineerRegistry, {
+    name: (args.sourceName as string | undefined) ?? null,
+    agentId: (args.sourceEngineerId as string | undefined) ?? null,
+  });
+  if (!sourceResolution.ok) {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ ok: false, code: sourceResolution.code, error: `source: ${sourceResolution.message}` }) }],
+      isError: true,
+    };
+  }
+  const targetResolution = await resolveRecipient(ctx.stores.engineerRegistry, {
+    name: (args.targetName as string | undefined) ?? null,
+    agentId: (args.targetEngineerId as string | undefined) ?? null,
+  });
+  if (!targetResolution.ok) {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({ ok: false, code: targetResolution.code, error: `target: ${targetResolution.message}` }) }],
+      isError: true,
+    };
+  }
+  const sourceEngineerId = sourceResolution.agentId;
+  const targetEngineerId = targetResolution.agentId;
   const result = await ctx.stores.engineerRegistry.migrateAgentQueue(sourceEngineerId, targetEngineerId);
   return {
     content: [{
@@ -366,41 +389,11 @@ async function getEngineerStatus(_args: Record<string, unknown>, ctx: IPolicyCon
   };
 }
 
-// ── list_available_peers (M24-T8, ADR-014) ─────────────────────────
-// Pruned projection for LLM consumption during thread opening. Unlike
-// get_engineer_status (connection counts, timestamps, sessionEpoch),
-// this returns only what the caller needs to decide "open a thread to
-// whom": agentId + role + labels. Honours the existing selectAgents
-// selector (role + matchLabels equality). Excludes the caller's own
-// agentId — self-threads are a bug, not a feature.
-async function listAvailablePeers(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
-  const role = args.role as AgentRole | undefined;
-  const matchLabels = args.matchLabels as Record<string, string> | undefined;
-
-  const agents = await ctx.stores.engineerRegistry.selectAgents({
-    roles: role ? [role] : undefined,
-    matchLabels,
-  });
-
-  const self = await ctx.stores.engineerRegistry.getAgentForSession(ctx.sessionId);
-  const selfId = self?.id;
-  const peers = agents
-    .filter((a) => a.id !== selfId)
-    .map((a) => ({
-      agentId: a.id,
-      role: a.role,
-      labels: a.labels ?? {},
-    }));
-
-  return {
-    content: [{
-      type: "text" as const,
-      text: JSON.stringify({ count: peers.length, peers }),
-    }],
-  };
-}
-
 // ── mission-63 W1+W2: get_agents pull primitive (canonical envelope) ──
+// idea-252 §2: list_available_peers RETIRED (hard remove; no soft alias).
+// `get_agents` with `livenessState: "online"` filter is the strict superset
+// replacement; returns canonical AgentProjection[] (richer than the lean
+// {agentId, role, labels} projection list_available_peers used to return).
 //
 // One canonical tool. Replaces get_engineer_status as the routing-path
 // projection per Design v1.0 §3.3. Returns `{agents: AgentProjection[]}`
@@ -708,22 +701,17 @@ export function registerSessionPolicy(router: PolicyRouter): void {
     getEngineerStatus,
   );
 
-  router.register(
-    "list_available_peers",
-    "[Any] Lean projection of online agents for thread opening. Returns {agentId, role, labels} per match. Use this — not get_engineer_status — when deciding who to open a thread to. Caller's own agentId is excluded.",
-    {
-      role: z.enum(["engineer", "architect", "director"]).optional().describe("Filter by role. Omit to return peers across all roles."),
-      matchLabels: z.record(z.string(), z.string()).optional().describe("Match-all label filter: only agents whose labels include every provided key=value pair."),
-    },
-    listAvailablePeers,
-  );
+  // idea-252 §2: list_available_peers retired (hard remove; no legacy debt).
+  // Replacement: get_agents with `filter: { livenessState: "online", role?: ... }`.
 
   router.register(
     "migrate_agent_queue",
-    "[Architect] M18 admin: move pending notifications from a source agentId to a target agentId (used for 'my laptop died, new globalInstanceId' recovery). Agents are append-only and are never deleted.",
+    "[Architect] M18 admin: move pending notifications from a source agent to a target agent (used for 'my laptop died, new globalInstanceId' recovery). Agents are append-only and are never deleted. idea-252 §1: name-based dispatch — supply `sourceName`/`targetName` (operator-friendly) or `sourceEngineerId`/`targetEngineerId` (legacy agentId form). Server-side resolution rejects unknown agents with `recipient.unknown`.",
     {
-      sourceEngineerId: z.string().describe("Engineer ID whose queue should be drained"),
-      targetEngineerId: z.string().describe("Engineer ID to receive the pending notifications"),
+      sourceEngineerId: z.string().optional().describe("Source agentId. idea-252: prefer `sourceName`."),
+      targetEngineerId: z.string().optional().describe("Target agentId. idea-252: prefer `targetName`."),
+      sourceName: z.string().optional().describe("idea-252 §1: source agent's name (resolved via deterministic name→agentId per idea-251)."),
+      targetName: z.string().optional().describe("idea-252 §1: target agent's name (resolved via deterministic name→agentId per idea-251)."),
     },
     migrateAgentQueue,
   );

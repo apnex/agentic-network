@@ -227,7 +227,7 @@ Engineer, after `gh pr create` returns a URL:
 
 1. Open a Hub thread (`create_thread`):
    - `routingMode: "unicast"`
-   - `recipientAgentId`: architect's agentId (`list_available_peers(role="architect")` to confirm)
+   - `recipientName`: architect's name (idea-252 §1; resolved server-side). Confirm via `get_agents` with `filter: { role: "architect", livenessState: "online" }`.
    - `correlationId`: mission-ID
    - `title`: `PR-review: <PR-title>`
    - `message`: PR URL + 1-line summary + CI status (running / green / red)

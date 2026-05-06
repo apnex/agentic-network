@@ -45,10 +45,10 @@ export async function seedIdeas(eng: McpAgentClient, count = 20): Promise<void> 
  *
  * Pattern observed during M-Ideas-Audit: list_ideas, then for each
  * idea, get_idea (implicit, here simulated), then update_idea. Plus
- * repeated list_tele + list_available_peers interspersed.
+ * repeated list_tele + get_agents interspersed.
  *
  * Cognitive benefit expected: heavy cache hits on list_tele /
- * list_available_peers (called many times per turn but state doesn't
+ * get_agents (called many times per turn but state doesn't
  * change within the turn).
  */
 export const auditWorkflowScenario: Scenario = {
@@ -59,7 +59,7 @@ export const auditWorkflowScenario: Scenario = {
       // List ideas (often redundant in a single turn — cache candidate)
       await eng.call("list_ideas", { limit: 10 }).catch(() => null);
       await eng.call("list_tele", {}).catch(() => null);
-      await eng.call("list_available_peers", { role: "architect" }).catch(() => null);
+      await eng.call("get_agents", { filter: { role: "architect", livenessState: "online" } }).catch(() => null);
 
       // Simulate per-idea fetches (cache should catch re-reads in subsequent passes)
       for (let i = 0; i < 5; i++) {

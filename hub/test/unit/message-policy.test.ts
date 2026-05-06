@@ -24,6 +24,10 @@ import type { Selector } from "../../src/state.js";
 interface MockEngineerRegistry {
   getRole(sessionId: string): string;
   getAgentForSession(sessionId: string): Promise<{ id: string; currentSessionId: string } | null>;
+  // idea-252 §1: resolveRecipient calls getAgent to verify recipient
+  // existence. Mock returns a permissive stub for any agentId so push-on-
+  // create selector-mapping tests don't need to enumerate all targets.
+  getAgent(agentId: string): Promise<{ id: string } | null>;
   claimSession?: (...args: unknown[]) => Promise<unknown>;
 }
 
@@ -34,6 +38,9 @@ function makeRegistry(role: string, agentId: string, sessionId: string = "test-s
     // auto-claim branch doesn't fire (its claimSession isn't stubbed).
     // Mission-62 sub-rename: Agent uses `id` field (not `agentId`).
     getAgentForSession: async () => ({ id: agentId, currentSessionId: sessionId }),
+    // Permissive: any agentId resolves to an existing agent in unit tests.
+    // Strict-resolver tests live in test/unit/recipient-resolver.test.ts.
+    getAgent: async (id: string) => ({ id }),
   };
 }
 

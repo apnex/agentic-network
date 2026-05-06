@@ -268,7 +268,9 @@ describe("SessionPolicy", () => {
   it("registers all session tools", () => {
     expect(router.has("register_role")).toBe(true);
     expect(router.has("get_engineer_status")).toBe(true);
-    expect(router.has("list_available_peers")).toBe(true);
+    // idea-252 §2: list_available_peers RETIRED (hard remove). Replacement
+    // is `get_agents` with `filter: { livenessState: "online", role?: ... }`.
+    expect(router.has("list_available_peers")).toBe(false);
     expect(router.has("migrate_agent_queue")).toBe(true);
     // M-Session-Claim-Separation (mission-40) T2: claim_session added.
     expect(router.has("claim_session")).toBe(true);
@@ -280,7 +282,7 @@ describe("SessionPolicy", () => {
     expect(router.has("signal_quota_recovered")).toBe(true);
     // mission-62 W1+W2 Pass 4: get_agents added.
     expect(router.has("get_agents")).toBe(true);
-    expect(router.size).toBe(10);
+    expect(router.size).toBe(9);
   });
 
   const engineerHandshake = {
@@ -479,152 +481,7 @@ describe("SessionPolicy", () => {
     expect(eng.sessionEpoch).toBe(1);
   });
 
-  // ── list_available_peers (M24-T8) ─────────────────────────────
-
-  const architectHandshake = {
-    role: "architect",
-    name: "test-gid-architect",
-    clientMetadata: {
-      clientName: "test-arch-client",
-      clientVersion: "0.0.0",
-      proxyName: "@apnex/test-plugin",
-      proxyVersion: "0.0.0",
-    },
-  };
-
-  it("list_available_peers returns pruned {agentId, role, labels} shape", async () => {
-    // Register + claim one engineer with labels (T2: claim required for online status)
-    await router.handle("register_role", {
-      ...engineerHandshake,
-      labels: { team: "billing", env: "prod" },
-    }, ctx);
-    await router.handle("claim_session", {}, ctx);
-
-    // Caller: a separate session that'll list peers
-    const callerCtx = createTestContext({ stores: ctx.stores, sessionId: "caller" });
-    await router.handle("register_role", architectHandshake, callerCtx);
-
-    const result = await router.handle("list_available_peers", {}, callerCtx);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(1);
-    const peer = parsed.peers[0];
-    // Only {agentId, role, labels} — no sessionEpoch, clientMetadata,
-    // lastSeenAt, or connection counts.
-    expect(Object.keys(peer).sort()).toEqual(["agentId", "labels", "role"]);
-    expect(peer.role).toBe("engineer");
-    expect(peer.labels).toEqual({ team: "billing", env: "prod" });
-  });
-
-  it("list_available_peers filters by role", async () => {
-    // T2: each agent needs claim_session to appear online in the peer list.
-    await router.handle("register_role", engineerHandshake, ctx);
-    await router.handle("claim_session", {}, ctx);
-
-    const archCtx = createTestContext({ stores: ctx.stores, sessionId: "arch-session" });
-    await router.handle("register_role", architectHandshake, archCtx);
-    await router.handle("claim_session", {}, archCtx);
-
-    const dirCtx = createTestContext({ stores: ctx.stores, sessionId: "dir-session" });
-    await router.handle("register_role", {
-      role: "director",
-      name: "test-gid-director",
-      clientMetadata: {
-        clientName: "dir-client", clientVersion: "0",
-        proxyName: "@apnex/test-plugin", proxyVersion: "0",
-      },
-    }, dirCtx);
-    await router.handle("claim_session", {}, dirCtx);
-
-    // A fourth neutral caller session with no Agent entity.
-    const caller = createTestContext({ stores: ctx.stores, sessionId: "caller" });
-
-    const engOnly = JSON.parse(
-      (await router.handle("list_available_peers", { role: "engineer" }, caller)).content[0].text
-    );
-    expect(engOnly.count).toBe(1);
-    expect(engOnly.peers[0].role).toBe("engineer");
-
-    const archOnly = JSON.parse(
-      (await router.handle("list_available_peers", { role: "architect" }, caller)).content[0].text
-    );
-    expect(archOnly.count).toBe(1);
-    expect(archOnly.peers[0].role).toBe("architect");
-
-    const dirOnly = JSON.parse(
-      (await router.handle("list_available_peers", { role: "director" }, caller)).content[0].text
-    );
-    expect(dirOnly.count).toBe(1);
-    expect(dirOnly.peers[0].role).toBe("director");
-  });
-
-  it("list_available_peers honours matchLabels (subset equality)", async () => {
-    await router.handle("register_role", {
-      ...engineerHandshake,
-      name: "gid-eng-a",
-      labels: { team: "billing", env: "prod" },
-    }, ctx);
-    await router.handle("claim_session", {}, ctx);
-
-    const eng2 = createTestContext({ stores: ctx.stores, sessionId: "eng2" });
-    await router.handle("register_role", {
-      ...engineerHandshake,
-      name: "gid-eng-b",
-      labels: { team: "shipping", env: "prod" },
-    }, eng2);
-    await router.handle("claim_session", {}, eng2);
-
-    const caller = createTestContext({ stores: ctx.stores, sessionId: "caller" });
-    const result = await router.handle("list_available_peers", {
-      role: "engineer",
-      matchLabels: { team: "billing" },
-    }, caller);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(1);
-    expect(parsed.peers[0].labels.team).toBe("billing");
-  });
-
-  it("list_available_peers excludes the caller's own agentId", async () => {
-    await router.handle("register_role", engineerHandshake, ctx);
-    await router.handle("claim_session", {}, ctx);
-    const selfAgents = await ctx.stores.engineerRegistry.listAgents();
-    const selfId = selfAgents[0].id;
-
-    // Register a second engineer in a separate session
-    const otherCtx = createTestContext({ stores: ctx.stores, sessionId: "other" });
-    await router.handle("register_role", {
-      ...engineerHandshake,
-      name: "gid-other",
-    }, otherCtx);
-    await router.handle("claim_session", {}, otherCtx);
-
-    // Call from the original (self) session — should exclude self.
-    const result = await router.handle("list_available_peers", { role: "engineer" }, ctx);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.peers.every((p: { agentId: string }) => p.agentId !== selfId)).toBe(true);
-    expect(parsed.count).toBe(1); // the other engineer
-  });
-
-  it("list_available_peers excludes offline agents", async () => {
-    await router.handle("register_role", engineerHandshake, ctx);
-    const reg = ctx.stores.engineerRegistry as any;
-    const agents = await reg.listAgents();
-    await mutateAgentBlob(reg, agents[0].id, { status: "offline" });
-
-    const caller = createTestContext({ stores: ctx.stores, sessionId: "caller" });
-    const result = await router.handle("list_available_peers", {}, caller);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(0);
-  });
-
-  it("list_available_peers returns count=0 when no peers match", async () => {
-    await router.handle("register_role", engineerHandshake, ctx);
-
-    const caller = createTestContext({ stores: ctx.stores, sessionId: "caller" });
-    const result = await router.handle("list_available_peers", {
-      matchLabels: { team: "nonexistent" },
-    }, caller);
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.count).toBe(0);
-    expect(parsed.peers).toEqual([]);
-  });
+  // idea-252 §2: list_available_peers test suite REMOVED (tool retired).
+  // Replacement coverage of {agentId, role, labels, livenessState} surface
+  // lives in get_agents tests (mission-63 / idea-220 Phase 2).
 });

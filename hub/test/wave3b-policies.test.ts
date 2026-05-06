@@ -1005,6 +1005,108 @@ describe("ThreadPolicy — participant-scoped dispatch (INV-TH16)", () => {
   // throw in thread-policy.ts createThreadReply.
 });
 
+// ── idea-252 §1+§4 — name-based dispatch + API-level recipient resolution ─
+
+describe("ThreadPolicy — idea-252 name-based dispatch (§1) + recipient.unknown rejection (§4)", () => {
+  let router: PolicyRouter;
+  let archCtx: IPolicyContext;
+  let eng1Ctx: IPolicyContext;
+  let eng2Id: string;
+
+  beforeEach(async () => {
+    router = new PolicyRouter(noop);
+    registerThreadPolicy(router);
+
+    archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
+    eng1Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
+
+    const reg = archCtx.stores.engineerRegistry;
+    const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
+    await reg.registerAgent("s-arch", "architect", {
+      name: "inst-arch", role: "architect", clientMetadata: client,
+    });
+    await reg.registerAgent("s-eng-1", "engineer", {
+      name: "inst-eng-1", role: "engineer", clientMetadata: client,
+    });
+    const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", {
+      name: "inst-eng-2", role: "engineer", clientMetadata: client,
+    });
+    eng2Id = eng2Reg.agentId;
+  });
+
+  it("recipientName resolves to agentId; dispatch pins the resolved id", async () => {
+    await router.handle("create_thread", {
+      title: "name-based",
+      message: "hi",
+      recipientName: "inst-eng-2",
+    }, eng1Ctx);
+    const openEvent = (eng1Ctx as any).dispatchedEvents.find((e: any) => e.event === "thread_message");
+    expect(openEvent).toBeDefined();
+    expect(openEvent.selector.agentIds).toEqual([eng2Id]);
+  });
+
+  it("recipientName + recipientAgentId both-match → success (precedence: name wins, mismatch detection passes)", async () => {
+    const r = await router.handle("create_thread", {
+      title: "both-match",
+      message: "hi",
+      recipientName: "inst-eng-2",
+      recipientAgentId: eng2Id,
+    }, eng1Ctx);
+    expect(r.isError).toBeUndefined();
+  });
+
+  it("recipientName + recipientAgentId mismatch → recipient.conflict (Q2 ratification)", async () => {
+    const r = await router.handle("create_thread", {
+      title: "conflict",
+      message: "hi",
+      recipientName: "inst-eng-1", // resolves to eng-1's agentId
+      recipientAgentId: eng2Id,    // user supplied eng-2's agentId
+    }, eng1Ctx);
+    expect(r.isError).toBe(true);
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.code).toBe("recipient.conflict");
+  });
+
+  it("unknown recipientName → recipient.unknown (closes calibration #64; bug-56-prevention)", async () => {
+    const r = await router.handle("create_thread", {
+      title: "unknown name",
+      message: "hi",
+      recipientName: "ghost-agent",
+    }, eng1Ctx);
+    expect(r.isError).toBe(true);
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.code).toBe("recipient.unknown");
+  });
+
+  it("unknown recipientAgentId → recipient.unknown (regression: stale-agentId trap)", async () => {
+    // Pre-idea-251 legacy form. Closes calibration #64 architectural-trap structurally.
+    const r = await router.handle("create_thread", {
+      title: "stale id",
+      message: "hi",
+      recipientAgentId: "eng-0d2c690e7dd5",
+    }, eng1Ctx);
+    expect(r.isError).toBe(true);
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.code).toBe("recipient.unknown");
+  });
+
+  it("routingMode validation precedes resolver — broadcast + recipientName surfaces mode-shape error not unknown-recipient", async () => {
+    // Order matters: when broadcast/multicast is given a recipient, the mode-
+    // shape error is the actionable signal (not "agent doesn't exist").
+    const r = await router.handle("create_thread", {
+      title: "bad combo",
+      message: "hi",
+      routingMode: "broadcast",
+      recipientName: "inst-eng-2", // valid name; but broadcast disallows
+    }, archCtx);
+    expect(r.isError).toBe(true);
+    const parsed = JSON.parse(r.content[0].text);
+    // Mode-shape error is the surface signal, NOT recipient.unknown.
+    expect(parsed.error).toMatch(/broadcast.*must not set/);
+    expect(parsed.code).toBeUndefined();
+  });
+});
+
 // ── Mission-24 Phase 2 (M24-T6, INV-TH18): leave_thread tool ─────────
 
 describe("ThreadPolicy — leave_thread (M24-T6)", () => {
@@ -1359,7 +1461,8 @@ describe("ThreadPolicy — routingMode enforcement (M24-T2)", () => {
     // Without recipientAgentId → rejected by validator
     const rBad = await router.handle("create_thread", { title: "t", message: "m" }, eng1Ctx);
     expect(rBad.isError).toBe(true);
-    expect(JSON.parse(rBad.content[0].text).error).toMatch(/unicast.*requires recipientAgentId/);
+    // idea-252 §1: error message now references both recipientName and recipientAgentId.
+    expect(JSON.parse(rBad.content[0].text).error).toMatch(/unicast.*requires.*recipientAgentId/);
 
     // With recipientAgentId → accepted; stored routingMode is unicast
     const rOk = await router.handle("create_thread", {
@@ -1408,7 +1511,8 @@ describe("ThreadPolicy — routingMode enforcement (M24-T2)", () => {
       title: "t", message: "m", routingMode: "broadcast", recipientAgentId: eng1Id,
     }, archCtx);
     expect(r.isError).toBe(true);
-    expect(JSON.parse(r.content[0].text).error).toMatch(/broadcast.*must not set recipientAgentId/);
+    // idea-252 §1: error message now lists recipientName and recipientAgentId.
+    expect(JSON.parse(r.content[0].text).error).toMatch(/broadcast.*must not set.*recipientAgentId/);
   });
 
   it("rejects broadcast with context set", async () => {
@@ -1446,7 +1550,8 @@ describe("ThreadPolicy — routingMode enforcement (M24-T2)", () => {
       recipientAgentId: eng2Id,
     }, eng1Ctx);
     expect(r.isError).toBe(true);
-    expect(JSON.parse(r.content[0].text).error).toMatch(/multicast.*must not set recipientAgentId/);
+    // idea-252 §1: error message now lists recipientName and recipientAgentId.
+    expect(JSON.parse(r.content[0].text).error).toMatch(/multicast.*must not set.*recipientAgentId/);
   });
 
   it("rejects context_bound with empty-string entityType", async () => {
