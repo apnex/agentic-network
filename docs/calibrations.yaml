@@ -1534,6 +1534,328 @@ calibrations:
       - tele-2
       - tele-6
 
+  - id: 61
+    class: methodology
+    title: "Bilateral-audit-thread round-budget discipline — 5/8 close vs 10/10 baseline; sustained empirical pattern across multiple bug-fix cycles (~50% reduction)"
+    origin: post-mission-225-bug-50-cycle
+    surfaced_at: thread-479 + thread-480 + thread-481 + thread-482 (2026-05-05 → 2026-05-06)
+    status: open
+    closure_mechanism: |
+      Surfaced empirically across multiple consecutive bilateral bug-fix cycles
+      (thread-479 bug-50, thread-480 bug-51, thread-481 bug-52+bug-53, thread-482
+      bug-54), each closing at round-budget 5/8 vs the structural 10/10 baseline
+      observed in mission-225 thread-472 (round_limit hit) + mission-246 thread-475
+      (round_limit hit; Director observation 2026-05-05: "thread ran out of turns -
+      happens far too often").
+
+      Pre-existing memory `feedback_bilateral_audit_round_budget_discipline.md`
+      named the pattern from the round_limit-hit cases (single-instance evidence).
+      Multiple consecutive cycles at 5/8 closure CONFIRM the pattern operationally —
+      not edge-case, not luck.
+
+      Round-budget recovery breakdown:
+      - Skip ack-only courtesy rounds: ~30% recovery
+      - Engineer self-folds within design scope (transparent disclosure): ~10%
+      - Bundling related fixes in single thread: ~5%
+
+      Subsequent thread-486 (bug-55) closed 5/20 with maxRounds=20 (Director-direct
+      runway-expansion for substrate-investigation cycle) — demonstrates pattern
+      extends beyond fixed-8 budgets.
+
+      Tele alignment:
+      - tele-2 (Frictionless Agentic Collaboration) — addresses round-budget
+        exhaustion that previously produced false-positive Director notifications
+      - tele-7 (Resilient Agentic Operations) — closure-without-budget-stress
+        means thread classification cleanly resolves to converged
+
+      Closure path: PROCEDURAL filed (memory file) + STRUCTURAL proposed (idea-248
+      M-Bilateral-Audit-Thread-Cadence-Discipline + bug-48 round_limit-vs-converged
+      classification fix) + METHODOLOGY-DOC PROMOTION recommended (promote round-
+      budget discipline rules from memory to docs/methodology/multi-agent-pr-
+      workflow.md so future architect sessions inherit at session-start).
+
+      Architect-Director ratification: Director directive 2026-05-06 "File the
+      calibrations" delegates ledger-write to architect.
+    pattern_membership:
+      - review-loop-as-calibration-surface
+    cross_refs:
+      - feedback_bilateral_audit_round_budget_discipline.md
+      - docs/methodology/multi-agent-pr-workflow.md
+    tele_alignment:
+      - tele-2
+      - tele-7
+
+  - id: 62
+    class: methodology
+    title: "Deferred-runtime-gate-becomes-silent-defect-surface — Phase 6 verification §6.4 deferral pattern produces post-substrate runtime-gap bugs (7 canonical instances)"
+    origin: post-mission-76-bug-49-cycle
+    surfaced_at: bug-49 (2026-05-05) → bug-50 → bug-51 (mission-76); bug-52 → bug-53 → bug-54 → bug-55 (mission-225)
+    status: open
+    closure_mechanism: |
+      Architectural-pathology pattern. When mission Phase 6 preflight verification
+      gate §6.4 "runtime verification" is DEFERRED to post-Phase-9-closing-audit
+      (or beyond), substrate that ships unit-test-green has zero runtime-path
+      coverage from the host side. Result: operationally-load-bearing primitives
+      manifest as silent defect surfaces only discoverable via prod-audit
+      (Director-driven or architect-side dogfood).
+
+      SEVEN canonical instances surfaced 2026-05-05 → 2026-05-06:
+      1. bug-49 — mission-76 W1 PR-event handlers ship dormant on live events
+        (Events-API author-extraction null silently skips)
+      2. bug-50 — mission-76 sibling defect (type-shape-mismatch + Events-API null
+        fields without fallback)
+      3. bug-51 — pr-review-approved silent-drop (design-rationale-incorrect carve-out)
+      4. bug-52 — mission-225 TTL semantic inversion (codified-incorrect AGE-vs-TTL)
+      5. bug-53 — mission-225 PollBackstop host-integration-never-written
+      6. bug-54 — mission-225 TTL projection serves stored-snapshot vs live-compute
+      7. bug-55 — mission-225 cognitive TTL leak (transport-tier traffic bumps
+        cognitive-tier presence; gate-narrowness-vs-boundary-breadth instance)
+
+      Diagnostic signature: substrate ships unit-test-green; host wiring / runtime
+      path / Events-API-shape divergence / Director-stated-semantic-vs-implementation-
+      divergence is NOT covered by unit tests; deferred §6.4 runtime gate is the
+      structural surface that WOULD catch it; deferral converts that surface into
+      a silent defect class.
+
+      Tele alignment:
+      - tele-6 (Deterministic Invincibility) — drift between substrate-ratified
+        as-correct vs operationally-broken-in-production tolerated by mechanism
+      - tele-7 (Resilient Agentic Operations) — recovery requires prod-audit +
+        bug-filing + bilateral-fix cycle
+
+      Closure mechanisms:
+      (a) PROCEDURAL — at Phase 6 preflight, §6.4 verification gates "deferred"
+        verdict requires explicit Director-direct ratify with documented runtime-
+        coverage-gap-acknowledgement
+      (b) STRUCTURAL (recommended; empirically-warranted) — promote §6.4 from
+        "deferred-by-default" to "REQUIRED-before-Phase-9-closing-audit" in mission
+        lifecycle methodology (docs/methodology/mission-lifecycle.md). Substrate-
+        introduction missions cannot reach Phase 9 closing audit until runtime
+        gates pass. Eliminates the class structurally.
+      (c) AUDIT-RUBRIC PROMOTION (mission-73 §3d precedent) — file follow-on idea
+        per "2nd canonical instance triggers methodology-fold" precedent; SEVEN
+        instances exceeds threshold by 6x
+
+      Methodology promotion of §6.4 to "required-before-Phase-9-closing-audit" is
+      EMPIRICALLY OVERDUE at 7 instances. Proposal next strategic review.
+
+      Architect-Director ratification: Director directive 2026-05-06 "File the
+      calibrations" + reaffirmation post bug-55 closure.
+    pattern_membership:
+      - methodology-bypass-becomes-substrate-defect-amplification-loop
+      - review-loop-as-calibration-surface
+    cross_refs:
+      - docs/methodology/mission-lifecycle.md (target for §6.4 promotion)
+      - docs/audits/m-repo-event-bridge-handler-completion-closing-audit.md
+      - docs/audits/m-ttl-liveliness-design-closing-audit.md
+      - feedback_methodology_bypass_amplification_loop.md
+    tele_alignment:
+      - tele-6
+      - tele-7
+
+  - id: 63
+    class: substrate
+    title: "Boot-fail-fast assertion for substrate primitives requiring host opt-in — `assertHostWiringComplete` pattern generalizable as substrate-introduction discipline"
+    origin: post-mission-225-bug-53-cycle
+    surfaced_at: bug-53 PR #180 (2026-05-06)
+    status: open
+    closure_mechanism: |
+      Surfaced during bug-53 fix design (thread-481 round-2): bug-53 root cause =
+      host integration was never written for mission-225 PollBackstop. Substrate
+      code correct + unit-tested; both adapters never opted in via
+      createSharedDispatcher. ZERO heartbeats fired in production undetected for
+      ~96min post Hub-restart.
+
+      Engineer (greg) proposed boot-time fail-fast assertion as the cheapest §6.4-
+      equivalent gate. Implemented as `assertHostWiringComplete` in
+      packages/network-adapter/src/dispatcher.ts; called by both shim.ts +
+      opencode entrypoint post `agent.start()`. Boot-time fail-fast — bug-53
+      class won't recur silently for THIS primitive.
+
+      Generalization: any substrate primitive that requires host opt-in (where
+      substrate ships in a shared package + host adapter wires it via opts) is
+      susceptible to the same defect class. Universal structural prevention:
+
+      DISCIPLINE: substrate primitives requiring host opt-in MUST ship with a
+      boot-time fail-fast assertion that throws if host wiring is missing AND
+      an explicit opt-out env var is not set. Called by all hosts post substrate-
+      start. Eliminates silent-non-integration class structurally.
+
+      Diagnostic signature: substrate-package opts surface accepts optional config;
+      host-package never references the optional opts; substrate's behavior is
+      no-op-when-not-configured; failure mode is silent absence of expected
+      behavior.
+
+      Tele alignment:
+      - tele-6 (Deterministic Invincibility) — boot-time loud fail catches
+        host-integration-never-written class at boot, not at prod-audit-discovery
+      - tele-7 (Resilient Agentic Operations) — recovery is mechanical (set env
+        var or wire config); error message names recovery path
+
+      Closure path:
+      (a) PROCEDURAL — file engineer-runtime memory entry documenting the pattern
+      (b) STRUCTURAL — codify in docs/methodology/engineer-runtime.md as substrate-
+        introduction discipline; cross-reference from mission-lifecycle.md Phase 4
+        Design checklist + substrate-package README templates
+      (c) AUDIT-RUBRIC PROMOTION — at Phase 4 Design, audit-rubric question:
+        "if this substrate has any host-side opt-in pattern, does it ship with a
+        boot-fail-fast assertion?". One-line rubric add; high-value low-friction.
+
+      Architect-side recommendation: file mechanism (b) + (c) jointly as
+      M-Boot-Fail-Fast-Substrate-Discipline (idea-candidate; route-(a) skip-direct
+      candidate per scope simplicity).
+
+      Architect-Director ratification: Director directive 2026-05-06 "File the
+      calibrations".
+    cross_refs:
+      - packages/network-adapter/src/dispatcher.ts (assertHostWiringComplete export)
+      - adapters/claude-plugin/src/shim.ts (canonical caller)
+      - adapters/opencode-plugin/src/shim.ts (canonical caller)
+      - docs/methodology/engineer-runtime.md (target for discipline promotion)
+    tele_alignment:
+      - tele-6
+      - tele-7
+
+  - id: 64
+    class: substrate
+    title: "Stale-agentId architectural-trap — post-state-migration cross-references in higher-layer entities orphan silently without surface error"
+    origin: post-idea-251-fold-D-prime-thread-485-P0
+    surfaced_at: thread-485 force-closed P0 (2026-05-06)
+    status: open
+    closure_mechanism: |
+      Surfaced live: idea-251 Fold-D-prime hard cutover renamed all agent records
+      from `eng-XXXX` (12-char fingerprint suffix) to `agent-XXXXXXXX` (8-char
+      sha256(name) prefix). Migration handled the agent-record rewrite + cleared
+      stale by-fingerprint mappings. BUT did NOT rewrite cross-reference fields
+      in dependent entities (threads.recipientAgentId, messages.targetAgentId,
+      audit refs, dispatch selectors).
+
+      Architect (lily) post-migration created thread-485 with `recipientAgentId=
+      "eng-0d2c690e7dd5"` (greg's pre-migration ID; remembered from earlier-
+      session). Hub's create_thread API accepted the value without validation.
+      Hub's dispatch selector found zero agents matching the old ID:
+        [Dispatch] Persisted notif-...: thread_message
+        selector={"agentIds":["eng-0d2c690e7dd5"]} matched=0 agent(s)
+      Notification persisted but never delivered. Director-surfaced as P0
+      ("unable to communicate with greg").
+
+      Pattern class: post-state-migration entity-references (agentIds, sessionIds,
+      missionIds, etc.) embedded in higher-layer collections become orphaned
+      without surface error. Composes-with feedback_schema_rename_requires_state_
+      migration.md — same shape, different layer.
+
+      Diagnostic signature: entity-rename or ID-format-change migration handles
+      the entity store but doesn't sweep cached/embedded references in dependent
+      entities; create_X APIs accept stale references silently; dispatch zero-
+      match-on-selector silently persists with zero recipients.
+
+      Tele alignment:
+      - tele-6 (Deterministic Invincibility) — silent acceptance of stale
+        references without runtime error; failure mode invisible until operator
+        notices missing communication
+      - tele-7 (Resilient Agentic Operations) — recovery requires manual force-
+        close + re-open with correct ID; no automated detection or remediation
+
+      Closure mechanisms:
+      (a) PROCEDURAL — discipline: every hard-cutover state migration MUST include
+        a parallel sweep of dependent-entity cross-reference fields. Add to
+        migration script template. Closes architect-side architectural-debt-from-
+        migration class.
+      (b) STRUCTURAL — Hub-side dispatch zero-match-on-selector should warn
+        (not silently persist) when create_thread / create_message dispatches
+        match zero agents. Loud-error or response-side `dispatched: { matched: 0,
+        recipientAgentId: ... }` field. Small substrate change; narrow blast-
+        radius. Filed as part of idea-252 §4.
+      (c) AUDIT-RUBRIC — at Phase 4 Design for state-migration missions, audit
+        question: "what dependent entities reference the changing field? Are they
+        included in the migration sweep?"
+
+      Composes-with idea-252 (name-based dispatch + retire list_available_peers +
+      agentId-keyed surface audit + diagnostic improvement) — idea-252 §4
+      operationalizes mechanism (b).
+
+      Architect-Director ratification: Director directive 2026-05-06 "Confirmed.
+      Approved" post bug-55 closure.
+    cross_refs:
+      - feedback_schema_rename_requires_state_migration.md
+      - idea-252 (name-based dispatch + diagnostic improvement)
+      - bug-55 (sister investigation cycle that surfaced this in thread-485)
+    tele_alignment:
+      - tele-6
+      - tele-7
+
+  - id: 65
+    class: methodology
+    title: "Gate-narrowness-vs-boundary-breadth — bypass predicates that enumerate instances of a concept fail when new instances are added; gates should match concept boundary not specific instances"
+    origin: post-mission-225-bug-55-cycle
+    surfaced_at: bug-55 substrate-investigation thread-486 (2026-05-06)
+    status: open
+    closure_mechanism: |
+      Architectural-pathology meta-pattern. When a runtime gate (bypass predicate,
+      filter, allowlist) is implemented as an enumerated set of specific instances
+      of a broader concept, the gate fails silently when new instances of the
+      concept are added without remembering to update the enumeration.
+
+      Bug-55 = textbook instance:
+      - mission-225 §3.3 design correctly identified the broad boundary: cognitive
+        presence (LLM-meaningful-work) vs transport presence (adapter-housekeeping)
+      - Implementation pinned the runtime gate to a single tool-name allowlist:
+        AGENT_TOUCH_BYPASS_TOOLS = new Set(["transport_heartbeat"])
+      - shouldBypassTouchAgent predicate matched ONE specific tool name where the
+        conceptual boundary was broad
+      - Wire-level `tools/list` heartbeats fell outside the gate (correctly
+        identified as adapter-housekeeping conceptually; not in the enumeration)
+      - Operator-visible only via TTL-drift symptom — silent until idea-220 Phase
+        2 (TTL projection live-compute on read, bug-54) made lastSeenAt-vs-
+        lastHeartbeatAt divergence operator-visible per second
+
+      Bug-55 fix (PR #183) corrected by inverting the gate to tier-based positive-
+      list: shouldTouchAgent returns true ONLY for tools/call to tier:"llm-
+      callable" tools. Default-deny semantic matches the concept boundary. New
+      additions to either tier auto-classify correctly.
+
+      Diagnostic signature for future bypass/filter design: "is this gate
+      enumerating instances of a concept, or matching the concept itself?"
+      If enumerating: design is fragile to additions; concept-boundary matching
+      is the structural fix.
+
+      Generalization: pattern applies to any mechanism that gates behavior based
+      on category membership (allowlists, denylists, tier filters, tag-based
+      routing, etc.). Whenever the gate's literal-text doesn't match the
+      conceptual category, future-canonical instances will silently leak.
+
+      Tele alignment:
+      - tele-6 (Deterministic Invincibility) — concept-matching gates remain
+        correct as new instances are added; instance-enumeration gates drift
+      - tele-3 (Sovereign Composition) — gate-as-concept = single source of
+        truth for the boundary; gate-as-list = drift-prone
+
+      Closure path:
+      (a) PROCEDURAL — diagnostic test in feedback memory: when designing a
+        bypass/filter/allowlist, ask "does this gate match the conceptual
+        boundary or enumerate specific instances?" If enumerate, surface as
+        review-time concern.
+      (b) STRUCTURAL — at Phase 4 Design audit-rubric, add the diagnostic
+        question. Same as #62 (b)/(c) — both compose into Phase 4 audit-rubric
+        promotion.
+
+      Composes-with #62 (deferred-runtime-gate-becomes-silent-defect-surface) —
+      #65 is the structural-cause class; #62 is the discovery-channel class.
+      Together: gate-narrowness produces silent defects → deferred runtime gates
+      don't catch them → operator-discovers-via-prod-audit pattern.
+
+      Architect-Director ratification: Director directive 2026-05-06 "Confirmed.
+      Approved" post bug-55 closure.
+    pattern_membership:
+      - methodology-bypass-becomes-substrate-defect-amplification-loop
+    cross_refs:
+      - bug-55 (canonical instance; resolved via PR #183 commit 1464a11a)
+      - hub/src/hub-networking.ts (shouldTouchAgent positive-list inversion)
+      - feedback_review_loop_calibration_surface.md
+    tele_alignment:
+      - tele-6
+      - tele-3
+
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
 #   title                       string; human-readable pattern name
