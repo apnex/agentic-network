@@ -20,7 +20,7 @@ const noop = () => {};
 
 const engineerHandshake = {
   role: "engineer",
-  globalInstanceId: "test-gid-mission-62-engineer",
+  name: "test-gid-mission-62-engineer",
   clientMetadata: {
     clientName: "test-client",
     clientVersion: "0.0.0",

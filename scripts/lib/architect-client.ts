@@ -59,7 +59,9 @@ export async function withArchitectClient<T>(
     {
       role: "architect",
       handshake: {
-        globalInstanceId: `admin-${randomUUID()}`,
+        // idea-251 D-prime Phase 2: name IS identity (was globalInstanceId).
+        // Random per-invocation; admin scripts mint fresh identities.
+        name: `admin-${randomUUID().slice(0, 8)}`,
         proxyName: scriptName,
         proxyVersion: "0.0.0",
         transport: "http",

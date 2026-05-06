@@ -186,7 +186,7 @@ describe("ThreadPolicy", () => {
     // Register as architect so we know the role
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
 
@@ -210,7 +210,7 @@ describe("ThreadPolicy", () => {
     // Architect opens thread
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     const createResult = await router.handle("create_thread", {
@@ -223,7 +223,7 @@ describe("ThreadPolicy", () => {
     const engCtx = createTestContext({ stores: ctx.stores, role: "engineer" });
     await router.handle("register_role", {
       role: "engineer",
-      globalInstanceId: `test-gid-${engCtx.sessionId}`,
+      name: `test-gid-${engCtx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, engCtx);
     const replyResult = await router.handle("create_thread_reply", {
@@ -241,7 +241,7 @@ describe("ThreadPolicy", () => {
     // Architect opens with convergence
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     const createResult = await router.handle("create_thread", {
@@ -254,7 +254,7 @@ describe("ThreadPolicy", () => {
     const engCtx = createTestContext({ stores: ctx.stores, role: "engineer" });
     await router.handle("register_role", {
       role: "engineer",
-      globalInstanceId: `test-gid-${engCtx.sessionId}`,
+      name: `test-gid-${engCtx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, engCtx);
     const reply1 = await router.handle("create_thread_reply", {
@@ -304,7 +304,7 @@ describe("ThreadPolicy", () => {
   it("get_thread returns full thread", async () => {
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     const createResult = await router.handle("create_thread", {
@@ -327,7 +327,7 @@ describe("ThreadPolicy", () => {
   it("list_threads returns summaries without messages", async () => {
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     await router.handle("create_thread", { routingMode: "broadcast",title: "T1", message: "M1" }, ctx);
@@ -343,7 +343,7 @@ describe("ThreadPolicy", () => {
   it("list_threads filters by status", async () => {
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     await router.handle("create_thread", { routingMode: "broadcast",title: "Active", message: "M1" }, ctx);
@@ -358,7 +358,7 @@ describe("ThreadPolicy", () => {
     async function seedThreadsWithCreatedBy(): Promise<void> {
       await router.handle("register_role", {
         role: "architect",
-        globalInstanceId: `test-gid-${ctx.sessionId}`,
+        name: `test-gid-${ctx.sessionId}`,
         clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
       }, ctx);
       await router.handle("create_thread", { routingMode: "broadcast", title: "T1", message: "M1" }, ctx);
@@ -445,7 +445,7 @@ describe("ThreadPolicy", () => {
   it("close_thread closes a thread", async () => {
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     const createResult = await router.handle("create_thread", {
@@ -468,7 +468,7 @@ describe("ThreadPolicy", () => {
   it("force_close_thread administratively closes and abandons queue items (Phase 2c ckpt-C, idea-117)", async () => {
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     const architectAgent = await ctx.stores.engineerRegistry.getAgentForSession(ctx.sessionId);
@@ -524,7 +524,7 @@ describe("ThreadPolicy", () => {
     // Architect opens (engineer's turn)
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, ctx);
     const createResult = await router.handle("create_thread", {
@@ -557,12 +557,12 @@ describe("ThreadPolicy — Threads 2.0 (Mission-21 Phase 1)", () => {
     engCtx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "eng-session-001" });
     await router.handle("register_role", {
       role: "architect",
-      globalInstanceId: `test-gid-${archCtx.sessionId}`,
+      name: `test-gid-${archCtx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, archCtx);
     await router.handle("register_role", {
       role: "engineer",
-      globalInstanceId: `test-gid-${engCtx.sessionId}`,
+      name: `test-gid-${engCtx.sessionId}`,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     }, engCtx);
   });
@@ -649,7 +649,7 @@ describe("ThreadPolicy — Threads 2.0 (Mission-21 Phase 1)", () => {
       });
       await router.handle("register_role", {
         role: "architect",
-        globalInstanceId: `test-gid-${imposterCtx.sessionId}`,
+        name: `test-gid-${imposterCtx.sessionId}`,
         clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
       }, imposterCtx);
 
@@ -947,13 +947,13 @@ describe("ThreadPolicy — participant-scoped dispatch (INV-TH16)", () => {
     const reg = archCtx.stores.engineerRegistry;
     const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
     const archReg = await reg.registerAgent("s-arch", "architect", {
-      globalInstanceId: "inst-arch", role: "architect", clientMetadata: client,
+      name: "inst-arch", role: "architect", clientMetadata: client,
     });
     const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", {
-      globalInstanceId: "inst-eng-1", role: "engineer", clientMetadata: client,
+      name: "inst-eng-1", role: "engineer", clientMetadata: client,
     });
     const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", {
-      globalInstanceId: "inst-eng-2", role: "engineer", clientMetadata: client,
+      name: "inst-eng-2", role: "engineer", clientMetadata: client,
     });
     archId = archReg.agentId;
     eng1Id = eng1Reg.agentId;
@@ -1027,13 +1027,13 @@ describe("ThreadPolicy — leave_thread (M24-T6)", () => {
     const reg = archCtx.stores.engineerRegistry;
     const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
     const archReg = await reg.registerAgent("s-arch", "architect", {
-      globalInstanceId: "inst-arch", role: "architect", clientMetadata: client,
+      name: "inst-arch", role: "architect", clientMetadata: client,
     });
     const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", {
-      globalInstanceId: "inst-eng-1", role: "engineer", clientMetadata: client,
+      name: "inst-eng-1", role: "engineer", clientMetadata: client,
     });
     const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", {
-      globalInstanceId: "inst-eng-2", role: "engineer", clientMetadata: client,
+      name: "inst-eng-2", role: "engineer", clientMetadata: client,
     });
     if (archReg.ok) archId = archReg.agentId;
     if (eng1Reg.ok) eng1Id = eng1Reg.agentId;
@@ -1155,13 +1155,13 @@ describe("ThreadStore — reapIdleThreads (M24-T7)", () => {
     const reg = archCtx.stores.engineerRegistry;
     const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
     await reg.registerAgent("s-arch", "architect", {
-      globalInstanceId: "inst-arch", role: "architect", clientMetadata: client,
+      name: "inst-arch", role: "architect", clientMetadata: client,
     });
     const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", {
-      globalInstanceId: "inst-eng-1", role: "engineer", clientMetadata: client,
+      name: "inst-eng-1", role: "engineer", clientMetadata: client,
     });
     const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", {
-      globalInstanceId: "inst-eng-2", role: "engineer", clientMetadata: client,
+      name: "inst-eng-2", role: "engineer", clientMetadata: client,
     });
     if (eng1Reg.ok) eng1Id = eng1Reg.agentId;
     if (eng2Reg.ok) eng2Id = eng2Reg.agentId;
@@ -1346,9 +1346,9 @@ describe("ThreadPolicy — routingMode enforcement (M24-T2)", () => {
 
     const reg = archCtx.stores.engineerRegistry;
     const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
-    await reg.registerAgent("s-arch", "architect", { globalInstanceId: "inst-arch", role: "architect", clientMetadata: client });
-    const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", { globalInstanceId: "inst-eng-1", role: "engineer", clientMetadata: client });
-    const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", { globalInstanceId: "inst-eng-2", role: "engineer", clientMetadata: client });
+    await reg.registerAgent("s-arch", "architect", { name: "inst-arch", role: "architect", clientMetadata: client });
+    const eng1Reg = await reg.registerAgent("s-eng-1", "engineer", { name: "inst-eng-1", role: "engineer", clientMetadata: client });
+    const eng2Reg = await reg.registerAgent("s-eng-2", "engineer", { name: "inst-eng-2", role: "engineer", clientMetadata: client });
     if (eng1Reg.ok) eng1Id = eng1Reg.agentId;
     if (eng2Reg.ok) eng2Id = eng2Reg.agentId;
   });
@@ -1524,19 +1524,19 @@ describe("ThreadPolicy — cascade infrastructure (M24-T4)", () => {
     eng2Ctx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-2" });
     archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
     await archCtx.stores.engineerRegistry.registerAgent("s-arch", "architect" as any, {
-      globalInstanceId: `test-gid-${"s-arch"}`,
+      name: `test-gid-${"s-arch"}`,
       role: "architect" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
     archCtx.stores.engineerRegistry.setSessionRole("s-eng-1", "engineer");
     await archCtx.stores.engineerRegistry.registerAgent("s-eng-1", "engineer" as any, {
-      globalInstanceId: `test-gid-${"s-eng-1"}`,
+      name: `test-gid-${"s-eng-1"}`,
       role: "engineer" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
     archCtx.stores.engineerRegistry.setSessionRole("s-eng-2", "engineer");
     await archCtx.stores.engineerRegistry.registerAgent("s-eng-2", "engineer" as any, {
-      globalInstanceId: `test-gid-${"s-eng-2"}`,
+      name: `test-gid-${"s-eng-2"}`,
       role: "engineer" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
@@ -1775,13 +1775,13 @@ describe("ThreadPolicy — cascade handlers (M24-T5)", () => {
     engCtx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
     archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
     await archCtx.stores.engineerRegistry.registerAgent("s-arch", "architect" as any, {
-      globalInstanceId: `test-gid-${"s-arch"}`,
+      name: `test-gid-${"s-arch"}`,
       role: "architect" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
     archCtx.stores.engineerRegistry.setSessionRole("s-eng-1", "engineer");
     await archCtx.stores.engineerRegistry.registerAgent("s-eng-1", "engineer" as any, {
-      globalInstanceId: `test-gid-${"s-eng-1"}`,
+      name: `test-gid-${"s-eng-1"}`,
       role: "engineer" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
@@ -2063,13 +2063,13 @@ describe("ThreadPolicy — cascade handlers part 2 (M24-T9)", () => {
     engCtx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng-1" });
     archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
     await archCtx.stores.engineerRegistry.registerAgent("s-arch", "architect" as any, {
-      globalInstanceId: `test-gid-${"s-arch"}`,
+      name: `test-gid-${"s-arch"}`,
       role: "architect" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
     archCtx.stores.engineerRegistry.setSessionRole("s-eng-1", "engineer");
     await archCtx.stores.engineerRegistry.registerAgent("s-eng-1", "engineer" as any, {
-      globalInstanceId: `test-gid-${"s-eng-1"}`,
+      name: `test-gid-${"s-eng-1"}`,
       role: "engineer" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
@@ -2315,8 +2315,8 @@ describe("Phase 2 invariants (M24-T11)", () => {
 
     const reg = archCtx.stores.engineerRegistry;
     const client = { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" };
-    const archReg = await reg.registerAgent("s-arch", "architect", { globalInstanceId: "arch-i", role: "architect", clientMetadata: client });
-    const engReg = await reg.registerAgent("s-eng", "engineer", { globalInstanceId: "eng-i", role: "engineer", clientMetadata: client });
+    const archReg = await reg.registerAgent("s-arch", "architect", { name: "arch-i", role: "architect", clientMetadata: client });
+    const engReg = await reg.registerAgent("s-eng", "engineer", { name: "eng-i", role: "engineer", clientMetadata: client });
     if (archReg.ok) archId = archReg.agentId;
     if (engReg.ok) engId = engReg.agentId;
   });
@@ -2717,13 +2717,13 @@ describe("Cascade-path SSE parity (dispatch-helpers)", () => {
     engCtx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng" });
     archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
     await archCtx.stores.engineerRegistry.registerAgent("s-arch", "architect" as any, {
-      globalInstanceId: `test-gid-${"s-arch"}`,
+      name: `test-gid-${"s-arch"}`,
       role: "architect" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
     archCtx.stores.engineerRegistry.setSessionRole("s-eng", "engineer");
     await archCtx.stores.engineerRegistry.registerAgent("s-eng", "engineer" as any, {
-      globalInstanceId: `test-gid-${"s-eng"}`,
+      name: `test-gid-${"s-eng"}`,
       role: "engineer" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
@@ -2895,7 +2895,7 @@ describe("runCascade — depth guard (INV-TH25)", () => {
     archCtx = createTestContext({ role: "architect", sessionId: "s-arch" });
     archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
     await archCtx.stores.engineerRegistry.registerAgent("s-arch", "architect" as any, {
-      globalInstanceId: `test-gid-${"s-arch"}`,
+      name: `test-gid-${"s-arch"}`,
       role: "architect" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
@@ -3035,7 +3035,7 @@ describe("BugPolicy (ADR-015 Phase 2)", () => {
     ctx = createTestContext({ role: "engineer" });
     ctx.stores.engineerRegistry.setSessionRole(ctx.sessionId, "engineer");
     await ctx.stores.engineerRegistry.registerAgent(ctx.sessionId, "engineer" as any, {
-      globalInstanceId: `test-gid-${ctx.sessionId}`,
+      name: `test-gid-${ctx.sessionId}`,
       role: "engineer" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
@@ -3179,13 +3179,13 @@ describe("Cascade: create_bug (Phase 2 validation)", () => {
     engCtx = createTestContext({ stores: archCtx.stores, role: "engineer", sessionId: "s-eng" });
     archCtx.stores.engineerRegistry.setSessionRole("s-arch", "architect");
     await archCtx.stores.engineerRegistry.registerAgent("s-arch", "architect" as any, {
-      globalInstanceId: `test-gid-${"s-arch"}`,
+      name: `test-gid-${"s-arch"}`,
       role: "architect" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });
     archCtx.stores.engineerRegistry.setSessionRole("s-eng", "engineer");
     await archCtx.stores.engineerRegistry.registerAgent("s-eng", "engineer" as any, {
-      globalInstanceId: `test-gid-${"s-eng"}`,
+      name: `test-gid-${"s-eng"}`,
       role: "engineer" as any,
       clientMetadata: { clientName: "test", clientVersion: "0", proxyName: "test", proxyVersion: "0" },
     });

@@ -46,7 +46,7 @@ async function createActor(
       role,
       labels,
       handshake: {
-        globalInstanceId: `loopback-${role}-${randomUUID()}`,
+        name: `loopback-${role}-${randomUUID()}`,
         proxyName: "threads-smoke",
         proxyVersion: "0.0.0",
         transport: "loopback",

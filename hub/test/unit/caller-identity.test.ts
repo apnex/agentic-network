@@ -8,7 +8,7 @@ describe("resolveCreatedBy", () => {
     ctx.role = "architect";
     // Register an architect session so engineerRegistry.getAgentForSession resolves.
     await ctx.stores.engineerRegistry.registerAgent(ctx.sessionId, "architect", {
-      globalInstanceId: "arch-test-1",
+      name: "arch-test-1",
       transport: "stdio",
     } as any, "127.0.0.1");
 

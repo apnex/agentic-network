@@ -29,7 +29,7 @@ const CLIENT: AgentClientMetadata = {
 };
 
 function payload(instanceId: string, role: AgentRole, labels?: AgentLabels): RegisterAgentPayload {
-  return { globalInstanceId: instanceId, role, clientMetadata: CLIENT, labels };
+  return { name: instanceId, role, clientMetadata: CLIENT, labels };
 }
 
 async function register(ctx: TestPolicyContext, role: AgentRole, labels: AgentLabels): Promise<string> {

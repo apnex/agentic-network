@@ -29,7 +29,7 @@ const CLIENT: AgentClientMetadata = {
 
 function payload(instanceId: string): RegisterAgentPayload {
   return {
-    globalInstanceId: instanceId,
+    name: instanceId,
     role: "engineer",
     clientMetadata: CLIENT,
     advisoryTags: { llmModel: "claude-opus-4-6" },

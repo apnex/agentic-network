@@ -27,7 +27,7 @@ const CLIENT: AgentClientMetadata = {
 
 function makePayload(instanceId: string, role: AgentRole, labels?: AgentLabels): RegisterAgentPayload {
   return {
-    globalInstanceId: instanceId,
+    name: instanceId,
     role,
     clientMetadata: CLIENT,
     labels,

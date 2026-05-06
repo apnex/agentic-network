@@ -17,7 +17,6 @@ import type { Plugin } from "@opencode-ai/plugin";
 import {
   McpAgentClient,
   McpTransport,
-  loadOrCreateGlobalInstanceId,
   appendNotification,
   buildPromptText,
   buildToastMessage,
@@ -444,7 +443,7 @@ export function buildPluginCallbacks(): AgentClientCallbacks {
 
 // ── Connect to Hub ───────────────────────────────────────────────────
 
-async function connectToHub(globalInstanceId: string): Promise<void> {
+async function connectToHub(agentName: string): Promise<void> {
   const onFatalHalt = (err: HandshakeFatalError): void => {
     log(`[FATAL:${err.code}] ${err.message}`);
     showToast(`Hub fatal: ${err.code}`, "error");
@@ -465,7 +464,8 @@ async function connectToHub(globalInstanceId: string): Promise<void> {
       labels: config.labels,
       logger: log,
       handshake: {
-        globalInstanceId,
+        // idea-251 D-prime Phase 2: name IS identity (was globalInstanceId).
+        name: agentName,
         proxyName: "@apnex/opencode-plugin",
         proxyVersion: PROXY_VERSION,
         transport: "bun-serve-proxy",
@@ -475,10 +475,6 @@ async function connectToHub(globalInstanceId: string): Promise<void> {
           version: process.env.OPENCODE_VERSION ?? "unknown",
         }),
         llmModel: process.env.HUB_LLM_MODEL,
-        // idea-251: adapter-advertised display name for get_agents NAME
-        // column. Empty/whitespace → undefined so Hub falls back to
-        // globalInstanceId. Hub-side validation enforces shape + reserved-set.
-        name: process.env.OIS_AGENT_NAME?.trim() || undefined,
         onFatalHalt,
         onPendingTask: (task) => {
           appendNotification(
@@ -652,13 +648,19 @@ export const HubPlugin: Plugin = async (ctx) => {
         log(`Session list failed: ${err}`);
       }
 
-      // 2. globalInstanceId bootstrap
-      const globalInstanceId = loadOrCreateGlobalInstanceId({ log });
-      log(`[Handshake] globalInstanceId=${globalInstanceId}`);
+      // 2. idea-251 D-prime Phase 2: identity from OIS_AGENT_NAME env. REQUIRED;
+      // log + abort connect-flow if absent (OpenCode plugin can't process.exit;
+      // operator sees the loud-error in plugin log).
+      const agentName = process.env.OIS_AGENT_NAME?.trim();
+      if (!agentName) {
+        log("[Handshake] FATAL: OIS_AGENT_NAME env var required (idea-251 D-prime). Set in ~/.config/apnex-agents/{name}.env. Plugin inert until restart.");
+        return;
+      }
+      log(`[Handshake] OIS_AGENT_NAME=${agentName}`);
 
       // 3. Connect to remote Hub
       try {
-        await connectToHub(globalInstanceId);
+        await connectToHub(agentName);
       } catch (err) {
         log(`Hub connection failed: ${err}`);
         return;

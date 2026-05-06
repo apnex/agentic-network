@@ -222,7 +222,10 @@ export class ActorFacade {
     if (this.registered) return;
     await this.router.handle("register_role", {
       role: this.role,
-      globalInstanceId: `test-gid-${this.sessionId}`,
+      // idea-251 D-prime Phase 2: name has 32-char limit; use sessionId as-is
+      // (e.g. "session-architect", "session-engineer-default" all ≤32 chars).
+      // The "test-gid-" prefix would push past limit for longer agent keys.
+      name: this.sessionId,
       clientMetadata: {
         clientName: "e2e-orchestrator",
         clientVersion: "0.0.0",

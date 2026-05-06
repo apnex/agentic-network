@@ -352,16 +352,14 @@ export interface Agent {
 }
 
 export interface RegisterAgentPayload {
-  globalInstanceId: string;
+  // idea-251 D-prime Phase 2: name IS identity. Required (loud-error if absent).
+  // Sourced from OIS_AGENT_NAME env via the M18 handshake. Drives agentId
+  // derivation `agent-{8-hex-of-sha256(name)}`. globalInstanceId field RETIRED.
+  name: string;
   role: AgentRole;
   clientMetadata: AgentClientMetadata;
   advisoryTags?: AgentAdvisoryTags;
   labels?: AgentLabels;
-  // idea-251: adapter-advertised display name (e.g., "lily", "greg"). Optional;
-  // absent → fallback chain payload.globalInstanceId → agentId. Refreshed on
-  // reconnect (CP3 C5 semantic). Per-agent override via OIS_AGENT_NAME env var.
-  // Closes the OIS_INSTANCE_ID escape-hatch deferral noted in instance.ts:42-54.
-  name?: string;
   // ADR-017 additions: optional liveness-layer configuration.
   wakeEndpoint?: string;
   receiptSla?: number;
@@ -391,7 +389,9 @@ export interface RegisterAgentSuccess {
 
 export interface RegisterAgentFailure {
   ok: false;
-  code: "agent_thrashing_detected" | "role_mismatch";
+  // idea-251 D-prime Phase 2: `name_collision` added — surfaces upstream from
+  // assertIdentity (same name from a different host = operator misconfiguration).
+  code: "agent_thrashing_detected" | "role_mismatch" | "name_collision";
   message: string;
 }
 
@@ -408,14 +408,14 @@ export type RegisterAgentResult = RegisterAgentSuccess | RegisterAgentFailure;
 export type ClaimSessionTrigger = "explicit" | "sse_subscribe" | "first_tool_call";
 
 export interface AssertIdentityPayload {
-  globalInstanceId: string;
+  // idea-251 D-prime Phase 2: name IS identity. Required input for fingerprint
+  // derivation `sha256(name)` → agentId `agent-{first-8-hex}`. Immutable
+  // post-create (different name → different fingerprint → different lookup).
+  name: string;
   role: AgentRole;
   clientMetadata: AgentClientMetadata;
   advisoryTags?: AgentAdvisoryTags;
   labels?: AgentLabels;
-  // idea-251: adapter-advertised display name; carried through to first-contact
-  // create + reconnect-refresh per the same CP3 C5 semantic as labels.
-  name?: string;
   // ADR-017 mutable config carried through the same handshake-refresh path:
   wakeEndpoint?: string;
   receiptSla?: number;
@@ -435,7 +435,10 @@ export interface AssertIdentitySuccess {
 
 export interface AssertIdentityFailure {
   ok: false;
-  code: "role_mismatch";
+  // idea-251 D-prime Phase 2: `name_collision` added — same name from
+  // a different host (operator misconfiguration; loud-error rather than
+  // silent last-write-wins on clientMetadata.hostname).
+  code: "role_mismatch" | "name_collision";
   message: string;
 }
 
@@ -1724,9 +1727,23 @@ export function upsertParticipant(
 import { createHash } from "node:crypto";
 import { validateStagedActions } from "./policy/staged-action-payloads.js";
 
-/** sha256(globalInstanceId) — token deliberately NOT mixed in (see thread-79). */
-export function computeFingerprint(globalInstanceId: string): string {
-  return createHash("sha256").update(globalInstanceId).digest("hex");
+/**
+ * sha256(name) — token deliberately NOT mixed in (see thread-79).
+ * idea-251 D-prime Phase 2: input is the agent name (was globalInstanceId pre-D-prime).
+ * Parameter kept named `input` to avoid coupling callers to either historical name.
+ */
+export function computeFingerprint(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+/**
+ * idea-251 D-prime Phase 2: deterministic agentId derivation from name.
+ * Format: `agent-{first-8-hex-chars-of-sha256(name)}` per Director's spec.
+ * Same name → same agentId across stores; different names → different agentIds.
+ * 8 chars (~65k names before 50% collision) acceptable at current scale.
+ */
+export function deriveAgentId(name: string): string {
+  return `agent-${computeFingerprint(name).slice(0, 8)}`;
 }
 
 /** Compact hash suffix for display agentIds (first 12 hex chars of fingerprint). */

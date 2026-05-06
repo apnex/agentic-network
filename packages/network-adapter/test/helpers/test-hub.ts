@@ -149,7 +149,7 @@ function createMcpServer(
     "Register this session's role",
     {
       role: z.enum(["engineer", "architect"]),
-      globalInstanceId: z.string().optional(),
+      name: z.string().optional(),
       clientMetadata: z.any().optional(),
       advisoryTags: z.any().optional(),
     },

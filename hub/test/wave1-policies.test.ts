@@ -285,7 +285,7 @@ describe("SessionPolicy", () => {
 
   const engineerHandshake = {
     role: "engineer",
-    globalInstanceId: "test-gid-engineer",
+    name: "test-gid-engineer",
     clientMetadata: {
       clientName: "test-client",
       clientVersion: "0.0.0",
@@ -350,7 +350,7 @@ describe("SessionPolicy", () => {
   it("register_role as director (M18) mints an agentId with the unified agent-* prefix (idea-251 D-prime)", async () => {
     const directorHandshake = {
       role: "director",
-      globalInstanceId: "test-gid-director-1",
+      name: "test-gid-director-1",
       clientMetadata: {
         clientName: "director-chat",
         clientVersion: "0.0.0",
@@ -372,7 +372,7 @@ describe("SessionPolicy", () => {
   it("registered director SessionRole is 'director' (not mapped to 'unknown')", async () => {
     const directorHandshake = {
       role: "director",
-      globalInstanceId: "test-gid-director-2",
+      name: "test-gid-director-2",
       clientMetadata: {
         clientName: "d", clientVersion: "0", proxyName: "@apnex/d", proxyVersion: "0",
       },
@@ -386,13 +386,13 @@ describe("SessionPolicy", () => {
     // (different name OR globalInstanceId) → different fingerprints → different
     // agentIds, regardless of role. Role surfaces as separate field, not prefix.
     const engResult = await router.handle("register_role", {
-      role: "engineer", globalInstanceId: "gid-same-1",
+      role: "engineer", name: "gid-same-1",
       clientMetadata: { clientName: "c", clientVersion: "0", proxyName: "p", proxyVersion: "0" },
     }, createTestContext({ stores: ctx.stores, sessionId: "eng-session" }));
 
     const dirCtx = createTestContext({ stores: ctx.stores, sessionId: "dir-session" });
     const dirResult = await router.handle("register_role", {
-      role: "director", globalInstanceId: "gid-same-2",
+      role: "director", name: "gid-same-2",
       clientMetadata: { clientName: "c", clientVersion: "0", proxyName: "p", proxyVersion: "0" },
     }, dirCtx);
 
@@ -483,7 +483,7 @@ describe("SessionPolicy", () => {
 
   const architectHandshake = {
     role: "architect",
-    globalInstanceId: "test-gid-architect",
+    name: "test-gid-architect",
     clientMetadata: {
       clientName: "test-arch-client",
       clientVersion: "0.0.0",
@@ -527,7 +527,7 @@ describe("SessionPolicy", () => {
     const dirCtx = createTestContext({ stores: ctx.stores, sessionId: "dir-session" });
     await router.handle("register_role", {
       role: "director",
-      globalInstanceId: "test-gid-director",
+      name: "test-gid-director",
       clientMetadata: {
         clientName: "dir-client", clientVersion: "0",
         proxyName: "@apnex/test-plugin", proxyVersion: "0",
@@ -560,7 +560,7 @@ describe("SessionPolicy", () => {
   it("list_available_peers honours matchLabels (subset equality)", async () => {
     await router.handle("register_role", {
       ...engineerHandshake,
-      globalInstanceId: "gid-eng-a",
+      name: "gid-eng-a",
       labels: { team: "billing", env: "prod" },
     }, ctx);
     await router.handle("claim_session", {}, ctx);
@@ -568,7 +568,7 @@ describe("SessionPolicy", () => {
     const eng2 = createTestContext({ stores: ctx.stores, sessionId: "eng2" });
     await router.handle("register_role", {
       ...engineerHandshake,
-      globalInstanceId: "gid-eng-b",
+      name: "gid-eng-b",
       labels: { team: "shipping", env: "prod" },
     }, eng2);
     await router.handle("claim_session", {}, eng2);
@@ -593,7 +593,7 @@ describe("SessionPolicy", () => {
     const otherCtx = createTestContext({ stores: ctx.stores, sessionId: "other" });
     await router.handle("register_role", {
       ...engineerHandshake,
-      globalInstanceId: "gid-other",
+      name: "gid-other",
     }, otherCtx);
     await router.handle("claim_session", {}, otherCtx);
 

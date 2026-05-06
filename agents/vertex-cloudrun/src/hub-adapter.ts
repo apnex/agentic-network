@@ -26,18 +26,19 @@ export type HubEventHandler = (eventData: Record<string, unknown>) => void;
 export interface HubAdapterOptions {
   /**
    * Mission-19 routing labels (e.g. {env:"prod"}). Only take effect
-   * when an enriched handshake runs (i.e. `globalInstanceId` is also
+   * when an enriched handshake runs (i.e. `agentName` is also
    * provided); otherwise the Hub's bare-path register_role drops them.
    */
   labels?: Record<string, string>;
   /**
-   * Stable client identifier. When set, the architect runs the M18
-   * enriched handshake so an Agent entity is created/updated with
-   * `labels` and routing selectors can exclude it. In Cloud Run, set
-   * this via a terraform-managed env var so Agent identity survives
-   * revision churn.
+   * idea-251 D-prime Phase 2: name IS identity (was globalInstanceId).
+   * Stable identifier — when set, the architect runs the M18 enriched
+   * handshake so an Agent entity is created/updated with `labels` and
+   * routing selectors can exclude it. In Cloud Run, set via a
+   * terraform-managed `OIS_AGENT_NAME` env var so Agent identity
+   * survives revision churn.
    */
-  globalInstanceId?: string;
+  agentName?: string;
   /** Human-readable client name surfaced in clientMetadata. Defaults to "architect-cloudrun". */
   serviceName?: string;
   /** Proxy version surfaced in clientMetadata. Defaults to "0.0.0". */
@@ -67,9 +68,11 @@ export class HubAdapter {
   ) {
     const serviceName = opts.serviceName ?? "architect-cloudrun";
     const proxyVersion = opts.proxyVersion ?? "0.0.0";
-    const handshake = opts.globalInstanceId
+    const handshake = opts.agentName
       ? {
-          globalInstanceId: opts.globalInstanceId,
+          // idea-251 D-prime Phase 2: name IS identity. Sourced from
+          // OIS_AGENT_NAME env (Cloud Run terraform-managed).
+          name: opts.agentName,
           proxyName: "@apnex/vertex-cloudrun",
           proxyVersion,
           transport: "http",

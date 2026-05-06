@@ -11,7 +11,6 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   McpAgentClient,
-  loadOrCreateGlobalInstanceId,
   appendNotification,
   buildPromptText,
   makeStdioFatalHalt,
@@ -406,8 +405,15 @@ async function main(): Promise<void> {
     eagerWarmup: isEagerWarmupEnabled(process.env),
   });
 
-  const globalInstanceId = loadOrCreateGlobalInstanceId({ log });
-  log(`[Handshake] globalInstanceId=${globalInstanceId}`);
+  // idea-251 D-prime Phase 2: identity from OIS_AGENT_NAME env. REQUIRED;
+  // loud-error if absent so misconfiguration is visible at startup rather
+  // than producing a silent identity collision on the Hub side.
+  const agentName = process.env.OIS_AGENT_NAME?.trim();
+  if (!agentName) {
+    log("[Handshake] FATAL: OIS_AGENT_NAME env var required (idea-251 D-prime). Set in ~/.config/apnex-agents/{name}.env. Aborting.");
+    process.exit(2);
+  }
+  log(`[Handshake] OIS_AGENT_NAME=${agentName}`);
 
   const fatalHalt = makeStdioFatalHalt(log);
 
@@ -508,17 +514,15 @@ async function main(): Promise<void> {
       labels: config.labels,
       logger: eventsLogger,
       handshake: {
-        globalInstanceId,
+        // idea-251 D-prime Phase 2: name IS identity (was globalInstanceId).
+        // agentName loaded + validated at top of bootstrap; never undefined here.
+        name: agentName,
         proxyName: "@apnex/claude-plugin",
         proxyVersion: PROXY_VERSION,
         transport: "stdio-mcp-proxy",
         sdkVersion: SDK_VERSION,
         getClientInfo,
         llmModel: process.env.HUB_LLM_MODEL,
-        // idea-251: adapter-advertised display name for get_agents NAME
-        // column. Empty/whitespace → undefined so Hub falls back to
-        // globalInstanceId. Hub-side validation enforces shape + reserved-set.
-        name: process.env.OIS_AGENT_NAME?.trim() || undefined,
         onFatalHalt: fatalHalt,
         onHandshakeComplete: (r: HandshakeResponse) => {
           log(`[Handshake] Identity asserted: ${r.agentId}`);

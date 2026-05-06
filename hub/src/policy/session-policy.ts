@@ -35,22 +35,20 @@ const NAME_MAX_LEN = 32;
 async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext): Promise<PolicyResult> {
   const role = args.role as string;
   const sid = ctx.sessionId;
-  const globalInstanceId = args.globalInstanceId as string | undefined;
   const clientMetadataArg = args.clientMetadata as AgentClientMetadata | undefined;
   const advisoryTags = args.advisoryTags as Record<string, unknown> | undefined;
   const labels = args.labels as Record<string, string> | undefined;
-  // idea-251: optional adapter-advertised display name. Trim + treat
-  // empty/whitespace as absent. Schema regex enforces shape; reserved-name
-  // check below enforces semantics.
+  // idea-251 D-prime Phase 2: name IS identity. Required field.
+  // Trim + treat empty/whitespace as absent. Validation (regex + length +
+  // reserved-name) below enforces shape + semantics; loud-error if absent
+  // from M18 path (`name_required`).
   const nameArg = (args.name as string | undefined)?.trim() || undefined;
 
   // M18 path: the proxy sent the full Agent handshake payload.
-  // idea-251 D-prime Phase 1: enter M18 path when EITHER name or
-  // globalInstanceId is present (with clientMetadata). name is the canonical
-  // identity input; globalInstanceId is the transitional alias for non-adapter
-  // callers (vertex-cloudrun, scripts/architect-client, cognitive-layer/bench)
-  // that haven't migrated to OIS_AGENT_NAME yet.
-  if ((globalInstanceId || nameArg) && clientMetadataArg) {
+  // idea-251 D-prime Phase 2: name + clientMetadata required. globalInstanceId
+  // RETIRED — not read; not accepted as identity input. Hub returns
+  // `name_required` if name is absent on this path.
+  if (nameArg && clientMetadataArg) {
     const tokenRole = coerceAgentRole(role);
     if (!tokenRole) {
       return {
@@ -106,12 +104,9 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
       }
     }
     const payload: RegisterAgentPayload = {
-      // idea-251 D-prime Phase 1: globalInstanceId carried through for
-      // transitional callers; assertIdentity uses `name ?? globalInstanceId`
-      // as the identity input for fingerprint computation. Empty-string when
-      // unset since RegisterAgentPayload's globalInstanceId is currently
-      // typed required (Phase 2 makes it optional + drops it from wire).
-      globalInstanceId: globalInstanceId ?? "",
+      // idea-251 D-prime Phase 2: name IS identity. globalInstanceId field
+      // RETIRED. nameArg is non-empty here (M18-path entry condition).
+      name: nameArg,
       role: tokenRole,
       clientMetadata: clientMetadataArg,
       advisoryTags: advisoryTags ?? {},
@@ -119,11 +114,6 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
       // omitted labels on this handshake (store preserves stored set); a provided
       // object (including `{}`) is an explicit refresh signal.
       labels: labels,
-      // idea-251 D-prime: name is identity. Used as fingerprint input when
-      // present; immutable post-create. Reconnect-refresh does NOT mutate
-      // stored name (different name → different fingerprint → different
-      // lookup path → first-contact-create on new path).
-      name: nameArg,
     };
     // M-Session-Claim-Separation (mission-40) T2: protocol cutover.
     // register_role no longer claims a session. It calls assertIdentity
@@ -137,12 +127,11 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
     ctx.stores.engineerRegistry.setSessionRole(sid, tokenRole as "engineer" | "architect" | "director");
     const identity = await ctx.stores.engineerRegistry.assertIdentity(
       {
-        globalInstanceId: payload.globalInstanceId,
+        name: payload.name,
         role: tokenRole,
         clientMetadata: payload.clientMetadata,
         advisoryTags: payload.advisoryTags,
         labels: payload.labels,
-        name: payload.name,
         receiptSla: payload.receiptSla,
         wakeEndpoint: payload.wakeEndpoint,
       },
@@ -668,10 +657,10 @@ async function signalQuotaRecovered(_args: Record<string, unknown>, ctx: IPolicy
 export function registerSessionPolicy(router: PolicyRouter): void {
   router.register(
     "register_role",
-    "[Any] Register this session's role and, optionally (M18), the full Agent handshake payload (globalInstanceId, clientMetadata, advisoryTags) to obtain a stable agentId with displacement-safe session rebinding.",
+    "[Any] Register this session's role and, optionally (M18), the full Agent handshake payload (name, clientMetadata, advisoryTags) to obtain a stable agentId with displacement-safe session rebinding. idea-251 D-prime: name is the canonical identity input (was globalInstanceId pre-D-prime; that field RETIRED).",
     {
       role: z.enum(["engineer", "architect", "director"]).describe("The role of this session: 'engineer', 'architect', or 'director'"),
-      globalInstanceId: z.string().optional().describe("M18: Client-side stable UUID from ~/.ois/instance.json. When present, triggers the Agent handshake path."),
+      name: z.string().min(1).max(32).regex(/^[a-zA-Z0-9_-]+$/).optional().describe("idea-251 D-prime: identity input (e.g., 'lily', 'greg'). Required for the M18 enriched-handshake path. Drives agentId derivation `agent-{8-hex-of-sha256(name)}`. 1-32 chars, alphanumeric + `_-`. Reserved set rejected (case-insensitive): director/system/hub/engineer/architect. Sourced from OIS_AGENT_NAME env var via the host shim."),
       clientMetadata: z
         .object({
           clientName: z.string(),
@@ -688,7 +677,6 @@ export function registerSessionPolicy(router: PolicyRouter): void {
         .describe("M18: Mutable metadata about the client driving this session."),
       advisoryTags: z.record(z.string(), z.unknown()).optional().describe("M18: Launch-time-only tags (e.g., llmModel). Explicitly drift-prone; do NOT route on these values."),
       labels: z.record(z.string(), z.string()).optional().describe("Mission-19: routing labels (e.g., {env: 'smoke-test', team: 'billing'}). CP3 C5 (bug-16): refreshed on every reconnect from the handshake payload — a provided object overwrites stored labels; omitting labels preserves the stored set. Reserved key 'ois.io/namespace' has no v1 semantics."),
-      name: z.string().min(1).max(32).regex(/^[a-zA-Z0-9_-]+$/).optional().describe("idea-251: adapter-advertised display name (e.g., 'lily', 'greg'). Falls back to globalInstanceId then agentId when absent. Per-agent override via OIS_AGENT_NAME env var. Refreshed on reconnect (CP3 C5 semantic). Reserved set rejected: director/system/hub/engineer/architect (case-insensitive)."),
     },
     registerRole,
   );

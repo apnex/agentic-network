@@ -109,20 +109,19 @@ export interface AgentClientCallbacks {
  * collapse to the bare register_role call.
  */
 export interface AgentHandshakeConfig {
-  globalInstanceId: string;
+  /**
+   * idea-251 D-prime Phase 2: name IS identity. REQUIRED. Sourced from
+   * `OIS_AGENT_NAME` env var by the host shim. Drives agentId derivation
+   * `agent-{8-hex-of-sha256(name)}` on Hub side. globalInstanceId field
+   * RETIRED (was pre-D-prime fingerprint input).
+   */
+  name: string;
   proxyName: string;
   proxyVersion: string;
   transport: string;
   sdkVersion: string;
   getClientInfo: () => { name: string; version: string };
   llmModel?: string;
-  /**
-   * idea-251: adapter-advertised display name (e.g., "lily", "greg"). Sourced
-   * from the `OIS_AGENT_NAME` env var by the host shim. Optional; when absent
-   * the Hub falls back to globalInstanceId → agentId. Refreshed on every
-   * reconnect (CP3 C5 semantic).
-   */
-  name?: string;
   /** Fatal-code halt (agent_thrashing_detected / role_mismatch). */
   onFatalHalt?: (err: HandshakeFatalError) => void;
   /** Successful handshake callback — useful for shim state tracking. */

@@ -62,6 +62,7 @@ import {
   AGENT_TOUCH_MIN_INTERVAL_MS,
   DEFAULT_AGENT_RECEIPT_SLA_MS,
   computeFingerprint,
+  deriveAgentId,
   shortHash,
   THRASHING_THRESHOLD,
   THRASHING_WINDOW_MS,
@@ -318,12 +319,11 @@ export class AgentRepository implements IEngineerRegistry {
 
     const identity = await this.assertIdentity(
       {
-        globalInstanceId: payload.globalInstanceId,
+        name: payload.name,
         role: tokenRole,
         clientMetadata: payload.clientMetadata,
         advisoryTags: payload.advisoryTags,
         labels: payload.labels,
-        name: payload.name,
         receiptSla: payload.receiptSla,
         wakeEndpoint: payload.wakeEndpoint,
       },
@@ -331,7 +331,11 @@ export class AgentRepository implements IEngineerRegistry {
       address,
     );
     if (!identity.ok) {
-      return identity;
+      // idea-251 D-prime Phase 2: AssertIdentityFailure code union widened
+      // with `name_collision`; RegisterAgentFailure also accepts it (extended
+      // for the same reason — surface to register_role callers as identity-
+      // assertion failure semantic).
+      return identity as RegisterAgentResult;
     }
     const claim = await this.claimSession(identity.agentId, sessionId, "sse_subscribe");
     if (!claim.ok) {
@@ -361,20 +365,16 @@ export class AgentRepository implements IEngineerRegistry {
     sessionId?: string,
     _address?: string,
   ): Promise<AssertIdentityResult> {
-    // idea-251 D-prime Phase 1: identity input precedence is `name → globalInstanceId`.
-    // name (from OIS_AGENT_NAME env via M18 handshake) becomes the canonical
-    // identity input per Director's "name IS identity" framing. globalInstanceId
-    // remains accepted as transitional alias for non-adapter callers (vertex-cloudrun,
-    // scripts/architect-client, cognitive-layer/bench) — those migrate in Phase 2.
-    const identityInput = payload.name ?? payload.globalInstanceId;
-    if (!identityInput) {
+    // idea-251 D-prime Phase 2: name IS identity. globalInstanceId retired
+    // (no transitional alias; hard cutover per Director's "legacy" framing).
+    if (!payload.name) {
       return {
         ok: false,
         code: "role_mismatch",
-        message: "name (or transitional globalInstanceId) required for assertIdentity",
+        message: "name required for assertIdentity (idea-251 D-prime: identity input is OIS_AGENT_NAME via M18 handshake)",
       };
     }
-    const fingerprint = computeFingerprint(identityInput);
+    const fingerprint = computeFingerprint(payload.name);
     const path = fpPath(fingerprint);
     // Two attempts: natural + retry on OCC contention. Matches legacy budget.
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -383,15 +383,10 @@ export class AgentRepository implements IEngineerRegistry {
 
       if (!existing) {
         // First-contact create: NO session bound (claimSession's job).
-        // idea-251 D-prime Phase 1: agentId derives as `agent-{8-hex-chars-of-fingerprint}`
-        // per Director's stated format. Role-prefix dropped (role surfaces as
-        // separate field in projection). 8 chars (not 12) per Director's spec —
-        // collision risk ~65k names before 50% probability; acceptable at
-        // current operational scale (<100 agents). Existing eng-*/director-*
-        // records keep their prefix on reconnect (this branch only fires for
-        // new records); operator can `rm` local-state/agents/{eng,director}-*
-        // + corresponding fpPath records to force re-creation under new format.
-        const agentId = `agent-${fingerprint.slice(0, 8)}`;
+        // idea-251 D-prime Phase 2: deterministic agentId via deriveAgentId helper.
+        // `agent-{first-8-hex-of-sha256(name)}` — same name always produces same
+        // id across stores. Role-prefix dropped; role is a separate field.
+        const agentId = deriveAgentId(payload.name);
         // mission-66 #40 closure: Hub-side canonical projection derives
         // advisoryTags.adapterVersion from clientMetadata.proxyVersion.
         // Single source-of-truth at the Hub; consumers read advisoryTags.
@@ -416,13 +411,10 @@ export class AgentRepository implements IEngineerRegistry {
           lastHeartbeatAt: now,
           receiptSla: payload.receiptSla ?? DEFAULT_AGENT_RECEIPT_SLA_MS,
           wakeEndpoint: payload.wakeEndpoint ?? null,
-          // idea-251: precedence is payload.name (adapter-advertised display
-          // name from OIS_AGENT_NAME env) → payload.globalInstanceId (legacy
-          // OIS_INSTANCE_ID escape-hatch) → agentId (final defensive fallback).
-          // The `name` field separates display semantics from the stable
-          // identifier (globalInstanceId), closing the deferral noted in
-          // packages/network-adapter/src/kernel/instance.ts:42-54.
-          name: payload.name ?? payload.globalInstanceId ?? agentId,
+          // idea-251 D-prime Phase 2: name is identity. Always non-empty here
+          // (assertIdentity rejected absent name above). Stored verbatim;
+          // immutable post-create (different name → different fingerprint).
+          name: payload.name,
           activityState: "offline", // first-contact has no SSE stream yet
           sessionStartedAt: null,
           lastToolCallAt: null,
@@ -477,6 +469,22 @@ export class AgentRepository implements IEngineerRegistry {
           ok: false,
           code: "role_mismatch",
           message: `Token role '${payload.role}' does not match persisted agent role '${agent.role}' for agentId=${agent.id}`,
+        };
+      }
+
+      // idea-251 D-prime Phase 2: name-collision detection. Same name from a
+      // different host = operator misconfiguration (two machines both claiming
+      // identity "greg"). Loud-error so the collision is visible rather than
+      // silently last-write-wins-stomping the prior host's clientMetadata.
+      // Only checks when both sides have a hostname (defensive vs partial
+      // metadata).
+      const priorHost = agent.clientMetadata?.hostname;
+      const newHost = payload.clientMetadata?.hostname;
+      if (priorHost && newHost && priorHost !== newHost) {
+        return {
+          ok: false,
+          code: "name_collision",
+          message: `Agent '${payload.name}' already registered from host '${priorHost}'; cannot re-register from host '${newHost}'. Rename this instance (set OIS_AGENT_NAME differently) or stop the other instance.`,
         };
       }
 

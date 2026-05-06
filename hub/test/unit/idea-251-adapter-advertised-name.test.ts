@@ -22,7 +22,7 @@ const noop = () => {};
 
 const baseHandshake = {
   role: "engineer",
-  globalInstanceId: "test-gid-idea-251",
+  name: "test-gid-idea-251",
   clientMetadata: {
     clientName: "test-client",
     clientVersion: "0.0.0",
@@ -42,27 +42,25 @@ describe("idea-251 — name field precedence in register_role", () => {
     ctx = createTestContext();
   });
 
-  it("payload.name='lily' wins over globalInstanceId at first-contact create", async () => {
+  it("payload.name='lily' is stored as agent.name; agentId derives from name fingerprint", async () => {
     const result = await router.handle("register_role", { ...baseHandshake, name: "lily" }, ctx);
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.agent.name).toBe("lily");
-    expect(parsed.agent.id).not.toBe("lily"); // agentId is fingerprint-derived, not name
+    expect(parsed.agent.id).not.toBe("lily"); // agentId is fingerprint-derived
+    expect(parsed.agent.id).toMatch(/^agent-[0-9a-f]{8}$/);
   });
 
-  it("payload.name absent → falls back to globalInstanceId (current semantic preserved)", async () => {
-    const result = await router.handle("register_role", baseHandshake, ctx);
-    expect(result.isError).toBeUndefined();
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.agent.name).toBe("test-gid-idea-251");
-  });
-
-  it("payload.name as empty/whitespace → treated as absent (fallback path)", async () => {
+  it("payload.name as empty/whitespace → trimmed to absent → drops to bare register_role path (no Agent record)", async () => {
+    // idea-251 D-prime Phase 2: name is REQUIRED for the M18 enriched-handshake
+    // path. An empty/whitespace name trims to undefined, fails the M18 entry
+    // condition, and falls through to the legacy bare register_role path
+    // which doesn't create an Agent record. Bare path returns just `{role}`.
     const result = await router.handle("register_role", { ...baseHandshake, name: "   " }, ctx);
-    // Empty after trim → handler treats as undefined → fallback to globalInstanceId
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.agent.name).toBe("test-gid-idea-251");
+    expect(parsed.agent).toBeUndefined();
+    expect(parsed.role).toBe("engineer");
   });
 });
 
