@@ -136,7 +136,7 @@ async function registerRole(args: Record<string, unknown>, ctx: IPolicyContext):
         isError: true,
       };
     }
-    const agentProjection: AgentProjection = projectAgent(currentAgent);
+    const agentProjection: AgentProjection = projectAgent(currentAgent, Date.now());
     const session: SessionBindingState = {
       epoch: currentSessionEpoch,
       claimed: false,
@@ -252,7 +252,7 @@ async function claimSessionTool(_args: Record<string, unknown>, ctx: IPolicyCont
       isError: true,
     };
   }
-  const agentProjection: AgentProjection = projectAgent(postClaimAgent);
+  const agentProjection: AgentProjection = projectAgent(postClaimAgent, Date.now());
   const session: SessionBindingState = {
     epoch: claim.sessionEpoch,
     claimed: true,
@@ -375,6 +375,9 @@ async function getAgents(args: Record<string, unknown>, ctx: IPolicyContext): Pr
     ? new Set(Array.isArray(activityFilter) ? activityFilter : [activityFilter])
     : null;
 
+  // bug-54: bind nowMs once per batch so all projected agents share the
+  // same reference timestamp (cross-agent consistency in the response).
+  const nowMs = Date.now();
   const results: AgentProjection[] = [];
   for (const a of agents) {
     if (a.archived) continue;
@@ -387,7 +390,7 @@ async function getAgents(args: Record<string, unknown>, ctx: IPolicyContext): Pr
     // Design §11.1 derive-on-read (mission-62 sub-deferral); idea-220
     // Phase 2 wires it.
     if (missionFilter) continue;
-    results.push(projectAgent(a));
+    results.push(projectAgent(a, nowMs));
   }
 
   return {
@@ -493,7 +496,7 @@ function buildAgentStateChangedPayload(
   }
   return {
     event: "agent_state_changed",
-    agent: projectAgent(after),
+    agent: projectAgent(after, Date.now()),
     previous,
     changed,
     cause,
