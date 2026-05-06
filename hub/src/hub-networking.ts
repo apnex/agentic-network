@@ -17,6 +17,11 @@ import type { IEngineerRegistry, Selector, IAuditStore } from "./state.js";
 import type { ToolTier } from "./policy/router.js";
 import { fireWebhook } from "./webhook.js";
 import { emitLegacyNotification } from "./policy/notification-helpers.js";
+import {
+  deriveRenderContext,
+  renderPeekLineBody,
+  shouldFilterPeekLine,
+} from "./policy/sse-peek-line-render.js";
 import type { Server } from "http";
 
 /**
@@ -39,6 +44,36 @@ import type { Server } from "http";
  * much broader — wire-level `tools/list` heartbeats fell outside the
  * narrow gate and silently bumped lastSeenAt.
  */
+/**
+ * M-SSE-Peek-Line-Cleanup Phase 1 (Design v1.1 §0.5.3): augment the SSE
+ * event-data with Hub-side rendered body + structured fields. The
+ * original `data` is preserved as-is plus the 4 Phase-1 additions
+ * (sourceClass, entityRef, actionability, body). Filtered events
+ * (per §1.5) return data unchanged — adapter-side render skips them.
+ */
+function augmentDataWithRenderFields(
+  event: string,
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  if (shouldFilterPeekLine(event, data)) return data;
+  const ctx = deriveRenderContext(event, data);
+  if (!ctx) return data;
+  const body = renderPeekLineBody({
+    sourceClass: ctx.sourceClass,
+    actionVerb: ctx.actionVerb,
+    entityRef: ctx.entityRef,
+    bodyPreview: ctx.bodyPreview,
+    actionability: ctx.actionability,
+  });
+  return {
+    ...data,
+    sourceClass: ctx.sourceClass,
+    entityRef: ctx.entityRef,
+    actionability: ctx.actionability,
+    body,
+  };
+}
+
 export function shouldTouchAgent(
   body: unknown,
   tierLookup: (toolName: string) => ToolTier | undefined,
@@ -364,12 +399,18 @@ export class HubNetworking {
     data: Record<string, unknown>,
     targetRoles: string[] = ["architect"]
   ): Promise<void> {
+    // M-SSE-Peek-Line-Cleanup Phase 1 (Design v1.1 §0.5.3): Hub-side
+    // canonical body render at emit-time. Augmented `data` carries body
+    // + structured fields to both the persist surface (Message payload)
+    // and the SSE wire (adapter-side prompt-format consumes payload.body).
+    const augmentedData = augmentDataWithRenderFields(event, data);
+
     // 1. PERSIST FIRST
-    const notification = await emitLegacyNotification(this.messageStore, event, data, targetRoles);
+    const notification = await emitLegacyNotification(this.messageStore, event, augmentedData, targetRoles);
     this.log(`[Notify] Persisted notif-${notification.id}: ${event}`);
 
     // 2. Attempt SSE delivery
-    const notified = await this.notifyConnectedAgents(event, data, targetRoles, notification.id);
+    const notified = await this.notifyConnectedAgents(event, augmentedData, targetRoles, notification.id);
 
     if (notified > 0) {
       this.log(`[Notify] ${event} delivered via SSE to ${notified} session(s)`);
@@ -393,8 +434,11 @@ export class HubNetworking {
     const targetRoles = selector.roles && selector.roles.length > 0
       ? [...selector.roles]
       : ["architect", "engineer", "director"];
+    // M-SSE-Peek-Line-Cleanup Phase 1 (Design v1.1 §0.5.3): augment data
+    // with Hub-side rendered body + structured fields before persist + SSE.
+    const augmentedData = augmentDataWithRenderFields(event, data);
     // mission-56 W4.2 + W5: persist-first writes to the Message store.
-    const notification = await emitLegacyNotification(this.messageStore, event, data, targetRoles);
+    const notification = await emitLegacyNotification(this.messageStore, event, augmentedData, targetRoles);
     const matched = await this.engineerRegistry.selectAgents(selector);
     const selStr = JSON.stringify(selector);
     this.log(`[Dispatch] Persisted notif-${notification.id}: ${event} selector=${selStr} matched=${matched.length} agent(s)`);
@@ -429,7 +473,7 @@ export class HubNetworking {
           data: {
             id: notification.id,
             event,
-            data,
+            data: augmentedData,
             timestamp: new Date().toISOString(),
             targetRoles,
             selector,

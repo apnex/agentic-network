@@ -44,28 +44,77 @@
  */
 
 import type { IMessageStore, Message } from "../entities/index.js";
+import {
+  renderPeekLineBody,
+  type Actionability,
+  type EntityRef,
+  type ExternalInjectionPayload,
+  type SourceClass,
+} from "./sse-peek-line-render.js";
+
+/**
+ * Phase-1 (Design v1.1) render context per emit-call. Callers that want
+ * Hub-side rendering pass this explicitly; callers that don't ship the
+ * legacy 3-field payload (back-compat during cutover; adapter renders
+ * `[unknown]` per §4 fallback for the SSE-wire surface).
+ *
+ * Render-locus = Hub-side at emit-time per §0.5.3.
+ *
+ * Note: `hub-networking.ts:notifyEvent / dispatchEvent` augment `data`
+ * with the rendered fields (sourceClass + entityRef + actionability +
+ * body) BEFORE invoking this helper. So the high-volume SSE-wire path
+ * already carries the canonical body via `data.body`; this helper's
+ * `render` param is for direct callers that bypass hub-networking.
+ */
+export interface PeekLineRenderContext {
+  sourceClass: SourceClass;
+  actionVerb: string;
+  entityRef?: EntityRef;
+  bodyPreview?: string;
+  actionability: Actionability;
+}
 
 /**
  * Emit a legacy SSE-notification as a Message (replaces the legacy
  * `INotificationStore.persist` write path used by `notifyEvent` +
  * `dispatchEvent` in `hub-networking.ts`).
+ *
+ * Phase-1 (Design v1.1): when `render` is supplied, payload is extended
+ * per `ExternalInjectionPayload` (sourceClass + entityRef + actionability
+ * + canonical body). When omitted, payload retains the legacy
+ * `{ event, data, targetRoles }` shape — direct callers that want
+ * Phase-1 canonical render pass `render` explicitly.
  */
 export async function emitLegacyNotification(
   messageStore: IMessageStore,
   event: string,
   data: Record<string, unknown>,
   targetRoles: string[],
+  render?: PeekLineRenderContext,
 ): Promise<Message> {
+  const basePayload = { event, data, targetRoles };
+  const payload: Record<string, unknown> = render
+    ? ({
+        ...basePayload,
+        sourceClass: render.sourceClass,
+        entityRef: render.entityRef,
+        actionability: render.actionability,
+        body: renderPeekLineBody({
+          sourceClass: render.sourceClass,
+          actionVerb: render.actionVerb,
+          entityRef: render.entityRef,
+          bodyPreview: render.bodyPreview,
+          actionability: render.actionability,
+        }),
+      } satisfies ExternalInjectionPayload as Record<string, unknown>)
+    : basePayload;
+
   return messageStore.createMessage({
     kind: "external-injection",
     authorRole: "system",
     authorAgentId: "hub",
     target: null,
     delivery: "push-immediate",
-    payload: {
-      event,
-      data,
-      targetRoles,
-    },
+    payload,
   });
 }

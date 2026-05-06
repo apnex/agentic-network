@@ -82,10 +82,14 @@ function renderThreadMessage(data: Record<string, unknown>, cfg: PromptFormatCon
   // on dispatchPayload when body exceeds preview threshold. Adapter
   // render-template appends marker per Design §2.1.2 architect-lean (b):
   // `[…<N> bytes truncated; query thread for full content]`.
+  //
+  // M-SSE-Peek-Line-Cleanup Phase 1 (Design v1.1 §0.5.3): when Hub has
+  // rendered the canonical peek-line via `payload.body` (auto-derived
+  // from event-name + data at emit-time per `deriveRenderContext`),
+  // prefer it as the summary line. Falls back to the legacy author-label
+  // composition when payload.body is absent (cutover window).
   const p = cfg.toolPrefix;
-  const authorLabel = data.author === "architect" ? "Architect"
-    : data.author === "engineer" ? "Engineer peer"
-    : "Peer";
+  const hubBody = typeof data.body === "string" && data.body.length > 0 ? data.body : null;
   const title = (data.title as string) || (data.threadId as string) || "(unknown)";
   const body = (data.message as string) || "";
   const truncated = data.truncated === true;
@@ -94,8 +98,16 @@ function renderThreadMessage(data: Record<string, unknown>, cfg: PromptFormatCon
     ? ` […${fullBytes} bytes truncated; query thread for full content]`
     : "";
   const bodyLine = body ? `\n\nMessage preview: ${body}${truncationMarker}` : "";
+
+  const summaryLine = hubBody ?? (() => {
+    const authorLabel = data.author === "architect" ? "Architect"
+      : data.author === "engineer" ? "Engineer peer"
+      : "Peer";
+    return `[${authorLabel}] Replied to thread "${title}".`;
+  })();
+
   return (
-    `[${authorLabel}] Replied to thread "${title}".${bodyLine} ` +
+    `${summaryLine}${bodyLine} ` +
     `\n\nIt is your turn. Call ${p}get_thread with threadId="${data.threadId}" ` +
     `to read the full thread, then reply using ${p}create_thread_reply. ` +
     `Threads 2.0 discipline: when you signal converged=true you MUST also populate ` +
