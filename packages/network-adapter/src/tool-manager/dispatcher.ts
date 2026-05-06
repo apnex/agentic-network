@@ -601,3 +601,45 @@ export function createSharedDispatcher(
     ackMessage,
   };
 }
+
+/**
+ * bug-53 boot-time fail-fast: assert host adapter has opted into
+ * pollBackstop wiring (transport_heartbeat periodic timer). Throws if
+ * `dispatcher.pollBackstop === undefined` UNLESS `TRANSPORT_HEARTBEAT_ENABLED=false`
+ * is set explicitly (opt-out path).
+ *
+ * Class: substrate-runtime-gap (sister to bug-49/50/51). Mission-75 §3.3
+ * substrate (PollBackstop heartbeat-second-timer) shipped at thread-472 with
+ * unit tests green, but the host integration was never written — both
+ * adapters call `createSharedDispatcher({...})` without supplying
+ * `opts.pollBackstop`, so the dispatcher's pollBackstop field stayed
+ * `undefined` and neither the poll-timer nor the heartbeat-timer ever
+ * scheduled. ZERO `transport_heartbeat` MCP tool calls fired in 96 minutes
+ * post Hub-restart (5127-line shim.log + 1789-event ndjson confirmed).
+ *
+ * This assertion is a §6.4-equivalent gate: each host MUST call
+ * `assertHostWiringComplete(dispatcher)` post-startup so the bug-53 class
+ * cannot recur silently. Misconfiguration fails fast at boot, not invisibly
+ * after 96 minutes of clinical observability degradation.
+ */
+export function assertHostWiringComplete(
+  dispatcher: { pollBackstop?: PollBackstop },
+  log: (msg: string) => void = (m) => console.error(m),
+): void {
+  if (dispatcher.pollBackstop !== undefined) {
+    return; // wiring complete
+  }
+  if (process.env.TRANSPORT_HEARTBEAT_ENABLED === "false") {
+    // Explicit opt-out path — log info-level so operators have forensics.
+    log(
+      "[adapter] pollBackstop intentionally disabled via TRANSPORT_HEARTBEAT_ENABLED=false",
+    );
+    return;
+  }
+  throw new Error(
+    "[adapter] HOST WIRING ERROR: pollBackstop not configured in createSharedDispatcher opts. " +
+      "Transport heartbeat will not fire (lastHeartbeatAt will stay frozen at adapter-startup). " +
+      "Per mission-75 §3.3 + bug-53 closure, host adapters MUST opt in to pollBackstop. " +
+      "Set TRANSPORT_HEARTBEAT_ENABLED=false to explicitly disable.",
+  );
+}

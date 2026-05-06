@@ -22,6 +22,7 @@ import {
   buildPromptText,
   buildToastMessage,
   createSharedDispatcher,
+  assertHostWiringComplete,
   getActionText,
   type AgentClientCallbacks,
   type AgentEvent,
@@ -58,12 +59,24 @@ let lastToolHash = "";
 const activeProxyServers: Server[] = [];
 
 // Shared MCP-boundary dispatcher. Layer-1c factory; see Design v1.2.
+//
+// bug-53: opt into pollBackstop heartbeat-second-timer so transport_heartbeat
+// fires periodically (mission-75 §3.3 substrate). Heartbeat-only mode —
+// first-timer (list_messages Pull-mode) deferred per round-2 design decision;
+// SSE inline path delivers messages today, no second polling source. Role
+// resolved from env at module-init time (config object is loaded later inside
+// HubPlugin); role only surfaces in log lines under firstTimerEnabled=false.
 const dispatcher = createSharedDispatcher({
   getAgent: () => hubAdapter,
   proxyVersion: PROXY_VERSION,
   serverName: "hub-proxy",
   serverCapabilities: { tools: {}, logging: {} },
   log: (m) => log(m),
+  pollBackstop: {
+    role: process.env.OIS_HUB_ROLE ?? "engineer",
+    firstTimerEnabled: false,
+    log: (m) => log(m),
+  },
 });
 
 // ── Diagnostic logger ───────────────────────────────────────────────
@@ -501,6 +514,16 @@ async function connectToHub(globalInstanceId: string): Promise<void> {
 
   await hubAdapter.start();
   log("Connected to remote Hub via McpAgentClient");
+
+  // bug-53: §6.4-equivalent gate — fail-fast at boot if pollBackstop wiring
+  // is missing (would otherwise silently freeze lastHeartbeatAt at adapter-
+  // startup). TRANSPORT_HEARTBEAT_ENABLED=false is the explicit opt-out path.
+  assertHostWiringComplete(dispatcher, log);
+
+  // bug-53: now that handshake completed and hubAdapter is in 'streaming'
+  // state, start the pollBackstop heartbeat timer. Idempotent — duplicate
+  // start() calls are no-ops.
+  dispatcher.pollBackstop?.start(() => hubAdapter);
 }
 
 // ── Local MCP proxy server (Bun.serve) + HTTP fetch handler ─────────

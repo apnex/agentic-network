@@ -93,6 +93,7 @@ export {
   createSharedDispatcher,
   pendingKey,
   injectQueueItemId,
+  assertHostWiringComplete,
 } from "./tool-manager/dispatcher.js";
 export type {
   DispatcherClientInfo,
