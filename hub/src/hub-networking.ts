@@ -14,23 +14,35 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { IEngineerRegistry, Selector, IAuditStore } from "./state.js";
-import { AGENT_TOUCH_BYPASS_TOOLS } from "./state.js";
+import type { ToolTier } from "./policy/router.js";
 import { fireWebhook } from "./webhook.js";
 import { emitLegacyNotification } from "./policy/notification-helpers.js";
 import type { Server } from "http";
 
 /**
- * mission-75 v1.0 §3.3 — predicate for the touchAgent-bypass discipline.
- * Returns true iff the incoming MCP request body consists ENTIRELY of
- * tool calls listed in AGENT_TOUCH_BYPASS_TOOLS. Mixed batches (any
- * non-bypass tool present) flow through the standard touchAgent path.
+ * mission-75 v1.0 §3.3 / bug-55 — positive-list predicate for the
+ * cognitive-bump (touchAgent) gate. Returns true iff the incoming MCP
+ * request body consists ENTIRELY of `tools/call` requests targeting
+ * tools registered as `tier: "llm-callable"`. Returns false for:
+ *   - non-tools/call JSON-RPC methods (tools/list, initialize, notifications/*)
+ *   - tools/call to `adapter-internal`-tier tools (transport_heartbeat,
+ *     register_role, claim_session)
+ *   - tools/call to unregistered/unknown tools
+ *   - mixed batches (any non-llm-callable element)
+ *   - empty batches / non-object bodies
  *
- * Critical invariant: bumping `lastSeenAt` for adapter-internal heartbeat
- * tools would collapse the cognitive-vs-transport semantic separation —
- * cognitiveState=alive must require LLM doing meaningful work, not
- * adapter-side polling.
+ * Default-deny matches §3.3 critical invariant: cognitiveState=alive
+ * requires LLM doing meaningful work, NOT adapter-side polling. The
+ * inversion (was "should bypass?", now "should bump?") closes bug-55:
+ * the prior allowlist enumerated one specific tool name where the
+ * conceptual boundary (LLM-meaningful-work vs adapter-housekeeping) is
+ * much broader — wire-level `tools/list` heartbeats fell outside the
+ * narrow gate and silently bumped lastSeenAt.
  */
-function shouldBypassTouchAgent(body: unknown): boolean {
+export function shouldTouchAgent(
+  body: unknown,
+  tierLookup: (toolName: string) => ToolTier | undefined,
+): boolean {
   if (!body || typeof body !== "object") return false;
   const calls = Array.isArray(body) ? body : [body];
   if (calls.length === 0) return false;
@@ -38,7 +50,8 @@ function shouldBypassTouchAgent(body: unknown): boolean {
     const c = call as { method?: string; params?: { name?: string } };
     if (c.method !== "tools/call") return false;
     const name = c.params?.name;
-    return typeof name === "string" && AGENT_TOUCH_BYPASS_TOOLS.has(name);
+    if (typeof name !== "string") return false;
+    return tierLookup(name) === "llm-callable";
   });
 }
 
@@ -154,6 +167,15 @@ export class HubNetworking {
      * push pipeline now flows exclusively through the Message store.
      */
     private messageStore: import("./entities/message.js").IMessageStore,
+    /**
+     * mission-75 v1.0 §3.3 / bug-55 — tier lookup for the cognitive-bump
+     * gate. Returns a tool's registered tier or undefined for unknown
+     * tools. Production wires this to `policyRouter.getToolTier` so the
+     * gate at POST /mcp consults canonical tier annotations. Default
+     * (always-undefined) yields strict default-deny — useful for tests
+     * that don't exercise the cognitive-bump path.
+     */
+    private tierLookup: (toolName: string) => ToolTier | undefined = () => undefined,
   ) {
     this.config = {
       port: config.port ?? 0,
@@ -731,13 +753,11 @@ export class HubNetworking {
         if (sessionId && this.transports.has(sessionId)) {
           this.sessionLastActivity.set(sessionId, Date.now());
           // M18: heartbeat the bound Agent entity (rate-limited internally).
-          // mission-75 v1.0 §3.3 critical invariant — skip touchAgent when
-          // the incoming call is in AGENT_TOUCH_BYPASS_TOOLS (currently
-          // `transport_heartbeat`). Bumping lastSeenAt for adapter-internal
-          // heartbeat tools would collapse cognitive-vs-transport semantic
-          // separation (cognitiveState=alive must require LLM doing
-          // meaningful work, NOT adapter-side polling).
-          if (!shouldBypassTouchAgent(req.body)) {
+          // mission-75 v1.0 §3.3 / bug-55 — positive-list cognitive-bump
+          // gate. Bump iff the body is tools/call to an `llm-callable`-tier
+          // tool. Default-deny: wire-level methods (tools/list, initialize,
+          // notifications/*) and adapter-internal tier tools never bump.
+          if (shouldTouchAgent(req.body, this.tierLookup)) {
             this.engineerRegistry.touchAgent(sessionId).catch((err) => {
               this.log(`[Hub] touchAgent failed for ${sessionId.substring(0, 8)}...: ${err}`);
             });

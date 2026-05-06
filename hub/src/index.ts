@@ -366,6 +366,10 @@ const hub = new HubNetworking(
   // backfill via sendLoggingMessage before transport.handleRequest
   // takes over for live emit. Coexists with state-based-reconnect.
   messageStore,
+  // mission-75 §3.3 / bug-55: wire the dispatcher-entry cognitive-bump
+  // gate to canonical PolicyRouter tier annotations (positive-list:
+  // bump iff tools/call to llm-callable tier).
+  (toolName: string) => policyRouter.getToolTier(toolName),
 );
 
 // ── Start Server ─────────────────────────────────────────────────────

@@ -1383,22 +1383,6 @@ export const TRANSPORT_HEARTBEAT_ENABLED: boolean =
     : TRANSPORT_HEARTBEAT_ENABLED_DEFAULT;
 
 /**
- * mission-75 v1.0 §3.3 critical invariant — `transport_heartbeat` MCP tool
- * MUST NOT bump `lastSeenAt` (would collapse cognitive-vs-transport semantic
- * separation). Tools listed here skip the standard `touchAgent` invocation
- * at the dispatcher entry. Approach (i) per Design §3.3 — extensible
- * allow-list pattern (future heartbeat-class tools join the set).
- *
- * Critical invariant: `cognitiveState=alive` MUST require a tool-call OTHER
- * than `transport_heartbeat` within PEER_PRESENCE_WINDOW_MS — i.e., LLM
- * doing meaningful work. `transport_heartbeat` adapter-side polling does
- * NOT count as cognitive activity.
- */
-export const AGENT_TOUCH_BYPASS_TOOLS: ReadonlySet<string> = new Set([
-  "transport_heartbeat",
-]);
-
-/**
  * mission-75 v1.0 — agentPulse pulse-class identifier. SEPARATE from
  * `PULSE_KEYS = ["engineerPulse", "architectPulse"]` per Design §3.4 M1
  * fold: agentPulse iterates Agents-not-missions (config lives on Agent,
