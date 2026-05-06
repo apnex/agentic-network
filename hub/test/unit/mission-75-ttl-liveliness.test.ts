@@ -37,6 +37,7 @@ import {
   type AgentLivenessConfig,
   type RegisterAgentPayload,
 } from "../../src/state.js";
+import { projectAgent } from "../../src/policy/agent-projection.js";
 import { AgentRepository } from "../../src/entities/agent-repository.js";
 import { PolicyRouter } from "../../src/policy/router.js";
 import {
@@ -497,5 +498,137 @@ describe("mission-75 §3.1 — truth-table registration-instant edge", () => {
     // bug-52: just-registered → just-bumped → full window remaining (60s default).
     expect(stored!.cognitiveTTL).toBe(60);
     expect(stored!.transportTTL).toBe(60);
+  });
+});
+
+// ── bug-54: projectAgent live-compute on read (Design v1.0 §3.6 + §3.2) ──
+//
+// Storage path persists cognitiveTTL/transportTTL/cognitiveState/transportState
+// at touchAgent / refreshHeartbeat bump events; between bumps the stored
+// snapshot is frozen. The wire projection must live-compute from the
+// current `nowMs` so operator visibility (get_agents) shows per-second
+// decrement matching Director's stated mental model. Storage path stays
+// authoritative for FSM transitions (mission-225 design); projection
+// layer is the operator-display surface.
+
+function fakeAgent(overrides: Partial<Agent>): Agent {
+  return {
+    id: "eng-bug54",
+    fingerprint: "fp",
+    role: "engineer",
+    status: "online",
+    archived: false,
+    sessionEpoch: 0,
+    currentSessionId: null,
+    clientMetadata: { clientName: "x", clientVersion: "0", proxyName: "p", proxyVersion: "0" },
+    advisoryTags: {},
+    labels: {},
+    firstSeenAt: "2026-01-01T00:00:00.000Z",
+    lastSeenAt: "2026-01-01T00:00:00.000Z",
+    livenessState: "online",
+    lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+    receiptSla: 1000,
+    wakeEndpoint: null,
+    name: "eng-bug54",
+    activityState: "online_idle",
+    sessionStartedAt: null,
+    lastToolCallAt: null,
+    lastToolCallName: null,
+    idleSince: null,
+    workingSince: null,
+    quotaBlockedUntil: null,
+    adapterVersion: "",
+    ipAddress: null,
+    restartCount: 0,
+    recentErrors: [],
+    restartHistoryMs: [],
+    // Stored snapshot — frozen at last-bump value; projection MUST NOT
+    // surface these directly.
+    cognitiveTTL: 60,
+    transportTTL: 60,
+    cognitiveState: "alive",
+    transportState: "alive",
+    livenessConfig: undefined,
+    ...overrides,
+  } as Agent;
+}
+
+describe("mission-75 §3.6 — bug-54 projectAgent live-compute on read", () => {
+  it("Director's stated example pinned at projection layer: lastSeenAt 14s ago, nowMs binds → cognitiveTTL=46", () => {
+    const now = Date.now();
+    const agent = fakeAgent({
+      lastSeenAt: new Date(now - 14_000).toISOString(),
+      // Stored snapshot diverged from live (e.g. last bump was 14s ago at full
+      // window). bug-54: live-compute MUST override the stored 60.
+      cognitiveTTL: 60,
+      cognitiveState: "alive",
+    });
+    const proj = projectAgent(agent, now);
+    expect(proj.cognitiveTTL).toBe(46);
+    expect(proj.cognitiveState).toBe("alive");
+  });
+
+  it("mid-cycle decrement visible: lastHeartbeatAt 45s ago → transportTTL=15 (live), not frozen 60 (stored)", () => {
+    const now = Date.now();
+    const agent = fakeAgent({
+      lastHeartbeatAt: new Date(now - 45_000).toISOString(),
+      transportTTL: 60, // stored snapshot from last bump
+      transportState: "alive",
+    });
+    const proj = projectAgent(agent, now);
+    expect(proj.transportTTL).toBe(15);
+    expect(proj.transportState).toBe("alive");
+  });
+
+  it("expired window flips state to unresponsive at projection: lastHeartbeatAt 90s ago → transportTTL=0, transportState=unresponsive", () => {
+    const now = Date.now();
+    const agent = fakeAgent({
+      lastHeartbeatAt: new Date(now - 90_000).toISOString(),
+      // Stored snapshot still claims alive — the bump that should have
+      // refreshed it didn't fire. bug-54: projection ignores stale stored
+      // state and surfaces the live derivation.
+      transportTTL: 60,
+      transportState: "alive",
+    });
+    const proj = projectAgent(agent, now);
+    expect(proj.transportTTL).toBe(0);
+    expect(proj.transportState).toBe("unresponsive");
+  });
+
+  it("storage-path read-only contract: projectAgent does not mutate the agent record", () => {
+    const now = Date.now();
+    const agent = fakeAgent({
+      lastSeenAt: new Date(now - 14_000).toISOString(),
+      lastHeartbeatAt: new Date(now - 45_000).toISOString(),
+      cognitiveTTL: 60,
+      transportTTL: 60,
+    });
+    const beforeStored = {
+      cognitiveTTL: agent.cognitiveTTL,
+      transportTTL: agent.transportTTL,
+      cognitiveState: agent.cognitiveState,
+      transportState: agent.transportState,
+      lastSeenAt: agent.lastSeenAt,
+      lastHeartbeatAt: agent.lastHeartbeatAt,
+    };
+    projectAgent(agent, now);
+    // Stored snapshot fields untouched — projection is pure read.
+    expect(agent.cognitiveTTL).toBe(beforeStored.cognitiveTTL);
+    expect(agent.transportTTL).toBe(beforeStored.transportTTL);
+    expect(agent.cognitiveState).toBe(beforeStored.cognitiveState);
+    expect(agent.transportState).toBe(beforeStored.transportState);
+    expect(agent.lastSeenAt).toBe(beforeStored.lastSeenAt);
+    expect(agent.lastHeartbeatAt).toBe(beforeStored.lastHeartbeatAt);
+  });
+
+  it("once-per-batch nowMs gives cross-agent consistency: same nowMs across multiple projectAgent calls produces TTL math from a single reference instant", () => {
+    const now = Date.now();
+    const a1 = fakeAgent({ id: "eng-1", lastSeenAt: new Date(now - 10_000).toISOString() });
+    const a2 = fakeAgent({ id: "eng-2", lastSeenAt: new Date(now - 20_000).toISOString() });
+    const p1 = projectAgent(a1, now);
+    const p2 = projectAgent(a2, now);
+    // Difference between TTLs equals the difference in agent ages — no
+    // per-call clock drift since both derive from the same nowMs.
+    expect((p1.cognitiveTTL ?? 0) - (p2.cognitiveTTL ?? 0)).toBe(10);
   });
 });

@@ -66,7 +66,7 @@ describe("projectAgent — canonical wire shape per Design §2.1 + §2.3", () =>
       recentErrors: [],
       restartHistoryMs: [Date.now()],
     };
-    const proj = projectAgent(fakeAgent);
+    const proj = projectAgent(fakeAgent, Date.now());
 
     // Required canonical fields are present
     expect(proj.id).toBe("eng-test123");
@@ -138,7 +138,7 @@ describe("projectAgent — canonical wire shape per Design §2.1 + §2.3", () =>
       recentErrors: [],
       restartHistoryMs: [],
     } as Agent;
-    const proj = projectAgent(legacyAgent);
+    const proj = projectAgent(legacyAgent, Date.now());
 
     // Canonical required fields populated; name fallback to id worked
     expect(proj.id).toBe("eng-legacy-1");
@@ -177,7 +177,7 @@ describe("projectAgent — canonical wire shape per Design §2.1 + §2.3", () =>
       adapterVersion: "", ipAddress: null,
       restartCount: 0, recentErrors: [], restartHistoryMs: [],
     } as Agent;
-    const proj = projectAgent(agent);
+    const proj = projectAgent(agent, Date.now());
     expect(proj.labels).toEqual({});
   });
 });

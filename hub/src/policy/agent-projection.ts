@@ -27,6 +27,7 @@ import type {
   ClaimSessionTrigger,
   ComponentState,
 } from "../state.js";
+import { computeComponentStates } from "../state.js";
 
 /**
  * Canonical wire-projection of an Agent. `clientMetadata` and `advisoryTags`
@@ -74,8 +75,18 @@ export interface SessionBindingState {
  * migration script (`scripts/migrate-canonical-envelope-state.ts`) defaults
  * missing fields to `{}` for legacy records; until that runs, projection
  * is defensive.
+ *
+ * bug-54: cognitiveTTL/transportTTL/cognitiveState/transportState are
+ * live-computed from `nowMs` rather than read from the stored snapshot
+ * (which only refreshes at touchAgent / refreshHeartbeat bump events).
+ * Operator visibility (get_agents) needs per-second decrement; SSE
+ * `agent_state_changed` subscribers benefit too. Storage path
+ * (agent.cognitiveTTL etc., persisted at bump-time) is unchanged and
+ * remains authoritative for FSM transitions per mission-225 design.
+ * Caller passes `nowMs` once per batch for cross-agent consistency.
  */
-export function projectAgent(agent: Agent): AgentProjection {
+export function projectAgent(agent: Agent, nowMs: number): AgentProjection {
+  const live = computeComponentStates(agent, nowMs);
   const proj: AgentProjection = {
     id: agent.id,
     name: agent.name,
@@ -83,15 +94,10 @@ export function projectAgent(agent: Agent): AgentProjection {
     livenessState: agent.livenessState,
     activityState: agent.activityState,
     labels: agent.labels ?? {},
-    // mission-75 v1.0 §3.6 — component states surfaced on the wire so
-    // the CLI projection (`scripts/local/tpl/agents.jq`) can render the
-    // COGNITIVE_TTL + TRANSPORT_TTL columns. normalizeAgentShape
-    // (agent-repository.ts) provides defaults for legacy blobs lacking
-    // these fields, so they're always present on the projected object.
-    cognitiveTTL: agent.cognitiveTTL,
-    transportTTL: agent.transportTTL,
-    cognitiveState: agent.cognitiveState,
-    transportState: agent.transportState,
+    cognitiveTTL: live.cognitiveTTL,
+    transportTTL: live.transportTTL,
+    cognitiveState: live.cognitiveState,
+    transportState: live.transportState,
   };
   if (agent.clientMetadata) {
     proj.clientMetadata = agent.clientMetadata;
