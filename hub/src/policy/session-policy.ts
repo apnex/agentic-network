@@ -665,6 +665,16 @@ export function registerSessionPolicy(router: PolicyRouter): void {
           hostname: z.string().optional(),
           platform: z.string().optional(),
           pid: z.number().optional(),
+          // M-Build-Identity-AdvisoryTag (idea-256): build-identity wire fields
+          // sourced from each package's dist/build-info.json. Hub
+          // deriveAdvisoryTags projects these into AgentAdvisoryTags. Without
+          // these declarations zod's default strip mode would drop them at the
+          // wire boundary before the handler observed them — calibration #62
+          // 14th instance.
+          proxyCommitSha: z.string().optional(),
+          proxyDirty: z.boolean().optional(),
+          sdkCommitSha: z.string().optional(),
+          sdkDirty: z.boolean().optional(),
         })
         .optional()
         .describe("M18: Mutable metadata about the client driving this session."),
