@@ -551,3 +551,96 @@ describe("dispatcher — W3.3 PollBackstop integration", () => {
     expect(onActionable).toHaveBeenCalledOnce();
   });
 });
+
+describe("dispatcher × suppress_peek_line (Phase-1.5 #1)", () => {
+  it("downgrades actionable → informational when payload.suppress_peek_line=true", () => {
+    const onActionable = vi.fn();
+    const onInformational = vi.fn();
+    const dispatcher = createSharedDispatcher({
+      getAgent: () => fakeAgent(),
+      proxyVersion: "test-1.0.0",
+      notificationHooks: { onActionableEvent: onActionable, onInformationalEvent: onInformational },
+    });
+
+    const suppressedEvent: AgentEvent = {
+      id: "m-suppress-1",
+      event: "agent_state_changed",
+      data: { suppress_peek_line: true, agent: { id: "a-1" } },
+    };
+    dispatcher.callbacks.onActionableEvent!(suppressedEvent);
+
+    // Suppressed → routed to informational hook only
+    expect(onActionable).not.toHaveBeenCalled();
+    expect(onInformational).toHaveBeenCalledOnce();
+    expect(onInformational).toHaveBeenCalledWith(suppressedEvent);
+  });
+
+  it("preserves actionable routing when payload.suppress_peek_line=false (back-compat)", () => {
+    const onActionable = vi.fn();
+    const onInformational = vi.fn();
+    const dispatcher = createSharedDispatcher({
+      getAgent: () => fakeAgent(),
+      proxyVersion: "test-1.0.0",
+      notificationHooks: { onActionableEvent: onActionable, onInformationalEvent: onInformational },
+    });
+
+    const event: AgentEvent = {
+      id: "m-not-suppressed-1",
+      event: "thread_message",
+      data: { suppress_peek_line: false, threadId: "thread-1" },
+    };
+    dispatcher.callbacks.onActionableEvent!(event);
+
+    expect(onActionable).toHaveBeenCalledOnce();
+    expect(onInformational).not.toHaveBeenCalled();
+  });
+
+  it("preserves actionable routing when payload.suppress_peek_line is undefined (pre-Phase-1.5 records)", () => {
+    const onActionable = vi.fn();
+    const onInformational = vi.fn();
+    const dispatcher = createSharedDispatcher({
+      getAgent: () => fakeAgent(),
+      proxyVersion: "test-1.0.0",
+      notificationHooks: { onActionableEvent: onActionable, onInformationalEvent: onInformational },
+    });
+
+    const legacyEvent: AgentEvent = {
+      id: "m-legacy-1",
+      event: "thread_message",
+      data: { threadId: "thread-1" }, // no suppress_peek_line field
+    };
+    dispatcher.callbacks.onActionableEvent!(legacyEvent);
+
+    expect(onActionable).toHaveBeenCalledOnce();
+    expect(onInformational).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire claim_message on suppressed events (actionable-only side-effect skip)", () => {
+    // Per Design v1.0 §1.3 + the dispatcher's isSuppressed branch:
+    // suppressed events skip captureQueueItemFromEvent + fireClaimMessage
+    // (which calls agent.call("claim_message", ...) for message_arrived events).
+    const fakeAgentInstance = fakeAgent();
+    const dispatcher = createSharedDispatcher({
+      getAgent: () => fakeAgentInstance,
+      proxyVersion: "test-1.0.0",
+      notificationHooks: { onInformationalEvent: vi.fn() },
+    });
+
+    const suppressedMessageArrived: AgentEvent = {
+      id: "m-suppress-claim-1",
+      event: "message_arrived",
+      data: {
+        suppress_peek_line: true,
+        message: { id: "msg-1", payload: {} },
+      },
+    };
+    dispatcher.callbacks.onActionableEvent!(suppressedMessageArrived);
+
+    // Suppressed → claim_message NOT fired (skip actionable-only side-effects)
+    const callMock = (fakeAgentInstance.call as unknown as { mock: { calls: unknown[][] } }).mock;
+    const claimCalls = callMock.calls.filter(
+      (args) => args[0] === "claim_message",
+    );
+    expect(claimCalls).toHaveLength(0);
+  });
+});

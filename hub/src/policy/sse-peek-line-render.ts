@@ -83,10 +83,14 @@ export type Actionability = (typeof ACTIONABILITIES)[number];
 
 /**
  * The Phase-1 extended payload shape for `kind: "external-injection"`
- * Messages, per Design v1.1 §1.1. Existing fields (event, data,
- * targetRoles) are preserved unchanged; the 4 additions (sourceClass,
- * entityRef, actionability, body) are render inputs/output stored on
- * the payload for query-ability + Phase-2 cross-ref foundation.
+ * Messages, per Design v1.1 §1.1 + Phase-1.5 #1 §1.1
+ * (M-SSE-Filter-List-Adapter-Consumption). Existing fields (event, data,
+ * targetRoles) are preserved unchanged; the 4 Phase-1 additions
+ * (sourceClass, entityRef, actionability, body) are render inputs/output
+ * stored on the payload for query-ability + Phase-2 cross-ref foundation;
+ * the Phase-1.5 #1 addition (suppress_peek_line) carries the §1.5
+ * filter-list decision Hub-side → adapter consumption (single
+ * source-of-truth; no per-adapter drift surface).
  */
 export interface ExternalInjectionPayload {
   // Existing fields (preserved):
@@ -99,6 +103,9 @@ export interface ExternalInjectionPayload {
   entityRef?: EntityRef;
   actionability: Actionability;
   body: string;
+
+  // Phase-1.5 #1 addition (M-SSE-Filter-List-Adapter-Consumption Design v1.0):
+  suppress_peek_line?: boolean;
 }
 
 /**
