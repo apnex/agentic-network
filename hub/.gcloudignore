@@ -2,11 +2,11 @@
 #
 # `gcloud builds submit` reads `.gcloudignore` if present, else falls back to
 # `.gitignore`. `hub/.gitignore` excludes the staged tarballs
-# (`ois-storage-provider-*.tgz`, `ois-repo-event-bridge-*.tgz` —
+# (`apnex-storage-provider-*.tgz`, `apnex-repo-event-bridge-*.tgz` —
 # intentional, to prevent accidental commits of the transient tarballs
 # staged by `scripts/local/build-hub.sh`). Without this `.gcloudignore`,
 # those exclusions propagate to the Cloud Build upload context and the
-# Dockerfile `COPY ois-<pkg>-*.tgz` steps fail because the tarballs are
+# Dockerfile `COPY apnex-<pkg>-*.tgz` steps fail because the tarballs are
 # missing.
 #
 # This file is self-contained (does NOT use `#!include:.gitignore`). We mirror
@@ -24,5 +24,5 @@ node_modules/
 # (The leading `!` is documentation-style here — with self-contained
 # .gcloudignore there's no prior exclusion to override — but it makes intent
 # explicit and stays correct if a broader exclude is added above.)
-!ois-storage-provider-*.tgz
-!ois-repo-event-bridge-*.tgz
+!apnex-storage-provider-*.tgz
+!apnex-repo-event-bridge-*.tgz
