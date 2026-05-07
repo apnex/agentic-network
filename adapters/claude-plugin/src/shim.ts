@@ -143,6 +143,51 @@ const NETWORK_ADAPTER_PKG_VERSION = (() => {
 const PROXY_VERSION = CLAUDE_PLUGIN_PKG_VERSION;
 const SDK_VERSION = `@apnex/network-adapter@${NETWORK_ADAPTER_PKG_VERSION}`;
 
+// M-Build-Identity-AdvisoryTag (idea-256): code-identity source-of-truth.
+// Each package's prepack hook (scripts/build/write-build-info.js) writes
+// dist/build-info.json at pack-time; shim reads both at startup and emits
+// via the existing mission-66 #40 wire-pattern (clientMetadata propagation
+// → Hub deriveAdvisoryTags projection → AgentAdvisoryTags). Surfaces in
+// get-agents as SHIM_COMMIT + ADAPTER_COMMIT columns.
+interface BuildInfo {
+  commitSha: string;
+  dirty: boolean;
+  buildTime: string | null;
+  branch: string;
+}
+
+const UNKNOWN_BUILD_INFO: BuildInfo = {
+  commitSha: "unknown",
+  dirty: false,
+  buildTime: null,
+  branch: "unknown",
+};
+
+function readBuildInfo(buildInfoPath: string): BuildInfo {
+  try {
+    const raw = JSON.parse(readFileSync(buildInfoPath, "utf-8"));
+    return {
+      commitSha: typeof raw.commitSha === "string" ? raw.commitSha : "unknown",
+      dirty: !!raw.dirty,
+      buildTime: typeof raw.buildTime === "string" ? raw.buildTime : null,
+      branch: typeof raw.branch === "string" ? raw.branch : "unknown",
+    };
+  } catch {
+    return UNKNOWN_BUILD_INFO;
+  }
+}
+
+const PROXY_BUILD_INFO = readBuildInfo(resolve(__shimDir, "build-info.json"));
+const SDK_BUILD_INFO = (() => {
+  try {
+    return readBuildInfo(
+      __require.resolve("@apnex/network-adapter/dist/build-info.json"),
+    );
+  } catch {
+    return UNKNOWN_BUILD_INFO;
+  }
+})();
+
 // OIS_COGNITIVE_BYPASS=1 → pass cognitive=undefined to McpAgentClient.
 // Operator-facing kill-switch for the cognitive pipeline; mcp-agent-client
 // takes the legacy passthrough (rawCall directly) when cognitive is unset.
@@ -403,6 +448,15 @@ async function main(): Promise<void> {
     role: config.role,
     cognitiveBypass: COGNITIVE_BYPASS,
     eagerWarmup: isEagerWarmupEnabled(process.env),
+    // M-Build-Identity-AdvisoryTag (idea-256): build-identity in startup tele
+    proxyCommitSha: PROXY_BUILD_INFO.commitSha,
+    proxyDirty: PROXY_BUILD_INFO.dirty,
+    proxyBuildTime: PROXY_BUILD_INFO.buildTime,
+    proxyBranch: PROXY_BUILD_INFO.branch,
+    sdkCommitSha: SDK_BUILD_INFO.commitSha,
+    sdkDirty: SDK_BUILD_INFO.dirty,
+    sdkBuildTime: SDK_BUILD_INFO.buildTime,
+    sdkBranch: SDK_BUILD_INFO.branch,
   });
 
   // idea-251 D-prime Phase 2: identity from OIS_AGENT_NAME env. REQUIRED;
@@ -521,6 +575,12 @@ async function main(): Promise<void> {
         proxyVersion: PROXY_VERSION,
         transport: "stdio-mcp-proxy",
         sdkVersion: SDK_VERSION,
+        // M-Build-Identity-AdvisoryTag (idea-256): build-identity flows
+        // via clientMetadata → Hub deriveAdvisoryTags → AgentAdvisoryTags.
+        proxyCommitSha: PROXY_BUILD_INFO.commitSha,
+        proxyDirty: PROXY_BUILD_INFO.dirty,
+        sdkCommitSha: SDK_BUILD_INFO.commitSha,
+        sdkDirty: SDK_BUILD_INFO.dirty,
         getClientInfo,
         llmModel: process.env.HUB_LLM_MODEL,
         onFatalHalt: fatalHalt,

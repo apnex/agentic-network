@@ -569,6 +569,12 @@ export class McpAgentClient implements IAgentClient {
         proxyVersion: handshake.proxyVersion,
         transport: handshake.transport,
         sdkVersion: handshake.sdkVersion,
+        // M-Build-Identity-AdvisoryTag (idea-256): forward optional
+        // build-identity fields when host provided them.
+        proxyCommitSha: handshake.proxyCommitSha,
+        proxyDirty: handshake.proxyDirty,
+        sdkCommitSha: handshake.sdkCommitSha,
+        sdkDirty: handshake.sdkDirty,
         llmModel: handshake.llmModel,
         labels: this.cfg.labels,
         wakeEndpoint: handshake.wakeEndpoint,

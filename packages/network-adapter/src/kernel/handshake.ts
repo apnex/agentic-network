@@ -36,6 +36,14 @@ export interface HandshakeClientMetadata {
   hostname?: string;
   platform?: string;
   pid?: number;
+  // M-Build-Identity-AdvisoryTag (idea-256): build-identity wire fields
+  // sourced from each package's dist/build-info.json (written by the
+  // shared scripts/build/write-build-info.js prepack hook). Hub
+  // deriveAdvisoryTags projects these into AgentAdvisoryTags.
+  proxyCommitSha?: string;
+  proxyDirty?: boolean;
+  sdkCommitSha?: string;
+  sdkDirty?: boolean;
 }
 
 export interface HandshakeAdvisoryTags {
@@ -137,6 +145,14 @@ export interface HandshakeConfig {
   proxyVersion: string;
   transport: string;
   sdkVersion: string;
+  // M-Build-Identity-AdvisoryTag (idea-256): build-identity from each
+  // package's dist/build-info.json. Optional — host shim sets when
+  // build-info.json is present; absent for older shims or extracted
+  // tarballs without git context.
+  proxyCommitSha?: string;
+  proxyDirty?: boolean;
+  sdkCommitSha?: string;
+  sdkDirty?: boolean;
   llmModel?: string;
   /**
    * Mission-19 routing labels. Forwarded as the `labels` arg on the
@@ -234,6 +250,13 @@ export function buildHandshakePayload(config: HandshakeConfig): HandshakePayload
       hostname: hostname(),
       platform: osPlatform(),
       pid: process.pid,
+      // M-Build-Identity-AdvisoryTag (idea-256): forward build-identity
+      // when host provided it; omit otherwise (Hub gracefully treats
+      // absent as legacy / unknown).
+      ...(config.proxyCommitSha !== undefined && { proxyCommitSha: config.proxyCommitSha }),
+      ...(config.proxyDirty !== undefined && { proxyDirty: config.proxyDirty }),
+      ...(config.sdkCommitSha !== undefined && { sdkCommitSha: config.sdkCommitSha }),
+      ...(config.sdkDirty !== undefined && { sdkDirty: config.sdkDirty }),
     },
     advisoryTags: {
       llmModel: config.llmModel ?? "unknown",
