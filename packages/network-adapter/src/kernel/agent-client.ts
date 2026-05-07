@@ -120,6 +120,13 @@ export interface AgentHandshakeConfig {
   proxyVersion: string;
   transport: string;
   sdkVersion: string;
+  // M-Build-Identity-AdvisoryTag (idea-256): build-identity from each
+  // package's dist/build-info.json. Optional — host shim sets when
+  // build-info.json is present.
+  proxyCommitSha?: string;
+  proxyDirty?: boolean;
+  sdkCommitSha?: string;
+  sdkDirty?: boolean;
   getClientInfo: () => { name: string; version: string };
   llmModel?: string;
   /** Fatal-code halt (agent_thrashing_detected / role_mismatch). */

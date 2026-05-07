@@ -117,6 +117,14 @@ export interface AgentClientMetadata {
   hostname?: string;
   platform?: string;
   pid?: number;
+  // M-Build-Identity-AdvisoryTag (idea-256): build-identity wire fields
+  // sourced from each package's dist/build-info.json (written by the
+  // shared scripts/build/write-build-info.js prepack hook). Hub
+  // deriveAdvisoryTags projects these into AgentAdvisoryTags.
+  proxyCommitSha?: string;     // 7-char short SHA of claude-plugin shim build
+  proxyDirty?: boolean;        // claude-plugin built from a dirty tree
+  sdkCommitSha?: string;       // 7-char short SHA of network-adapter SDK build
+  sdkDirty?: boolean;          // network-adapter built from a dirty tree
 }
 
 export interface AgentAdvisoryTags {
@@ -125,7 +133,18 @@ export interface AgentAdvisoryTags {
   llmModel?: string;           // e.g., "claude-opus-4-6"
   // mission-66 #40 closure: adapter version surfaced via advisoryTags
   // (canonical projection derived Hub-side from clientMetadata.proxyVersion).
+  // LEGACY QUIRK: this field actually carries clientMetadata.proxyVersion
+  // (claude-plugin shim version), NOT the network-adapter SDK version.
+  // Preserved for back-compat; rename to `proxyVersion` deferred (AG-8 in
+  // M-Build-Identity-AdvisoryTag Design v1.0).
   adapterVersion?: string;     // e.g., "0.1.4" (claude-plugin package.json version)
+  // M-Build-Identity-AdvisoryTag (idea-256): build-identity projections
+  // from clientMetadata. Intent-aligned naming: proxy* = claude-plugin
+  // shim layer; sdk* = network-adapter package.
+  proxyCommitSha?: string;     // mirrors clientMetadata.proxyCommitSha
+  proxyDirty?: boolean;        // mirrors clientMetadata.proxyDirty
+  sdkCommitSha?: string;       // mirrors clientMetadata.sdkCommitSha
+  sdkDirty?: boolean;          // mirrors clientMetadata.sdkDirty
   [key: string]: unknown;
 }
 

@@ -18,6 +18,16 @@
 #   - Useful for determining if 2 different clients have the same underlying
 #     adapter code
 #
+# Build-identity columns (M-Build-Identity-AdvisoryTag — idea-256):
+#   - shimCommit    = .advisoryTags.proxyCommitSha + (-dirty suffix if proxyDirty)
+#   - adapterCommit = .advisoryTags.sdkCommitSha   + (-dirty suffix if sdkDirty)
+#   Distinguishes two clients at the same package.json version but different
+#   underlying compiled JavaScript. Field source: shim reads each package's
+#   dist/build-info.json (written by prepack hook) → emits via
+#   clientMetadata.{proxy,sdk}{CommitSha,Dirty} → Hub deriveAdvisoryTags
+#   projects to advisoryTags. The "-dirty" suffix is render-layer
+#   concatenation only; advisoryTags fields stay hex-only + boolean.
+#
 # Reference: /home/apnex/taceng/table/tpl/*.jq pattern (memory:
 # reference_prism_table_pattern.md).
 
@@ -36,6 +46,14 @@ if type == "array" then
                 + (.clientMetadata.proxyVersion // "?")
             ),
             adapter: ((.clientMetadata.sdkVersion // "?") | split("@") | last),
+            shimCommit: (
+                (.advisoryTags.proxyCommitSha // "?")
+                + (if .advisoryTags.proxyDirty == true then "-dirty" else "" end)
+            ),
+            adapterCommit: (
+                (.advisoryTags.sdkCommitSha // "?")
+                + (if .advisoryTags.sdkDirty == true then "-dirty" else "" end)
+            ),
             llmModel: (.advisoryTags.llmModel // "?"),
             pid: (.clientMetadata.pid // "?"),
             labels: (.labels // {} | to_entries | map("\(.key)=\(.value)") | join(",") | if . == "" then "-" else . end)

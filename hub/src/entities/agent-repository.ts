@@ -271,6 +271,11 @@ type GetWithToken = (path: string) => Promise<{ data: Uint8Array; token: string 
  * does not overwrite an explicit value); otherwise derived from
  * clientMetadata. Returns a fresh object — caller-provided advisoryTags
  * are never mutated.
+ *
+ * M-Build-Identity-AdvisoryTag (idea-256): same wire-pattern extended for
+ * proxy/sdk commit-sha + dirty fields. Shim reads each package's
+ * dist/build-info.json (written by prepack hook) and emits via
+ * clientMetadata; Hub projects through to advisoryTags here.
  */
 function deriveAdvisoryTags(
   incoming: AgentAdvisoryTags | undefined | null,
@@ -279,6 +284,18 @@ function deriveAdvisoryTags(
   const base: AgentAdvisoryTags = { ...(incoming ?? {}) };
   if (base.adapterVersion === undefined && clientMetadata?.proxyVersion) {
     base.adapterVersion = clientMetadata.proxyVersion;
+  }
+  if (base.proxyCommitSha === undefined && clientMetadata?.proxyCommitSha) {
+    base.proxyCommitSha = clientMetadata.proxyCommitSha;
+  }
+  if (base.proxyDirty === undefined && clientMetadata?.proxyDirty !== undefined) {
+    base.proxyDirty = clientMetadata.proxyDirty;
+  }
+  if (base.sdkCommitSha === undefined && clientMetadata?.sdkCommitSha) {
+    base.sdkCommitSha = clientMetadata.sdkCommitSha;
+  }
+  if (base.sdkDirty === undefined && clientMetadata?.sdkDirty !== undefined) {
+    base.sdkDirty = clientMetadata.sdkDirty;
   }
   return base;
 }
