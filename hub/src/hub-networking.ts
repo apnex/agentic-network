@@ -45,17 +45,38 @@ import type { Server } from "http";
  * narrow gate and silently bumped lastSeenAt.
  */
 /**
- * M-SSE-Peek-Line-Cleanup Phase 1 (Design v1.1 §0.5.3): augment the SSE
- * event-data with Hub-side rendered body + structured fields. The
- * original `data` is preserved as-is plus the 4 Phase-1 additions
- * (sourceClass, entityRef, actionability, body). Filtered events
- * (per §1.5) return data unchanged — adapter-side render skips them.
+ * M-SSE-Peek-Line-Cleanup Phase 1 (Design v1.1 §0.5.3) +
+ * Phase-1.5 #1 (M-SSE-Filter-List-Adapter-Consumption Design v1.0):
+ * augment the SSE event-data with Hub-side rendered body + structured
+ * fields, AND set `suppress_peek_line` for filter-listed events.
+ *
+ * Phase-1 originals (sourceClass, entityRef, actionability, body) are
+ * populated when the event has a derived render context. Filtered
+ * events (per §1.5) skip rendering BUT now carry `suppress_peek_line:
+ * true` so the adapter can route to internal-state-machine only
+ * (per §1.3 of Phase-1.5 #1 Design v1.0). Wire-shape minimization:
+ * `suppress_peek_line` is omitted (undefined) when false — the dominant
+ * case — to keep payloads compact.
+ *
+ * Per Phase-1.5 #1 round-2 audit (thread-495 F2.b architectural fold):
+ * only `agent_state_changed` actually fires this filter at the
+ * notifyEvent/dispatchEvent layer in current production. Pulse-on-
+ * standby + touchAgent + replay-truncated are deferred to Phase-1.5
+ * #1.1 / #1.2 sub-missions (filter-list keys preserved in
+ * sse-peek-line-render.ts; runtime-effective only for the wire-event-
+ * matching subset).
  */
-function augmentDataWithRenderFields(
+export function augmentDataWithRenderFields(
   event: string,
   data: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (shouldFilterPeekLine(event, data)) return data;
+  const suppress = shouldFilterPeekLine(event, data);
+  if (suppress) {
+    // Filter-listed event: skip render-context derivation; mark
+    // suppress_peek_line so adapter routes to internal state-machine
+    // only (Phase-1.5 #1 §1.3). Original data preserved unchanged.
+    return { ...data, suppress_peek_line: true };
+  }
   const ctx = deriveRenderContext(event, data);
   if (!ctx) return data;
   const body = renderPeekLineBody({

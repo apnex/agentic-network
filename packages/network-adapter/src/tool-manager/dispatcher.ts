@@ -337,8 +337,30 @@ export function createSharedDispatcher(
       });
   }
 
+  // Phase-1.5 #1 (M-SSE-Filter-List-Adapter-Consumption Design v1.0
+  // §1.3): when Hub has set `payload.suppress_peek_line: true` (per
+  // §1.5 filter-list at sse-peek-line-render.ts), downgrade the event
+  // to informational routing — the host's onInformationalEvent hook
+  // logs but does NOT call pushChannelNotification (no LLM wake; no
+  // peek-line surface). State-machine consumption preserved via the
+  // log path. Operator-visible noise reduction for filter-listed
+  // events. Back-compat: undefined / false → current Phase-1 flow
+  // unchanged.
+  function isSuppressed(event: AgentEvent): boolean {
+    const data = event.data as { suppress_peek_line?: unknown } | undefined;
+    return data?.suppress_peek_line === true;
+  }
+
   const callbacks: AgentClientCallbacks = {
     onActionableEvent: (event) => {
+      if (isSuppressed(event)) {
+        // Filter-listed event: route as informational; skip
+        // captureQueueItemFromEvent + fireClaimMessage (actionable-only
+        // side effects). State-machine consumption preserved via the
+        // informational hook's log path.
+        router.route({ kind: "notification.informational", event });
+        return;
+      }
       captureQueueItemFromEvent(event);
       router.route({ kind: "notification.actionable", event });
       // Mission-56 W3.3: post-render claim (replaces W2.2 stub-claim TODO).
