@@ -33,9 +33,6 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Install workspace dependencies
-        run: npm install --no-audit --no-fund
-
       - name: Build + push Hub container via build-hub.sh
         run: ./scripts/local/build-hub.sh
 
