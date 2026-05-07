@@ -1,0 +1,46 @@
+name: deploy-hub
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'hub/**'
+      - 'packages/storage-provider/**'
+      - 'packages/repo-event-bridge/**'
+      - 'scripts/local/build-hub.sh'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT: labops-389703
+      GCP_REGION: australia-southeast1
+      OIS_ENV: prod
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install workspace dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build + push Hub container via build-hub.sh
+        run: ./scripts/local/build-hub.sh
+
+      - name: Log image digest
+        run: |
+          gcloud artifacts docker images describe \
+            australia-southeast1-docker.pkg.dev/labops-389703/cloud-run-source-deploy/hub:latest \
+            --format='value(image_summary.digest)'

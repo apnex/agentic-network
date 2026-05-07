@@ -214,6 +214,15 @@ gcloud builds submit "$REPO_ROOT/hub" \
   --tag "$REMOTE_TAG" \
   --quiet
 
+# CI hosts (e.g. .github/workflows/deploy-hub.yml) push the image to
+# Artifact Registry and stop here — they don't run the Hub container
+# locally, so the docker pull/tag below would be wasted work.
+if [[ -n "${CI:-}" ]]; then
+  echo "[build-hub] CI detected (CI=$CI); skipping local docker pull/tag."
+  echo "[build-hub] Done. Image pushed to $REMOTE_TAG"
+  exit 0
+fi
+
 # ── Pull + tag locally ─────────────────────────────────────────────────
 
 echo "[build-hub] ──────── Pull + tag local ────────"

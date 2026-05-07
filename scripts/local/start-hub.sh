@@ -33,6 +33,21 @@
 #
 set -euo pipefail
 
+# Pre-flight: refuse to run from non-canonical worktree. Worktrees like
+# agent-lily/ or agent-greg/ lack the .cutover-complete sentinel under
+# local-state/, and the bind-mount logic below would silently attach the
+# wrong state-dir to the production Hub container — killing it into a
+# restart-loop. Incident: 2026-05-07 Phase-1.5 #1 Pass 10.
+CANONICAL_REPO="/home/apnex/taceng/agentic-network"
+if [[ "$(pwd)" != "$CANONICAL_REPO" ]]; then
+  echo "ERROR: start-hub.sh must run from canonical main checkout." >&2
+  echo "       Current CWD: $(pwd)" >&2
+  echo "       Required:    $CANONICAL_REPO" >&2
+  echo "       (Worktrees lack the cutover sentinel and would mount the" >&2
+  echo "        wrong state-dir, killing the prod Hub.)" >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # ── Per-role env-file (mission-52 T3 follow-on) ────────────────────────
