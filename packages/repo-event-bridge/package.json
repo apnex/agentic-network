@@ -10,6 +10,7 @@
     "README.md"
   ],
   "scripts": {
+    "prebuild": "node ../../scripts/build/write-build-info.js",
     "build": "tsc",
     "prepack": "node ../../scripts/build/write-build-info.js",
     "prepare": "npm run build",
