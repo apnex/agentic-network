@@ -1,6 +1,6 @@
-# M-Branchcraft-V1 — Design v0.5 DRAFT
+# M-Branchcraft-V1 — Design v0.6 DRAFT
 
-**Status:** **v0.5 DRAFT** (architect-side; post engineer round-4 audit folds). v0.4 → v0.5 folds: (§AAAA CRITICAL) §2.6.1 GC discipline claim was 4th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern (IsomorphicGit has NO GC support — no `git.gc()`, no `gc.auto`, no prune/repack). **Architect-call: option (b) DROP GC discipline entirely** — F16 wip-branch-cleanup-on-mission-complete + §DDD.1 hash-skip-via-readObject precheck handle dominant disk-pressure cases; mid-mission GC is over-engineering at v1; Q5=b bounded scope respected. (§BBBB HIGH) ci.yml changeset gate broken on push-events; `if: github.event_name == 'pull_request'` condition added. (§DDDD) §2.6.1 readObject-precheck wording softened (existence-probe; precise error/return semantics resolved at impl-time). (§EEEE) cold-start bundle-availability — first bundle written at mission-start (not deferred to first cadence-tick). (§FFFF) §AAA + §AAAA composition note: §AAA bundle shell-out is the SOLE shell-out at v1 (§AAAA dropped GC); operator-preflight `git --version` check on disk-failure-recovery enable. **Methodology-evolution candidate now empirically calibrated at n=4 instances; ~100% audit-rate per substrate-claim; pattern is systemic NOT one-off; calibration #62 audit-rubric extension proposal upgraded to CRITICAL/mandatory-checklist class for Phase 4 Designs enumerating low-level substrate primitives.** v0.1 → v0.2 → v0.3 → v0.4 → v0.5 (this version; engineer round-4 folds applied) → engineer round-5 audit → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
+**Status:** **v0.6 DRAFT** (architect-side; post engineer round-5 audit folds). v0.5 → v0.6 folds: (§AAAAA CRITICAL) §2.1.4 MergeStrategy enum had `squash` + `rebase` — IsomorphicGit only supports `ff` + `no-ff` (5th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern; n=5; ~100% audit-rate per substrate-claim). **Architect-call: option (a) DROP `squash` + `rebase` from MergeStrategy enum + compositional schema fold** — Strict-1.0 + Q5=b alignment; v1 ships substrate's actual merge capability surface (ff + no-ff); v1.x can add other strategies via major-bump if operator demand surfaces. (§BBBBB) IsomorphicGitEngine implementation-mapping mini-table added to §2.1.4 (5-row wrapper-name reference for 3rd-party engine implementers). (§GGGGG.2) `git.deleteBranch` loose-only limitation note added at §2.6.1. **Pattern-empirics now robust: n=5 over 5 consecutive rounds; calibration #62 audit-rubric extension proposal is empirically systemic-default, NOT edge-case.** v0.1 → v0.2 → v0.3 → v0.4 → v0.5 → v0.6 (this version; engineer round-5 folds applied) → engineer round-6 audit → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
 **Mission name:** M-Branchcraft-V1 (idea-263; sub-mission #1 of meta-mission idea-261)
 **Mission-class:** substrate-introduction (foundational; first sub-mission of 11-sub-mission catalog; everything else uses branchcraft)
 **Source idea:** idea-263 (M-Branchcraft-V1)
@@ -153,7 +153,7 @@ export interface CommitOptions {
   readonly autoStage?: boolean; // v0.2 fold — explicit stage-everything-tracked vs caller-controlled
 }
 
-export type MergeStrategy = "ff" | "no-ff" | "squash" | "rebase"; // v0.2 fold per §C.1 — added rebase
+export type MergeStrategy = "ff" | "no-ff"; // v0.6 fold per §AAAAA — dropped `squash` + `rebase` (IsomorphicGit only supports ff/no-ff per official docs; v1.x can add via major-bump if substrate evolves OR via shell-out fold)
 
 export interface PushOptions {
   readonly branch?: string;
@@ -220,7 +220,20 @@ export interface GitStatus {
 }
 ```
 
-**Default v1 implementation:** `IsomorphicGitEngine` — wraps `isomorphic-git` library; pure-TS; portable; no native bindings; works with any IsomorphicGit-compatible filesystem (default `node:fs`; pluggable for `memfs` or custom). `commitToRef` uses `isomorphic-git`'s low-level `git.writeTree` + `git.writeCommit` + `git.writeRef` plumbing to commit without moving HEAD.
+**Default v1 implementation:** `IsomorphicGitEngine` — wraps `isomorphic-git` library; pure-TS; portable; no native bindings; works with any IsomorphicGit-compatible filesystem (default `node:fs`; pluggable for `memfs` or custom). `commitToRef` uses `isomorphic-git`'s low-level `git.writeBlob` + `git.writeTree({tree:[...]})` + `git.writeCommit` + `git.writeRef` plumbing to commit without moving HEAD AND without polluting INDEX (per §2.6.1 implementation contract).
+
+**IsomorphicGitEngine implementation-mapping (v0.6 fold per §BBBBB — for 3rd-party engine implementers):**
+
+| GitEngine method | isomorphic-git function | Notes |
+|---|---|---|
+| `stage(paths)` | `git.add({ filepath })` | branchcraft naming follows git-CLI convention; isomorphic-git uses `add` (lower-level) |
+| `revparse(ref)` | `git.resolveRef({ ref })` | git-CLI vs library-canonical naming |
+| `removeRemote(name)` | `git.deleteRemote({ remote })` | git-CLI uses `remove`, isomorphic-git uses `delete` |
+| `log(options.path)` | `git.log({ filepath })` | branchcraft option name `path` mapped internally to isomorphic-git's `filepath` |
+| `tag(name, options.message?)` | `git.tag(...)` (lightweight) + `git.annotatedTag(...)` (annotated) | single branchcraft method dispatches based on whether `message` is provided |
+| `merge(strategy: "ff"\|"no-ff")` | `git.merge({ ours, theirs, fastForward, fastForwardOnly })` | strategy "ff" → `fastForwardOnly: true`; "no-ff" → `fastForward: false`. v1 enum is intentionally limited per §AAAAA — IsomorphicGit doesn't support `squash`/`rebase` |
+| `deleteBranch(name)` | `git.deleteBranch({ ref })` | **Limitation:** isomorphic-git only deletes loose branches (not packed). For wip-branch cleanup (F16): wip-branches are typically loose (created mid-mission), so this works at v1. Long-running missions where wip-branch gets packed (no longer relevant since GC dropped per §AAAA) would have stale-cleanup. |
+| `commitToRef(workspace, ref, options)` | `git.writeBlob` + `git.writeTree({tree:[...]})` + `git.writeCommit` + `git.writeRef` (composed; bypass-INDEX per §AA) | Plumbing-mode primitive; HEAD-unaware AND index-unaware |
 
 #### §2.1.5 `RemoteProvider` (v0.2 fold per §G F13 — capabilities-gated throws-on-unsupported)
 
@@ -469,7 +482,7 @@ state-durability:
 
 # Auto-merge (per parent §2.2.4)
 auto-merge: false
-auto-merge-strategy: squash          # squash | merge | rebase | ff
+auto-merge-strategy: ff              # ff | no-ff (v0.6 fold per §GGGGG.1 + §AAAAA — dropped squash + rebase compositionally; matches MergeStrategy enum at §2.1.4)
 ```
 
 ### §2.6 Periodic state durability mechanism (load-bearing per Q1=d + F1 CRITICAL)
@@ -803,8 +816,9 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | v0.2 DRAFT | 2026-05-08 | engineer round-1 audit folds (thread-509 round 1/20) | substantial fold; pushed at SHA `4d585ad` |
 | v0.3 DRAFT | 2026-05-08 | engineer round-2 audit folds (thread-509 round 3/20) | §AA index-pollution + §BB count fix + §CC waitMs/validityMs + §DD bundle-restoration + §EE deleteBranch + §FF F22 CI gate + §GG 5 refinements; pushed at SHA `4768ff8` |
 | v0.4 DRAFT | 2026-05-08 | engineer round-3 audit folds (thread-509 round 5/20) | §AAA CRITICAL shell-out-to-native-git for bundle ops; §DDD.1+§DDD.2+§DDD.3; pushed at SHA `f5946b5` |
-| **v0.5 DRAFT** | **2026-05-08** | **engineer round-4 audit folds (thread-509 round 7/20)** | **this version; v0.5 fold: §AAAA CRITICAL — IsomorphicGit has NO GC support (4th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern; n=4 ~100% audit-rate per substrate-claim); architect-call option (b) DROP GC discipline at v1 (F16 wip-cleanup + §DDD.1 hash-skip handle dominant cases; mid-mission GC over-engineering at v1); §BBBB HIGH ci.yml changeset gate `if: github.event_name == 'pull_request'` condition (`github.base_ref` empty on push events); §DDDD readObject existence-probe wording softened; §EEEE cold-start first-bundle-at-mission-start; §FFFF §AAA SOLE shell-out (§AAAA dropped GC) — operator-preflight `git --version` only when disk-failure-recovery enabled |
-| v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-5 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
+| v0.5 DRAFT | 2026-05-08 | engineer round-4 audit folds (thread-509 round 7/20) | §AAAA CRITICAL drop-GC-discipline; §BBBB HIGH event-conditional gate; §DDDD/§EEEE/§FFFF; pushed at SHA `8cd9afe` |
+| **v0.6 DRAFT** | **2026-05-08** | **engineer round-5 audit folds (thread-509 round 9/20)** | **this version; v0.6 fold: §AAAAA CRITICAL — MergeStrategy `squash` + `rebase` NOT supported by IsomorphicGit (only ff + no-ff per official docs); 5th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern; n=5 ~100% audit-rate; architect-call option (a) DROP `squash` + `rebase` from MergeStrategy + compositional schema fold; v1 ships substrate's actual merge capability surface; §BBBBB IsomorphicGitEngine implementation-mapping mini-table (3rd-party engine-implementer reference); §GGGGG.1 auto-merge-strategy schema enum compositional fold; §GGGGG.2 git.deleteBranch loose-only limitation note. Pattern empirics: n=5 systemic-default not edge-case |
+| v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-6 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
 
 **Phase 4 dispatch destination:** greg / engineer; round-1 bilateral audit thread-509; **maxRounds=20** per Director directive; semanticIntent=seek_rigorous_critique.
 
