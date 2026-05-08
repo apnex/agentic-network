@@ -1587,19 +1587,22 @@ calibrations:
 
   - id: 62
     class: methodology
-    title: "Deferred-runtime-gate-becomes-silent-defect-surface — Phase 6 verification §6.4 deferral pattern produces post-substrate runtime-gap bugs (7 canonical instances)"
+    title: "Deferred-runtime-gate-becomes-silent-defect-surface — Phase 6 verification §6.4 deferral pattern produces post-substrate runtime-gap bugs (16 canonical instances; audit-rubric maturation arc empirically validated 2026-05-08)"
     origin: post-mission-76-bug-49-cycle
-    surfaced_at: bug-49 (2026-05-05) → bug-50 → bug-51 (mission-76); bug-52 → bug-53 → bug-54 → bug-55 → bug-56 (mission-225 + post-bug-55 cascade)
-    status: open
+    surfaced_at: bug-49 (2026-05-05) → bug-50 → bug-51 (mission-76); bug-52 → bug-53 → bug-54 → bug-55 → bug-56 (mission-225 + post-bug-55 cascade); 8 additional instances 2026-05-07 → 2026-05-08 across substrate-feature missions M-SSE-Filter-List-Adapter + M-Deployment-Hygiene + M-Build-Identity + M-GitHub-Releases-Plugin
+    status: open (methodology-promotion empirically very overdue; architect-Director ratification pending strategic-review gate-point)
     closure_mechanism: |
       Architectural-pathology pattern. When mission Phase 6 preflight verification
       gate §6.4 "runtime verification" is DEFERRED to post-Phase-9-closing-audit
       (or beyond), substrate that ships unit-test-green has zero runtime-path
       coverage from the host side. Result: operationally-load-bearing primitives
       manifest as silent defect surfaces only discoverable via prod-audit
-      (Director-driven or architect-side dogfood).
+      (Director-driven or architect-side dogfood) OR via integration/wire-flow
+      runtime gates exercised at engineer-audit OR mission-completion boundaries.
 
-      EIGHT canonical instances surfaced 2026-05-05 → 2026-05-06:
+      SIXTEEN canonical instances surfaced 2026-05-05 → 2026-05-08:
+
+      Original 8 instances (bug-cascade class; pre-substrate-feature-mission-cycle):
       1. bug-49 — mission-76 W1 PR-event handlers ship dormant on live events
         (Events-API author-extraction null silently skips)
       2. bug-50 — mission-76 sibling defect (type-shape-mismatch + Events-API null
@@ -1616,10 +1619,46 @@ calibrations:
         bug-56 affected ALL agentId-targeted Hub-internal dispatches routing
         through selectAgents — bilateral thread_messages + system-author-targeted
         (pr-opened/merged/review/commit-pushed notifications) + agent_state_changed.
-        Substrate evidence that §6.4 verification gates need broader scope when
-        fixes touch shared infrastructure layers — bug-55 closing test verified
-        the cognitive-drift surface but missed the routing-layer downstream
-        consequence.
+
+      Eight additional instances 2026-05-07 → 2026-05-08 across substrate-feature
+      mission cycles (audit-rubric demonstrating empirical value):
+      9. M-SSE-Filter-List-Adapter F2.b (PR #190; thread-495 round-2 mid-stream
+        fold) — 3 of 4 §1.5 filter-list entries are speculative wire-event-names
+        that don't surface as the named events at the dispatch layer
+        (engineerPulse fires as message_arrived; touchAgent never SSE-emitted;
+        W1b replay-truncated synthetic envelope). Substrate-defined at unit-test
+        level without runtime verification at production wire-event-name layer.
+      10. M-Deployment-Hygiene PR #192 hot-fix — workspace-root npm install
+        broken by opencode-plugin's stale ois-*.tgz refs (5-file legacy lockfile
+        cluster). Workflow YAML bash-linted clean; runtime gate (actually
+        running the workflow) caught it.
+      11. M-Build-Identity canonical-main-stale fault chain (post PR #190
+        deploy-verify) — architect's Pass 10 from canonical when canonical's
+        local main was 6 commits behind origin/main; rebuilt adapter against
+        stale source; ADAPTER=0.1.2 in get-agents output gave no runtime signal
+        of the staleness. Resolved via Pass 10 from canonical post-pull-main.
+      12. (gap; not separately ledger-identified during cycle narration)
+      13. M-Build-Identity prepack-vs-build hook (PR #194 hot-fix) — prepack
+        script fires only on `npm pack`/`npm publish`, NOT on `npm run build`
+        (operator's typical Pass 10 path). Tests passed at script-level unit
+        scope; runtime gate at operator-build-invocation boundary not exercised.
+      14. M-Build-Identity Hub zod schema strip (PR #195 hot-fix) — register_role
+        zod schema didn't accept the 4 new clientMetadata fields; zod's strip
+        mode silently dropped them. Each layer extended; each unit test passed;
+        END-TO-END WIRE-FLOW (shim emit → schema validation → Hub store) never
+        integration-tested.
+      15. M-GitHub-Releases-Plugin prepare-on-workspace-target (PR #197 hot-fix)
+        — `prepare: "npm run build"` script fires on workspace-target install
+        regardless of `--ignore-scripts` (npm semantics gotcha). Workflow YAML
+        passed local test; runtime gate (actually running the workflow with
+        cold-start checkout) caught it.
+      16. M-GitHub-Releases-Plugin sovereign-package-bundling-channel-missing
+        (PR #196 round-1 audit catch by F1+F2) — claude-plugin's `files:` array
+        lacked lib/ + skills/ + apnex-*.tgz; workspace deps had no bundling
+        channel; consumer install would have shipped non-functional. Caught
+        pre-impl by audit-rubric (substrate-currency check); represents the
+        DESIGN-PHASE prevention of what would otherwise have been instance #16
+        as a hot-fix.
 
       idea-252 §4 (loud-error on zero-match dispatch; SHIPPED PR #186 a1d66ef5)
       structurally prevents bug-56-class silent-dispatch-failures at the API
@@ -1633,6 +1672,32 @@ calibrations:
       divergence is NOT covered by unit tests; deferred §6.4 runtime gate is the
       structural surface that WOULD catch it; deferral converts that surface into
       a silent defect class.
+
+      AUDIT-RUBRIC MATURATION ARC (empirical validation 2026-05-07 → 2026-05-08):
+      Six substrate-feature missions shipped in two days via the Phase-4-Design
+      audit-rubric pattern (substrate-currency check on named types AND named
+      events per `feedback_substrate_currency_audit_rubric.md` + end-to-end
+      wire-flow integration test as mission-completion gate per
+      `feedback_substrate_extension_wire_flow_integration_test.md`). Cycle
+      empirics show audit-rubric compounding effect:
+      - M-SSE-Peek-Line-Cleanup: 9 rounds (substrate-currency mid-stream fold)
+      - M-SSE-Filter-List-Adapter: 5 rounds + 0 hot-fixes (audit caught at round-1)
+      - M-Deployment-Hygiene: 7 rounds + 1 hot-fix (1 calibration #62 instance)
+      - M-Build-Identity-AdvisoryTag: 8 rounds + 2 hot-fixes (3 calibration #62
+        instances; PR #195 introduced canonical end-to-end wire-flow test as
+        mission-completion-gate pattern)
+      - M-GitHub-Releases-Plugin: 7 rounds + 1 hot-fix (1 calibration #62
+        instance; lib-extraction discipline ratified)
+      - M-Workflow-Run-Events: 5 rounds + 0 hot-fixes — CLEANEST CYCLE; ALL 4
+        substantive folds caught at round-1 audit; F1's architectural reframe
+        (workflow_run NOT in /events API; needs sibling /actions/runs poller)
+        would have been a hot-fix-class catch under prior discipline
+
+      The 8r+2hf → 7r+1hf → 5r+0hf trajectory empirically validates that the
+      audit-rubric-as-Phase-4-discipline + wire-flow-integration-test-as-
+      completion-gate substantially closes the deferred-runtime-gate class
+      WITHOUT requiring formal §6.4-as-Phase-9-blocker promotion. The audit-
+      rubric IS the §6.4 promotion in operative form.
 
       Tele alignment:
       - tele-6 (Deterministic Invincibility) — drift between substrate-ratified
@@ -1650,15 +1715,27 @@ calibrations:
         introduction missions cannot reach Phase 9 closing audit until runtime
         gates pass. Eliminates the class structurally.
       (c) AUDIT-RUBRIC PROMOTION (mission-73 §3d precedent) — file follow-on idea
-        per "2nd canonical instance triggers methodology-fold" precedent; SEVEN
-        instances exceeds threshold by 6x
+        per "2nd canonical instance triggers methodology-fold" precedent; SIXTEEN
+        instances exceeds threshold by 14x
+      (d) NEW (post-2026-05-08 audit-rubric maturation): empirical evidence shows
+        the audit-rubric pattern (substrate-currency check at Phase-4-Design
+        round-1 + end-to-end wire-flow integration test as mission-completion
+        gate) IS the operative §6.4 promotion. Ratify the audit-rubric as the
+        canonical §6.4 pattern in `docs/methodology/mission-lifecycle.md`;
+        promote `feedback_substrate_currency_audit_rubric.md` +
+        `feedback_substrate_extension_wire_flow_integration_test.md` from
+        engineer-runtime memories to canonical methodology references.
 
-      Methodology promotion of §6.4 to "required-before-Phase-9-closing-audit" is
-      EMPIRICALLY OVERDUE at 8 instances. Proposal next strategic review.
+      Methodology promotion of §6.4 to "required-before-Phase-9-closing-audit"
+      is EMPIRICALLY VERY OVERDUE at 16 instances. Audit-rubric maturation arc
+      shows the substrate of the promotion already works; codification is the
+      remaining surface.
 
       Architect-Director ratification: Director directive 2026-05-06 "File the
       calibrations" + reaffirmation post bug-55 closure + bug-56 reinforcement
-      with broader-scope blast-radius datum.
+      with broader-scope blast-radius datum + Director directive 2026-05-08
+      "Perform the ledger update" (this update) + standing methodology-promotion
+      proposal pending next strategic-review gate-point.
     pattern_membership:
       - methodology-bypass-becomes-substrate-defect-amplification-loop
       - review-loop-as-calibration-surface
@@ -1667,6 +1744,16 @@ calibrations:
       - docs/audits/m-repo-event-bridge-handler-completion-closing-audit.md
       - docs/audits/m-ttl-liveliness-design-closing-audit.md
       - feedback_methodology_bypass_amplification_loop.md
+      - feedback_substrate_currency_audit_rubric.md (engineer-side audit-rubric for substrate-currency check on named types AND named events; round-1 audit boundary)
+      - feedback_substrate_extension_wire_flow_integration_test.md (engineer-side; end-to-end wire-flow integration test as mission-completion gate; closes runtime-gate at the actual extract/dispatch boundary)
+      - feedback_local_test_masking_via_cached_state.md (engineer-side; cold-start operator-path test isolation)
+      - feedback_npm_ignore_scripts_workspace_target_leak.md (engineer-side; instance #15 specifically)
+      - PR #190 (M-SSE-Filter-List-Adapter; instance #9 closure)
+      - PR #192 (M-Deployment-Hygiene hot-fix; instance #10 closure)
+      - PR #194 (M-Build-Identity hot-fix; instance #13 closure — prepack-vs-build)
+      - PR #195 (M-Build-Identity hot-fix; instance #14 closure — Hub zod schema; canonical end-to-end wire-flow test pattern)
+      - PR #197 (M-GitHub-Releases-Plugin hot-fix; instance #15 closure — prepare-on-workspace-target)
+      - PR #198 (M-Workflow-Run-Events; cleanest cycle 5r+0hf; empirical validation of audit-rubric maturation arc)
     tele_alignment:
       - tele-6
       - tele-7
