@@ -49,9 +49,14 @@ const raw = readFileSync(join(here, "gh-events.fixture.json"), "utf-8");
 const fixture: Fixture = JSON.parse(raw);
 
 describe("translator conformance — fixture replay", () => {
-  it("fixture covers every v1 RepoEventSubkind", () => {
+  it("fixture covers every v1 RepoEventSubkind handled by the /events translator", () => {
     const seen = new Set(fixture.events.map((e) => e.expectedSubkind));
+    // workflow-run-* subkinds are produced by the sibling translator
+    // (workflow-run-translator.ts) over the /actions/runs response shape —
+    // NOT translateGhEvent's /events-API path. Their conformance is covered
+    // by test/workflow-run-translator.test.ts. Skip them here.
     for (const subkind of REPO_EVENT_SUBKINDS) {
+      if (subkind.startsWith("workflow-run-")) continue;
       expect(
         seen.has(subkind),
         `fixture missing coverage for subkind=${subkind}`,

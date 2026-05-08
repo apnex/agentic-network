@@ -30,7 +30,9 @@
 import {
   CreateMessageSink,
   PollSource,
+  WorkflowRunPollSource,
   type CreateMessageInvoker,
+  type RepoEvent,
 } from "@apnex/repo-event-bridge";
 import type { StorageProvider } from "@apnex/storage-provider";
 
@@ -90,10 +92,14 @@ export interface RepoEventBridgeOptions {
 
 export class RepoEventBridge {
   private readonly pollSource: PollSource;
+  // idea-255 / M-Workflow-Run-Events-Hub-Integration v1.0 §1.1 F8 fold:
+  // sibling EventSource for /actions/runs (workflow_run is webhook-only on
+  // the /events API, so it needs a separate REST endpoint).
+  private readonly workflowRunPollSource: WorkflowRunPollSource;
   private readonly sink: CreateMessageSink;
   private readonly logger: RepoEventBridgeLogger;
   private state: RepoEventBridgeState = "idle";
-  private drainTask?: Promise<void>;
+  private drainTasks: Promise<void>[] = [];
 
   constructor(options: RepoEventBridgeOptions) {
     this.logger = options.logger ?? defaultLogger();
@@ -109,34 +115,51 @@ export class RepoEventBridge {
       fetch: options.fetch,
       logger: this.logger,
     });
+    this.workflowRunPollSource = new WorkflowRunPollSource({
+      storage: options.storage,
+      token: options.token,
+      repos: options.repos,
+      cadenceSeconds: options.cadenceSeconds,
+      budgetFraction: options.budgetFraction,
+      fetch: options.fetch,
+      logger: this.logger,
+    });
   }
 
   /**
    * Start the bridge. PAT scope-validation runs here — failures are
    * caught and logged; the Hub continues to operate with the bridge
    * in `failed` state. Operator can rotate the token + restart.
+   *
+   * Both sources start under the same try/catch — partial-start failure
+   * (one source up + one down) is treated as full-failed for now;
+   * operator can restart the Hub after rotating the token.
    */
   async start(): Promise<void> {
     if (this.state !== "idle") return;
     this.state = "starting";
     try {
       await this.pollSource.start();
+      await this.workflowRunPollSource.start();
     } catch (err) {
       this.state = "failed";
       this.logger.error(
-        `[repo-event-bridge] PollSource start failed: ${(err as Error)?.message ?? String(err)}; bridge halted, Hub continues`,
+        `[repo-event-bridge] source start failed: ${(err as Error)?.message ?? String(err)}; bridge halted, Hub continues`,
       );
       return;
     }
     this.state = "running";
-    this.drainTask = this.drain();
+    this.drainTasks = [
+      this.drainSource("events", this.pollSource),
+      this.drainSource("workflow-runs", this.workflowRunPollSource),
+    ];
     this.logger.info(
-      `[repo-event-bridge] Bridge running; draining events into create_message`,
+      `[repo-event-bridge] Bridge running; draining events + workflow-runs into create_message`,
     );
   }
 
   /**
-   * Stop the bridge. Awaits the drainer so any in-flight `emit` lands
+   * Stop the bridge. Awaits both drainers so any in-flight `emit` lands
    * before returning — keeps the SIGINT handler symmetric with the
    * other Hub sweepers.
    */
@@ -146,9 +169,12 @@ export class RepoEventBridge {
       return;
     }
     this.state = "stopped";
-    await this.pollSource.stop();
-    if (this.drainTask) {
-      await this.drainTask;
+    await Promise.allSettled([
+      this.pollSource.stop(),
+      this.workflowRunPollSource.stop(),
+    ]);
+    if (this.drainTasks.length > 0) {
+      await Promise.allSettled(this.drainTasks);
     }
   }
 
@@ -157,25 +183,42 @@ export class RepoEventBridge {
     return this.state;
   }
 
-  /** Diagnostic: pass-through to PollSource health. */
+  /**
+   * Diagnostic: combined health of both sources. The bridge is "paused"
+   * if EITHER source is paused; the most recent successful poll is the
+   * later of the two timestamps.
+   */
   health() {
-    return this.pollSource.health();
+    const eventsHealth = this.pollSource.health();
+    const workflowRunsHealth = this.workflowRunPollSource.health();
+    return {
+      paused: eventsHealth.paused || workflowRunsHealth.paused,
+      pausedReason:
+        eventsHealth.pausedReason ?? workflowRunsHealth.pausedReason,
+      lastSuccessfulPoll:
+        eventsHealth.lastSuccessfulPoll > workflowRunsHealth.lastSuccessfulPoll
+          ? eventsHealth.lastSuccessfulPoll
+          : workflowRunsHealth.lastSuccessfulPoll,
+    };
   }
 
-  private async drain(): Promise<void> {
+  private async drainSource(
+    label: string,
+    source: AsyncIterable<RepoEvent>,
+  ): Promise<void> {
     try {
-      for await (const event of this.pollSource) {
+      for await (const event of source) {
         try {
           await this.sink.emit(event);
         } catch (err) {
           this.logger.error(
-            `[repo-event-bridge] sink.emit failed for subkind=${event.subkind}: ${(err as Error)?.message ?? String(err)}`,
+            `[repo-event-bridge] sink.emit failed for ${label}/${event.subkind}: ${(err as Error)?.message ?? String(err)}`,
           );
         }
       }
     } catch (err) {
       this.logger.error(
-        `[repo-event-bridge] drainer error: ${(err as Error)?.message ?? String(err)}`,
+        `[repo-event-bridge] ${label} drainer error: ${(err as Error)?.message ?? String(err)}`,
       );
     }
   }

@@ -50,6 +50,11 @@ import { PR_OPENED_HANDLER } from "./repo-event-pr-opened-handler.js";
 import { PR_MERGED_HANDLER } from "./repo-event-pr-merged-handler.js";
 import { PR_REVIEW_SUBMITTED_HANDLER } from "./repo-event-pr-review-submitted-handler.js";
 import { PR_REVIEW_APPROVED_HANDLER } from "./repo-event-pr-review-approved-handler.js";
+import {
+  WORKFLOW_RUN_COMPLETED_HANDLER,
+  WORKFLOW_RUN_DISPATCHED_HANDLER,
+  WORKFLOW_RUN_IN_PROGRESS_HANDLER,
+} from "./repo-event-workflow-run-handler.js";
 
 /**
  * Shape of a downstream Message a handler emits. Mirrors the args
@@ -113,6 +118,11 @@ export const REPO_EVENT_HANDLERS: readonly RepoEventHandler[] = [
   PR_MERGED_HANDLER,
   PR_REVIEW_SUBMITTED_HANDLER,
   PR_REVIEW_APPROVED_HANDLER,
+  // idea-255 / M-Workflow-Run-Events-Hub-Integration v1.0 §1.3 F2 fold:
+  // 3 entries — one per workflow-run-* subkind for filter-list granularity
+  WORKFLOW_RUN_COMPLETED_HANDLER,
+  WORKFLOW_RUN_DISPATCHED_HANDLER,
+  WORKFLOW_RUN_IN_PROGRESS_HANDLER,
 ];
 
 /**

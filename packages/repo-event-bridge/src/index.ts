@@ -49,6 +49,8 @@ export type {
   GhApiClientOptions,
   GhEventEnvelope,
   PollResult,
+  WorkflowRun,
+  WorkflowRunsResponse,
 } from "./gh-api-client.js";
 
 export {
@@ -62,3 +64,15 @@ export type {
   PollSourceOptions,
   PollOutcome,
 } from "./poll-source.js";
+
+// idea-255 / M-Workflow-Run-Events-Hub-Integration v1.0 — sibling EventSource
+// for /actions/runs. Hub-side composition wires both PollSource + WorkflowRun-
+// PollSource into RepoEventBridge per Design §1.1 F8 fold.
+export {
+  translateWorkflowRun,
+  dispatchWorkflowRunSubkind,
+  normalizeWorkflowRun,
+} from "./workflow-run-translator.js";
+
+export { WorkflowRunPollSource } from "./workflow-run-poll-source.js";
+export type { WorkflowRunPollSourceOptions } from "./workflow-run-poll-source.js";

@@ -25,9 +25,11 @@
 // ── Types ────────────────────────────────────────────────────────────
 
 /**
- * 7-class taxonomy per Design v1.1 §1.2. Coarse-grained; action verb in
- * the render template carries per-event detail (so System-PR is NOT split
- * into per-action variants per AG-4).
+ * 8-class taxonomy: 7-class per Design v1.1 §1.2 + `System-Workflow` added
+ * by idea-255 / M-Workflow-Run-Events-Hub-Integration Design v1.0 §1.4 (8th
+ * class for GitHub Actions workflow_run lifecycle). Coarse-grained; action
+ * verb in the render template carries per-event detail (so System-PR /
+ * System-Workflow are NOT split into per-action variants per AG-4).
  */
 export const SOURCE_CLASSES = [
   "Hub",
@@ -37,6 +39,7 @@ export const SOURCE_CLASSES = [
   "System-PR",
   "System-Pulse",
   "System-Audit",
+  "System-Workflow",
 ] as const;
 
 export type SourceClass = (typeof SOURCE_CLASSES)[number];
@@ -57,6 +60,8 @@ export const ENTITY_TYPES = [
   "commit",
   "audit",
   "agent",
+  // idea-255 / M-Workflow-Run-Events-Hub-Integration v1.0 §1.5
+  "workflow",
 ] as const;
 
 export type EntityType = (typeof ENTITY_TYPES)[number];
@@ -180,6 +185,33 @@ export function shouldFilterPeekLine(
     if (d.state === "standby" && d.acknowledged === true) return true;
   }
 
+  // idea-255 / M-Workflow-Run-Events-Hub-Integration v1.0 §1.8 F3 fold
+  // workflow-run filter-list: routine CI on success is noise; transient
+  // states (queued / in_progress) only render terminal events; failures +
+  // operator-significant successes (deploy-hub, release-plugin, manual
+  // workflow_dispatch) always surface.
+  if (event === "workflow-run-in-progress-notification") return true;
+
+  if (event === "workflow-run-completed-notification" && data) {
+    const wf = typeof data.workflow_name === "string" ? data.workflow_name : "";
+    const conclusion =
+      typeof data.conclusion === "string" ? data.conclusion : "";
+    // Failures of any workflow → render (operator-actionable)
+    if (conclusion === "failure") return false;
+    // Routine CI on success → filter
+    if (
+      conclusion === "success" &&
+      /^(test|secret-scan|no-engineer-id|workflow-test-coverage in-sync)$/.test(wf)
+    ) {
+      return true;
+    }
+    // Default for other success/cancelled/skipped: render (operator-significant)
+    return false;
+  }
+
+  // workflow-run-dispatched-notification: always render (operator triggered)
+  // — no filter
+
   return false;
 }
 
@@ -277,7 +309,7 @@ export function renderUnknownFallback(rawBody: string): string {
  * (per `feedback_format_regex_over_hardcoded_hash_tests.md`).
  */
 export const PEEK_LINE_FORMAT_REGEX =
-  /^\[(Hub|Director|Engineer|Architect|System-PR|System-Pulse|System-Audit)\] [a-zA-Z][a-zA-Z0-9 -]*\b/;
+  /^\[(Hub|Director|Engineer|Architect|System-PR|System-Pulse|System-Audit|System-Workflow)\] [a-zA-Z][a-zA-Z0-9 -_]*/;
 
 // ── Event → render-context derivation (§1.2 + §2.2 resolution tables) ─
 
@@ -381,6 +413,54 @@ export function deriveRenderContext(
         actionVerb: verb,
         entityRef: { type: "PR", id, title: str("prTitle") ?? str("title") ?? repoRef },
         actionability: "emitted",
+      };
+    }
+
+    case "workflow-run-completed-notification":
+    case "workflow-run-dispatched-notification":
+    case "workflow-run-in-progress-notification": {
+      // idea-255 / M-Workflow-Run-Events-Hub-Integration v1.0 §1.6 F2 fold:
+      // System-Workflow auto-derivation. Action-verb + actionability derive
+      // from {status, conclusion, event} on the data payload (handler builds
+      // the full body line at emit-time; this layer surfaces entity-id +
+      // sourceClass only).
+      const runId = data.run_id ?? data.runId;
+      const wfName = str("workflow_name") ?? "workflow";
+      const headBranch = str("head_branch") ?? str("headBranch");
+      const conclusion = str("conclusion");
+      const status = str("status");
+      const triggerEvent = str("event");
+      const titleSuffix = headBranch ? ` ${headBranch}` : "";
+
+      let actionVerb: string;
+      let actionability: Actionability;
+      if (event === "workflow-run-dispatched-notification") {
+        actionVerb = "Manual dispatch fired";
+        actionability = "FYI";
+      } else if (status === "completed" && conclusion === "failure") {
+        actionVerb = `${triggerEvent || "workflow"} failed`;
+        actionability = "your-turn";
+      } else if (status === "completed" && conclusion === "success") {
+        actionVerb = `${triggerEvent || "workflow"} succeeded`;
+        actionability = "FYI";
+      } else if (status === "completed") {
+        actionVerb = `${triggerEvent || "workflow"} ${conclusion ?? "completed"}`;
+        actionability = "FYI";
+      } else {
+        actionVerb = status || "in progress";
+        actionability = "FYI";
+      }
+
+      return {
+        sourceClass: "System-Workflow",
+        actionVerb,
+        entityRef: {
+          type: "workflow",
+          id: runId !== undefined ? `run-${runId}` : "run-?",
+          title: `${wfName}${titleSuffix}`,
+        },
+        bodyPreview: str("body"),
+        actionability,
       };
     }
 

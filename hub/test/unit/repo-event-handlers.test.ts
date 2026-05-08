@@ -103,15 +103,18 @@ function makeRepoEventMessage(payload: unknown): Message {
 
 // ── Registry tests ────────────────────────────────────────────────────
 
-describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2 + mission-76 W1 bug-46 closure + bug-51 pr-review-approved)", () => {
-  it("post-bug-51 contains 5 handlers (commit-pushed + 4 PR-event)", () => {
-    expect(REPO_EVENT_HANDLERS.length).toBe(5);
+describe("REPO_EVENT_HANDLERS registry (mission-68 W1 §2 + mission-76 W1 bug-46 closure + bug-51 pr-review-approved + idea-255 workflow-run)", () => {
+  it("post-idea-255 contains 8 handlers (commit-pushed + 4 PR-event + 3 workflow-run)", () => {
+    expect(REPO_EVENT_HANDLERS.length).toBe(8);
     const subkinds = REPO_EVENT_HANDLERS.map((h) => h.subkind);
     expect(subkinds).toContain("commit-pushed");
     expect(subkinds).toContain("pr-opened");
     expect(subkinds).toContain("pr-merged");
     expect(subkinds).toContain("pr-review-submitted");
     expect(subkinds).toContain("pr-review-approved");
+    expect(subkinds).toContain("workflow-run-completed");
+    expect(subkinds).toContain("workflow-run-dispatched");
+    expect(subkinds).toContain("workflow-run-in-progress");
   });
 
   it("each handler has subkind + name + handle function", () => {

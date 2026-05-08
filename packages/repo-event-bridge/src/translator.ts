@@ -53,6 +53,12 @@ export const REPO_EVENT_SUBKINDS = [
   "pr-review-approved",
   "pr-review-comment",
   "commit-pushed",
+  // idea-255 / M-Workflow-Run-Events-Hub-Integration v1.0 (sibling translator
+  // in `./workflow-run-translator.ts` produces these subkinds; per-conclusion
+  // event-name split for filter-list granularity per Design v1.0 §1.2 F3 fold)
+  "workflow-run-completed",
+  "workflow-run-dispatched",
+  "workflow-run-in-progress",
   "unknown",
 ] as const;
 
@@ -139,6 +145,14 @@ export function normalizeGhEvent(
       // NOT in payload.pusher / payload.sender (those are webhook-only). Pass actor
       // so normalizePush can fall back to it when the webhook fields are absent.
       return normalizePush(payload, repo, actor);
+    case "workflow-run-completed":
+    case "workflow-run-dispatched":
+    case "workflow-run-in-progress":
+      // Defensive — these subkinds are produced by the sibling
+      // `workflow-run-translator.ts`, not this /events-API path. If a
+      // workflow-run subkind reaches this normalizer the input shape is
+      // wrong; preserve raw for forensics.
+      return { raw: ghEvent };
     case "unknown":
       return { raw: ghEvent };
   }
