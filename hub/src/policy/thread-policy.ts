@@ -275,8 +275,15 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
     // needing a separate drain round-trip (eliminates the SSE-vs-drain
     // race observed on thread-138). drain_pending_actions remains the
     // recovery path for items that arrived while the adapter was
-    // disconnected. For broadcast/multicast, no single target owes a
-    // response (phase-2 scope — no enqueue yet).
+    // disconnected.
+    //
+    // bug-57: broadcast routing now enqueues per pool-resolved recipient
+    // (not just SSE — pending-action queue is the reliable persistence
+    // layer; broadcast must hit it for engineers to discover the work
+    // via drain after a session restart). Pool resolution uses the same
+    // selectAgents() path the dispatcher uses (role + matchLabels).
+    // Multicast remains deferred (ADR-014 §189 pool-resolution from
+    // bound-entity assignee not yet implemented).
     if (routingMode === "unicast" && recipientAgentId) {
       const item = await ctx.stores.pendingAction.enqueue({
         targetAgentId: recipientAgentId,
@@ -285,6 +292,22 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
         payload: dispatchPayload,
       });
       dispatchPayload.queueItemId = item.id;
+    } else if (routingMode === "broadcast") {
+      const poolMembers = await ctx.stores.engineerRegistry.selectAgents({
+        roles: openSelector.roles,
+        matchLabels: openSelector.matchLabels,
+      });
+      const queueItemIds: string[] = [];
+      for (const member of poolMembers) {
+        const item = await ctx.stores.pendingAction.enqueue({
+          targetAgentId: member.id,
+          dispatchType: "thread_message",
+          entityRef: thread.id,
+          payload: dispatchPayload,
+        });
+        queueItemIds.push(item.id);
+      }
+      if (queueItemIds.length > 0) dispatchPayload.queueItemIds = queueItemIds;
     }
     await ctx.dispatch("thread_message", dispatchPayload, openSelector);
   }
@@ -452,6 +475,13 @@ async function createThreadReply(args: Record<string, unknown>, ctx: IPolicyCont
     }
   }
 
+  // bug-57: capture pre-reply routingMode so the orphan-sweep below can
+  // tell whether THIS reply triggered the broadcast→unicast coerce.
+  // Read is a snapshot; replyToThread's CAS handles racing replies (only
+  // one wins, so only one wasCoercing-true sweep runs).
+  const preReplyThread = await ctx.stores.thread.getThread(threadId);
+  const wasCoercing = preReplyThread?.routingMode === "broadcast";
+
   let thread: Thread | null;
   try {
     thread = await ctx.stores.thread.replyToThread(threadId, message, author, {
@@ -586,6 +616,22 @@ async function createThreadReply(args: Record<string, unknown>, ctx: IPolicyCont
   // violation, not a condition to tolerate. Throw loudly so the
   // upstream participant-upsert bug is visible instead of papered
   // over by silent role-broadcast leakage.
+  // bug-57: when a broadcast thread coerces to unicast on first reply,
+  // pool members OTHER than the claimer have stale pending-action items
+  // (enqueued at thread-open per the broadcast-pool fan-out). Terminal-
+  // ack them as superseded_by_peer_claim so they don't sit in the queue
+  // forever (or get drained by a peer who will never reply). Sweep runs
+  // BEFORE the reply-side enqueue below so the architect's just-issued
+  // next-round item is not abandoned by mistake.
+  if (wasCoercing && authorAgentId && thread.status === "active") {
+    const orphans = await ctx.stores.pendingAction.listNonTerminalByEntityRef(threadId);
+    for (const orphan of orphans) {
+      if (orphan.dispatchType !== "thread_message") continue;
+      if (orphan.targetAgentId === authorAgentId) continue;
+      await ctx.stores.pendingAction.abandon(orphan.id, "superseded_by_peer_claim");
+    }
+  }
+
   if (thread.status === "active") {
     const otherParticipantIds = thread.participants
       .filter((p) => p.agentId && p.agentId !== authorAgentId)
