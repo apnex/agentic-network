@@ -1,6 +1,6 @@
-# M-Multi-Agent-Mission-Coordination-Architecture — Design v0.1 DRAFT
+# M-Multi-Agent-Mission-Coordination-Architecture — Design v0.2 DRAFT
 
-**Status:** **v0.1 DRAFT** (architect-side; pre-engineer-audit). Director-approved-to-Design 2026-05-08 post Survey envelope ratification at SHA `b27781e`. v0.1 architect-draft → engineer round-1 audit folds → v0.2 → engineer round-2 audit folds → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
+**Status:** **v0.2 DRAFT** (architect-side; post engineer round-1 audit folds). v0.1 → v0.2 folds: §2.1 dependency-graph corrections (CRITICAL); F2 swap storage-provider→#3, repo-event-bridge→#4; §6.2 risk reframe (adapter-plugins as cascade-source, not hub); §6.6 ratify (b) pure just-in-time Manifest shape; §2.1 column rename to "Source path" + §2.4.2 step 5 adapters/ amendment (F18 NEW); F19 rename sub-mission #11 to M-AgenticNetwork-Substrate-Purge; §7.2 Candidates-surfaced augment with 4 deferred surfaces. v0.1 architect-draft → v0.2 (this version; engineer round-1 folds applied) → engineer round-2 audit folds → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
 **Mission name:** M-Multi-Agent-Mission-Coordination-Architecture (idea-261; meta-mission)
 **Mission-class:** structural-inflection (umbrella; meta-mission shape — deliverable = catalog of downstream sub-missions, not direct substrate); each sub-mission carries its own mission-class candidate (per §2 catalog)
 **Source idea:** idea-261 (M-Multi-Agent-Mission-Coordination-Architecture)
@@ -39,23 +39,37 @@
 
 **Catalog ordering principle:** dependency-driven topological order. Branchcraft v1 first (foundational substrate; everything else uses it). Citation-validator second (must exist before component-migrations to enforce citation-density at PR-time). Component-migrations leaf-most first (smallest blast-radius; proves migration playbook). Hub-repo last (every other component depends on it; failed extraction cascades). Agentic-network self-migration final (architect-repo extraction; idea/mission/audit substrate stays put until last).
 
-**Catalog count:** **11 sub-missions** (architect-recommendation; engineer round-1 audit may surface batching argument per F3).
+**Catalog count:** **11 sub-missions** (engineer round-1 audit confirmed per-component-1-mission per F3; no natural batching boundary).
 
-| # | Sub-mission | Mission-class | Substrate location | Scope (1-line) | Dependencies | Tele primaries |
+**Topology (v0.2 corrected via engineer round-1 substrate-currency walk of `packages/*/package.json` + `adapters/*/package.json`):**
+
+```
+Layer 0 (4 true leaves; zero @apnex/* runtime deps):
+  - storage-provider, cognitive-layer, message-router, repo-event-bridge
+  - (repo-event-bridge has devDep on storage-provider; nuance noted in §2.4.1)
+Layer 1 (depends on Layer 0 only):
+  - network-adapter ← (cognitive-layer, message-router)
+Layer 2 (depends on Layer 0/1; mutually independent at this layer):
+  - claude-plugin ← (cognitive-layer, message-router, network-adapter)
+  - opencode-plugin ← (cognitive-layer, message-router, network-adapter)
+  - hub ← (repo-event-bridge, storage-provider) ONLY
+```
+
+| # | Sub-mission | Mission-class | Source path → Target repo | Scope (1-line) | Dependencies (runtime) | Tele primaries |
 |---|---|---|---|---|---|---|
-| 1 | M-Branchcraft-V1 | substrate-introduction | NEW repo `github.com/apnex/branchcraft` | Sovereign component: 5 pluggables (`IdentityProvider` / `ApprovalPolicy` / `StorageProvider` / `GitEngine` / `RemoteProvider`); 2 personas (standalone-CLI `brc` + library-SDK); IsomorphicGit primary; gh CLI GitHubRemoteProvider | none (foundational) | tele-3, tele-2 |
-| 2 | M-Citation-Validator-Tooling | substrate-introduction | branchcraft repo (subcommand `brc citations validate`) per F1 architect-recommendation | Cross-repo citation resolver + PR-time validator gate; symbol-chain format `<component> > <file-path> > <class.method/function/symbol/type>`; version-aware resolution (citation valid at v1.x but not v2.x if symbol renamed) | M-Branchcraft-V1 (#1) | tele-2, tele-12 |
-| 3 | M-Component-Repo-Extract-RepoEventBridge | structural-inflection | NEW repo `github.com/apnex-org/repo-event-bridge` | First migration playbook validation; leaf-most component (architect-recommendation per F2; engineer to validate dependency-graph); proves per-component-extraction pattern | M-Branchcraft-V1 (#1), M-Citation-Validator-Tooling (#2) | tele-3, tele-7 |
-| 4 | M-Component-Repo-Extract-StorageProvider | structural-inflection | NEW repo `github.com/apnex-org/storage-provider` | Storage abstraction extraction; depends-on by hub | M-Branchcraft-V1 (#1), M-Citation-Validator-Tooling (#2), [optionally #3 to absorb playbook-refinement folds] | tele-3, tele-7 |
-| 5 | M-Component-Repo-Extract-MessageRouter | structural-inflection | NEW repo `github.com/apnex-org/message-router` | Message routing extraction; depends-on by hub | #1, #2, #3, #4 | tele-3, tele-7 |
-| 6 | M-Component-Repo-Extract-CognitiveLayer | structural-inflection | NEW repo `github.com/apnex-org/cognitive-layer` | Cognitive layer extraction; depends-on by hub; depends-on message-router | #1, #2, #5 | tele-3, tele-7 |
-| 7 | M-Component-Repo-Extract-NetworkAdapter | structural-inflection | NEW repo `github.com/apnex-org/network-adapter` | Network adapter extraction; depends on hub-types; folding candidate for idea-259 (Adapter-Sovereign-Import-Cycle-Resolution) per F4 | #1, #2, #5 (preferred batching with this) | tele-3, tele-7 |
-| 8 | M-Component-Repo-Extract-ClaudePlugin | structural-inflection | NEW repo `github.com/apnex-org/claude-plugin` | Claude adapter plugin extraction; depends on network-adapter | #1, #2, #7 | tele-3, tele-7 |
-| 9 | M-Component-Repo-Extract-OpencodePlugin | structural-inflection | NEW repo `github.com/apnex-org/opencode-plugin` | OpenCode adapter plugin extraction; depends on network-adapter | #1, #2, #7 | tele-3, tele-7 |
-| 10 | M-Component-Repo-Extract-Hub | structural-inflection | NEW repo `github.com/apnex-org/hub` | Hub runtime extraction; depends on all upstream components (#3 + #4 + #5 + #6); LAST component-extract to minimize cascading-failure surface | #1, #2, #3, #4, #5, #6 | tele-3, tele-7 |
-| 11 | M-AgenticNetwork-Self-Migration | structural-inflection | EXISTING repo `github.com/apnex-org/agentic-network` (becomes architect-repo only) | Final migration: agentic-network purges component-substrate; retains idea/mission/audit/calibration entities + methodology docs + scripts + traces; becomes pure architect-repo | #1, #2, #3-#10 (all component extracts complete) | tele-3, tele-1 |
+| 1 | M-Branchcraft-V1 | substrate-introduction | NEW: `github.com/apnex/branchcraft` | Sovereign component: 5 pluggables (`IdentityProvider` / `ApprovalPolicy` / `StorageProvider` / `GitEngine` / `RemoteProvider`); 2 personas (standalone-CLI `brc` + library-SDK); IsomorphicGit primary; gh CLI GitHubRemoteProvider | none (foundational) | tele-3, tele-2 |
+| 2 | M-Citation-Validator-Tooling | substrate-introduction | branchcraft repo (subcommand `brc citations validate`) per F1 | Cross-repo citation resolver + PR-time validator gate; symbol-chain format `<component> > <file-path> > <class.method/function/symbol/type>`; version-aware resolution | #1 | tele-2, tele-12 |
+| 3 | M-Component-Repo-Extract-StorageProvider | structural-inflection | `packages/storage-provider/` → `github.com/apnex-org/storage-provider` | First migration playbook validation; TRUE-zero @apnex/* deps (runtime + dev); cleanest playbook-validation surface (F2 v0.2 swap) | #1, #2 | tele-3, tele-7 |
+| 4 | M-Component-Repo-Extract-RepoEventBridge | structural-inflection | `packages/repo-event-bridge/` → `github.com/apnex-org/repo-event-bridge` | Second extraction; runtime-leaf but devDep on storage-provider (test infra); tests playbook richer-shape post-#3 cross-resolve at extraction-time | #1, #2, #3 (devDep cross-resolve) | tele-3, tele-7 |
+| 5 | M-Component-Repo-Extract-MessageRouter | structural-inflection | `packages/message-router/` → `github.com/apnex-org/message-router` | True-leaf extraction; zero @apnex/* deps | #1, #2 | tele-3, tele-7 |
+| 6 | M-Component-Repo-Extract-CognitiveLayer | structural-inflection | `packages/cognitive-layer/` → `github.com/apnex-org/cognitive-layer` | True-leaf extraction; zero @apnex/* deps | #1, #2 | tele-3, tele-7 |
+| 7 | M-Component-Repo-Extract-NetworkAdapter | structural-inflection | `packages/network-adapter/` → `github.com/apnex-org/network-adapter` | Layer-1 extraction; deps cognitive-layer + message-router; folding candidate for idea-259 (Adapter-Sovereign-Import-Cycle-Resolution) per F4 | #1, #2, #5, #6 | tele-3, tele-7 |
+| 8 | M-Component-Repo-Extract-ClaudePlugin | structural-inflection | `adapters/claude-plugin/` → `github.com/apnex-org/claude-plugin` | Layer-2 extraction; deps cognitive-layer + message-router + network-adapter (3-deps; Layer-2 cascade-source class — see §6.2 reframe) | #1, #2, #5, #6, #7 | tele-3, tele-7 |
+| 9 | M-Component-Repo-Extract-OpencodePlugin | structural-inflection | `adapters/opencode-plugin/` → `github.com/apnex-org/opencode-plugin` | Layer-2 extraction; same dep-shape as #8; mutually independent of #8 at extraction-time | #1, #2, #5, #6, #7 | tele-3, tele-7 |
+| 10 | M-Component-Repo-Extract-Hub | structural-inflection | `hub/` → `github.com/apnex-org/hub` | Hub runtime extraction; deps ONLY repo-event-bridge + storage-provider (NOT network-adapter / message-router / cognitive-layer at runtime) | #1, #2, #3, #4 | tele-3, tele-7 |
+| 11 | **M-AgenticNetwork-Substrate-Purge** (F19 rename) | structural-inflection | EXISTING repo `github.com/apnex-org/agentic-network` → architect-repo only | Final operation: PURGE component-substrate from agentic-network (not migration-to-new-repo); retains idea/mission/audit/calibration entities + methodology docs + scripts + traces | #1, #2, #3-#10 (all component extracts complete) | tele-3, tele-1 |
 
-**Sub-mission count rationale (architect-recommendation per F3):** per-component-1-mission (8 component-extracts + branchcraft + citation-validator + agentic-network-self) = 11 sub-missions. Q2=c phased-incremental favors smallest blast-radius per sub-mission; batching wave-style (e.g., "wave 1 = leaf components; wave 2 = adapters; wave 3 = hub") would violate spirit of Q2=c. Engineer round-1 may surface batching argument if dependency-graph favors waves (e.g., #5+#6+#7 batched as "hub-dependency-cohort").
+**Sub-mission count rationale (engineer round-1 ratified per F3):** per-component-1-mission (8 component-extracts + branchcraft + citation-validator + agentic-network-substrate-purge) = 11 sub-missions. Q2=c phased-incremental philosophy + corrected dependency-graph confirms no natural batching boundary (Layer 1 = 1 component; Layer 2 = 3 components but mutually independent so no batch-coordination benefit).
 
 **Optional folding candidate (F4):** idea-259 (Adapter-Sovereign-Import-Cycle-Resolution) → architect-recommendation = fold into sub-mission #7 (M-Component-Repo-Extract-NetworkAdapter) as a Phase-4 Design scope expansion, since the import-cycle-resolution IS the network-adapter migration's core architectural challenge. Engineer round-1 may surface independence argument.
 
@@ -132,14 +146,14 @@ Each component-extraction sub-mission (sub-missions #3-#10) follows this playboo
 
 #### §2.4.1 Pre-extraction phase (Phase 1 — methodology)
 
-1. **Dependency audit:** which other components consume this component's exports? Validator-aware citation count; PR-impact estimate
+1. **Dependency audit (runtime + test-time):** (a) which other components consume this component's exports (forward-edge / consumer-cardinality)? (b) which components does THIS component consume — runtime-deps AND devDeps including test infra? Validator-aware citation count; PR-impact estimate. **v0.2 fold:** test-time devDeps must be explicitly audited (not just runtime deps); engineer round-1 found repo-event-bridge has devDep on storage-provider not visible in runtime-only audit.
 2. **Boundary audit:** is current package boundary clean enough to extract? OR does it leak internal types? If leaks: file Phase-1.5-cleanup sub-task before extraction
 3. **Test surface audit:** what tests currently exercise this component? Plan migration of test suite to new repo
 
 #### §2.4.2 Extraction phase (Phase 2 — substrate)
 
 4. **NEW repo creation:** `github.com/apnex-org/<component>-repo` under apnex-org GitHub namespace
-5. **Code migration:** copy `packages/<component>/` source + tests + package.json (renamed scope or kept-same TBD per F-pending)
+5. **Code migration:** copy source from `packages/<component>/` (sub-missions #3-#7, #10) OR from `adapters/<plugin>/` (sub-missions #8 + #9 per F18 substrate-location asymmetry) + tests + package.json. Current npm scope `@apnex/*` retained (Q4=a 1:1 source-path→repo mapping; npm-scope is NOT the migration variable per §6.5 v0.2 correction).
 6. **Branchcraft mission orchestration:** use branchcraft to coordinate cross-repo branch + commit + push (this is the FIRST validation that branchcraft v1 + citation-validator work in production-extraction shape)
 7. **CI setup:** GitHub Actions workflow per `.github/workflows/release-plugin.yml` precedent (mission-72)
 8. **First publish:** `npm publish` to npmjs.com; tag as `v1.0.0` (this is a major-version-bump because import-paths change from `@apnex/<component>` to `@apnex-org/<component>` per Q5=ac semver-major-bump signaling)
@@ -183,18 +197,21 @@ Architect-flags batched for engineer's round-1 content-level audit. Each flag ca
 
 | # | Flag | Classification | Architect-recommendation | Engineer-audit ask |
 |---|---|---|---|---|
-| F1 | Citation-validator host: branchcraft CLI subcommand vs separate ops-repo tool | MEDIUM | branchcraft CLI subcommand (§2.3.3) — single sovereign tool surface; reuses branchcraft's IsomorphicGit + RemoteProvider for cross-repo resolution | Challenge if validator scope balloons beyond branchcraft natural-fit (LSP-server-shaped) |
-| F2 | First-component-to-migrate canonical 1st-migration candidate | MEDIUM | `repo-event-bridge` (sub-mission #3) — leaf-most dependencies; lowest cross-component coupling; smallest blast-radius for playbook validation | Validate dependency-graph; surface alternative if `storage-provider` or another leaf is more decoupled |
-| F3 | Sub-mission count + ordering: ~8 component-migration sub-missions OR batched into wave-style larger-grained missions | MEDIUM | Per-component-1-mission (11 sub-missions total per §2.1) — Q2=c phased-incremental favors smallest blast-radius; batching violates spirit of Q2=c | Surface batching argument if dependency-graph favors waves (e.g., #5+#6+#7 as "hub-dependency-cohort") |
-| F4 | idea-259 (Adapter-Sovereign-Import-Cycle-Resolution) folding | MEDIUM | Fold into sub-mission #7 (M-Component-Repo-Extract-NetworkAdapter) — import-cycle-resolution IS the network-adapter migration's core architectural challenge | Surface independence argument if scope incompatible |
-| F5 | Workspace-state durability mechanism | PROBE | No recommendation; 3 candidates sketched at §2.2.5 (per-repo `.git/` commits / out-of-band snapshot store / IsomorphicGit `fs` adapter) | Surface preferred mechanism + rationale |
-| F6 | Auto-merge configurability surface | MINOR | Both — CLI flag + mission-config-driven (§2.2.4) | Surface single-source-of-truth argument if applicable |
-| F7 | Pluggable defaults for the 5 v1-pluggables | MEDIUM | Per §2.2.1 table: `LocalGitConfigIdentity` + `TrustAllPolicy` + `LocalFilesystemStorage` + `IsomorphicGitEngine` + (no RemoteProvider; gh-CLI opt-in) | Surface alternative defaults per ergonomic considerations |
-| F8 | OIS-orchestrated persona scope: branchcraft v1 internal OR post-v1 sub-mission | **CRITICAL** | Post-v1 sub-mission (per §2.2.2) — OIS-orchestration is built ON TOP via OIS-side integration code; NOT branchcraft-internal; keeps branchcraft sovereign + category-tool-shaped | Challenge if interpretation differs — load-bearing for branchcraft v1 scope |
-| F9 | New: Sub-mission count rationale (11 vs 10 vs ~15) | MEDIUM | 11 sub-missions per §2.1 (1 branchcraft + 1 citation-validator + 8 component-extracts + 1 agentic-network-self) | Surface count adjustment if dependency-graph or batching changes ordering |
-| F10 | New: Migration playbook codification — methodology doc OR sub-mission template | PROBE | Phase 5 Manifest decision; architect-lean = methodology doc at `docs/methodology/component-migration-playbook.md` (reusable across all 8 component-extracts) | Surface preferred codification |
-| F11 | New: Old-package deprecation mechanism per Q5=ac clean-break (npm unpublish 24h vs deprecate notice vs immediate-remove) | MEDIUM | Deprecate-immediate via `npm deprecate` (per Director's Q5=ac clean-break posture); 24h grace optional but not required | Surface preferred mechanism with consumer-impact rationale |
-| F12 | New: Hub-orchestration mechanism for cross-repo lockstep PR-fan-out (Q5=a lockstep coordination) | PROBE | No recommendation; Hub-side mechanism TBD; could be branchcraft-CLI-driven OR Hub-MCP-tool-driven | Surface mechanism candidates |
+| F1 | Citation-validator host: branchcraft CLI subcommand vs separate ops-repo tool | MEDIUM | RATIFIED — brc subcommand (§2.3.3) — single sovereign tool surface; reuses IsomorphicGit + RemoteProvider; LSP-server-shape can come post-v1 if scope balloons. Engineer round-1 concur. |
+| F2 | First-component-to-migrate canonical 1st-migration candidate | MEDIUM | **RATIFIED v0.2 SWAP — `storage-provider` first** (sub-mission #3); repo-event-bridge moved to #4. Engineer round-1 counter: storage-provider has TRUE-zero @apnex/* deps (runtime + dev); repo-event-bridge has devDep on storage-provider (test infra); cleanest playbook-validation surface = storage-provider first. |
+| F3 | Sub-mission count + ordering | MEDIUM | RATIFIED — 11 sub-missions; per-component-1-mission. Engineer round-1 concur: corrected dependency-graph (Layer 0 = 4 leaves; Layer 1 = 1 component; Layer 2 = 3 mutually-independent) confirms no natural batching boundary. |
+| F4 | idea-259 folding into sub-mission #7 (network-adapter) | MEDIUM | RATIFIED — fold-as-Phase-4-Design-scope-expansion. Engineer concur: import-cycle-resolution IS network-adapter-extraction's core challenge; will surface independence-argument only if sub-mission #7 Phase 4 reveals structurally-separable concern. |
+| F5 | Workspace-state durability mechanism | PROBE | DEFER — to M-Branchcraft-V1 Phase 3 Survey (Director-intent question on failure-mode protection: process-crash vs disk-failure vs network-partition-during-push). Engineer round-1 concur. |
+| F6 | Auto-merge configurability surface | MINOR | RATIFIED — both CLI flag + mission-config-driven (§2.2.4). Engineer concur: different operator-time-horizons; no single-source-of-truth argument applies. |
+| F7 | Pluggable defaults for the 5 v1-pluggables | MEDIUM | RATIFIED — defaults per §2.2.1 table. Engineer concur: sane category-tool defaults; no ergonomic concerns surfaced. |
+| F8 | OIS-orchestrated persona scope: branchcraft v1 internal OR post-v1 sub-mission | **CRITICAL** | **RATIFIED — post-v1 sub-mission** (per §2.2.2). Engineer concur: library-SDK persona (Q1=b) covers migration-playbook use case; OIS-internal coupling stays out of branchcraft v1; category-tool-shape preserved. |
+| F9 | Sub-mission count rationale (11 vs 10 vs ~15) | MEDIUM | RATIFIED — 11 per §2.1 (1 branchcraft + 1 citation-validator + 8 component-extracts + 1 substrate-purge). Engineer concur. |
+| F10 | Migration playbook codification | PROBE | RATIFIED — methodology doc at `docs/methodology/component-migration-playbook.md` + **mandatory calibration #62 audit checklist section** baked into structure. Engineer round-1 specifically recommended the calibration-checklist-as-mandatory-section refinement. |
+| F11 | Old-package deprecation mechanism per Q5=ac clean-break | MEDIUM | RATIFIED — `npm deprecate` immediate (no runway). Engineer concur: clean-break + semver-major-bump signaling means consumers either upgrade or stay on old version. |
+| F12 | Hub-orchestration mechanism for cross-repo lockstep PR-fan-out | PROBE | RATIFIED — branchcraft-CLI-driven (`brc cross-repo-pr fan-out --target=v1.0.0`); concrete design defers to M-Branchcraft-V1 Phase 4. Engineer round-1 concur architect-lean: same-tool-orchestrates-both pattern; Hub-MCP-tool-driven is heavier-weight + couples to OIS-internal. |
+| F13 | NEW: Hub package unscoped name (`"hub"` not `@apnex/hub`) | MEDIUM | OPEN — sub-mission #10 scope-decision (keep unscoped vs scope as `@apnex/hub`). Defer to M-Component-Repo-Extract-Hub Phase 4 Design unless engineer round-2 surfaces resolution. |
+| F18 | NEW (engineer round-1): substrate-location asymmetry — claude-plugin + opencode-plugin live under `adapters/`, not `packages/` | MEDIUM | RATIFIED v0.2 fold — §2.1 column renamed "Source path → Target repo"; §2.4.2 step 5 amended to handle both source-roots; Q4=a "1:1 source-path→repo" framing clarified. |
+| F19 | NEW (engineer round-1): sub-mission #11 terminology — "M-AgenticNetwork-Self-Migration" misnames the operation | MINOR | RATIFIED v0.2 fold — renamed to **M-AgenticNetwork-Substrate-Purge**. Cosmetic but clarifies operator-intent (purge component-substrate; not migration-to-new-repo). |
 
 ---
 
@@ -232,9 +249,13 @@ Architect-flags batched for engineer's round-1 content-level audit. Each flag ca
 
 Sub-missions #1 + #2 are both substrate-introduction (NEW substrate); shipping in close succession means both are simultaneously young + may surface integration defects only when consumed by sub-mission #3 (first component-extract). Architect-recommendation: ship #1 + #2 with extensive integration test surface (test sub-mission #3 against #1+#2 in sandbox before launching real #3). Engineer round-1 may surface alternative integration-validation strategy.
 
-### §6.2 Composition risk: hub-extract LAST cascade
+### §6.2 Composition risk: Layer-2 adapter-plugins are cascade-source (v0.2 reframe per engineer round-1 substrate-currency walk)
 
-Sub-mission #10 (M-Component-Repo-Extract-Hub) is the highest-blast-radius extraction (everything depends on hub). Architect-recommendation: stricter audit-rubric for sub-mission #10 (e.g., maxRounds=20+; multiple bilateral cycles; dry-run-extract simulations before live extract). Engineer may surface additional safeguards.
+**v0.1 framing was empirically incorrect** — hub is NOT the highest-blast-radius extraction; hub depends on only 2 leaves (repo-event-bridge + storage-provider per corrected §2.1 dependency-graph). The actual highest-cardinality extracts are the **Layer-2 adapter-plugins** (claude-plugin + opencode-plugin; 3 deps each: cognitive-layer + message-router + network-adapter).
+
+**Cascade-source class identification:** sub-missions #8 + #9 (adapter-plugin extracts) are at risk of cascade-failure if extracted while their Layer-1 dependency (network-adapter, sub-mission #7) is still in-flight OR if any of their Layer-0 dependencies (cognitive-layer, message-router; sub-missions #5 + #6) churn during their extraction window.
+
+**Architect-recommendation v0.2:** stricter audit-rubric for sub-missions **#7 (M-Component-Repo-Extract-NetworkAdapter)** + **#8 + #9 (adapter-plugin extracts)** — these are the cascade-source surfaces. Sub-mission #10 (hub) retains some-stricter-rubric for empirical reason: hub is the central runtime + the substrate other operators depend on at deployment-time even if @apnex/* dependency-cardinality is only 2. But "everything depends on hub" framing is wrong — hub-extract is more about runtime-criticality than dependency-graph-cardinality. Engineer may surface additional safeguards for the corrected risk surface.
 
 ### §6.3 Composition risk: agentic-network-self-migration (#11) corner case
 
@@ -244,18 +265,26 @@ Sub-mission #11 migrates agentic-network itself, but agentic-network IS the subs
 
 Q1=b (full architectural) means v1 ships 5 pluggables + 2 personas; this is non-trivial scope. Architect estimate (PROBE): 2-3 calendar weeks for full v1 if engineer-ratified scope holds. Engineer round-1 may surface scope-trim-or-extend discussion. Director may engage at v1-scope-ratification gate-point if scope materially exceeds estimate.
 
-### §6.5 Open question: namespace migration for OIS components
+### §6.5 npm-scope retention through migration (v0.2 correction)
 
-`@apnex/<component>` (current monorepo scope) → `@apnex-org/<component>` (post-migration repo scope). This is a major-version-bump per Q5=ac. Sub-mission #3-#10 each carry this version-bump. Architect-recommendation per §2.4.2 step 5: rename scope at extraction time (not pre-migration). Engineer round-1 may surface alternative (e.g., keep `@apnex/<component>` scope; only repo location changes).
+**v0.1 framing was incorrect** — conflated GitHub-org-name with npm-scope. Current npm scope `@apnex/*` (e.g., `@apnex/storage-provider`, `@apnex/network-adapter`) is RETAINED through migration; not changing. The migration variable is **GitHub repo location** (`github.com/apnex-org/<component>` for OIS components; `github.com/apnex/branchcraft` for sovereign-tool) + version (semver-major-bump per Q5=ac signaling).
 
-### §6.6 Open question: Phase 5 Manifest shape for mission-of-missions
+`hub` package is currently UNSCOPED (`"name": "hub"` in `hub/package.json`) — see F13 NEW for sub-mission #10 scope-decision discussion.
 
-Methodology silent on first-canonical mission-of-missions Manifest shape. Candidate options:
-- **(a)** Phase 5 Manifest creates ALL 11 sub-mission Hub entities upfront with `proposed` status; activates one at a time
-- **(b)** Phase 5 Manifest creates only sub-mission #1; subsequent sub-missions created as predecessor closes
-- **(c)** Phase 5 Manifest creates a "catalog idea" that itself spawns sub-mission ideas + missions per execution
+Q5=ac major-version-bump signaling: each component's `v1.x` (post-extract) signals "import path resolution is now repo-based, not monorepo-workspace-based"; consumers update `package.json` deps to point at the new repo (still under `@apnex/*` scope). No scope-rename is required.
 
-Architect-recommendation: **(a)** — declarative-up-front catalog; matches Q1=b "full architectural" posture; methodology-evolution candidate (per Survey calibration notes). Engineer round-1 may surface alternative.
+### §6.6 Phase 5 Manifest shape — RATIFIED (b) just-in-time per engineer round-1 reasoning
+
+**v0.2 ratification:** **(b) just-in-time** — Phase 5 Manifest creates only sub-mission #1 (M-Branchcraft-V1) at meta-mission Phase 5; subsequent sub-missions created at execution-time-window (when their predecessor is closing OR their dependency-graph clears).
+
+**This Design doc is the source-of-truth catalog** (markdown, version-controlled, easy-to-edit); Hub mission entities are created just-before-activation. Composes-with calibration #62 discipline: don't pre-commit substrate state for work that won't run for weeks.
+
+**Engineer round-1 reasoning ratified:**
+- Operator-tracking surface: 11 entities in `proposed` status creates dashboard noise; cognitive-load high
+- Sub-mission scope evolves during execution; declarative-up-front entities require entity-mutation overhead when scope shifts
+- Calibration #62 alignment: pre-creating entities for delayed work creates state-drift surface
+
+**Methodology-evolution candidate:** post-meta-mission completion, retrospective should evaluate whether (b) just-in-time becomes the canonical mission-of-missions Manifest shape OR whether (a-modified) variants emerge (e.g., pre-create only foundational substrate-introductions). For THIS meta-mission: pure (b).
 
 ---
 
@@ -267,8 +296,15 @@ Calibration #62 (deferred-runtime-gate-becomes-silent-defect-surface) currently 
 
 ### §7.2 Calibration cross-refs (this mission)
 
-- **Closures-applied:** none yet (Phase 4 Design DRAFT; closures land at sub-mission ratification)
-- **Candidates-surfaced:** meta-Survey-pattern (per-question-budget + pre-Survey-ratification-timeline; flag for methodology-evolution review post-mission-of-missions completion); migration-playbook-codification (potential `docs/methodology/component-migration-playbook.md` per F10)
+- **Closures-applied:** none yet (Phase 4 Design v0.2 DRAFT; closures land at sub-mission ratification)
+- **Candidates-surfaced (v0.2 augmented per engineer round-1 calibration #62 audit-rubric application):**
+  - meta-Survey-pattern (per-question-budget + pre-Survey-ratification-timeline; flag for methodology-evolution review post-mission-of-missions completion)
+  - Migration-playbook-codification at `docs/methodology/component-migration-playbook.md` with mandatory calibration #62 audit checklist section (F10 RATIFIED)
+  - **NEW v0.2 deferred-surfaces enumerated for transparency** (each is a calibration #62 candidate; tracking explicitly to defeat substrate-described-but-not-substrate-tested pattern):
+    - Workspace-state durability mechanism (§2.2.5 PROBE; defer to M-Branchcraft-V1 Phase 3 Survey)
+    - Hub-orchestration mechanism for cross-repo lockstep PR-fan-out (F12 PROBE; defer to M-Branchcraft-V1 Phase 4)
+    - Phase 5 Manifest shape ratified as (b) just-in-time (§6.6 v0.2 ratified) — methodology-evolution candidate; first-canonical mission-of-missions Manifest precedent
+    - Migration playbook codification status (currently prose-described; v0.2 ratifies methodology-doc-as-deliverable but doc itself doesn't exist yet — calibration #62 surface until F10 deliverable lands)
 
 ---
 
@@ -276,10 +312,10 @@ Calibration #62 (deferred-runtime-gate-becomes-silent-defect-surface) currently 
 
 | Version | Date | Trigger | Notes |
 |---|---|---|---|
-| v0.1 DRAFT | 2026-05-08 | architect-side draft post Director-approved-to-Design at SHA `b27781e` | this version; pre-engineer-audit |
-| v0.2 (planned) | TBD | engineer round-1 audit folds | engineer surfaces F1-F12 challenges + new architect-flags (if any) |
+| v0.1 DRAFT | 2026-05-08 | architect-side draft post Director-approved-to-Design at SHA `b27781e` | pre-engineer-audit; pushed at SHA `b6b4a55` |
+| **v0.2 DRAFT** | **2026-05-08** | **engineer round-1 audit folds (thread-507)** | **this version; CRITICAL §2.1 dependency-graph corrections; F2 swap (storage-provider→#3); F18 NEW (substrate-location asymmetry); F19 rename M-AgenticNetwork-Substrate-Purge; §6.2 reframe (adapter-plugins as cascade-source); §6.6 ratify (b) just-in-time Manifest; §6.5 npm-scope correction; §7.2 deferred-surfaces enumerated** |
 | v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-2 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
 
-**Phase 4 dispatch destination:** greg / engineer; round-1 bilateral audit thread (Hub thread entity); maxRounds candidate = 12 (per `feedback_director_direct_scope_expansion_maxrounds.md` — first-canonical mission-of-missions warrants higher round budget vs typical 5/8 bug-fix; mission-of-missions audit-cycle naturally surfaces methodology questions worth thread budget).
+**Phase 4 dispatch destination:** greg / engineer; round-1 bilateral audit thread thread-507 (post bug-57 + bug-58 substrate-corrected dispatch path); maxRounds=12 per `feedback_director_direct_scope_expansion_maxrounds.md`.
 
-**Architect-side commit pin:** v0.1 DRAFT will be committed + pushed to `agent-lily/m-multi-agent-mission-coord-survey` branch in same dispatch step (per `feedback_narrative_artifact_convergence_discipline.md` atomic pattern).
+**Architect-side commit pin v0.2:** committed + pushed to `agent-lily/m-multi-agent-mission-coord-survey` branch in same round-2 dispatch step per `feedback_narrative_artifact_convergence_discipline.md` atomic pattern.
