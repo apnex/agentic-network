@@ -1,6 +1,6 @@
-# M-Branchcraft-V1 — Design v0.1 DRAFT
+# M-Branchcraft-V1 — Design v0.2 DRAFT
 
-**Status:** **v0.1 DRAFT** (architect-side; pre-engineer-audit). Director-approved-to-Design 2026-05-08 post Phase 3 Survey envelope ratification at SHA `efbc5ad`. v0.1 architect-draft → engineer round-1 audit folds → v0.2 → engineer round-2 audit folds → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
+**Status:** **v0.2 DRAFT** (architect-side; post engineer round-1 audit folds). v0.1 → v0.2 folds: (§A) deferred CLI verbs `citations validate` + `cross-repo-pr fan-out` REMOVED from v1 surface (calibration #62 amplification-loop catch); (§B) §2.6 durability mechanism rewritten — `commitToRef` plumbing primitive on GitEngine for wip-commits without HEAD-movement; explicit cross-mechanism ordering invariant (§2.6.1 → §2.6.2 dependency); atomic-bundle-write via write-to-temp + rename; §2.6.3 resumable-push claim corrected to retry-on-failure; (§C) API completeness — GitEngine +9 methods (fetch/checkout/tag/log/revparse/addRemote/removeRemote/getCurrentBranch/commitToRef/stage) + merge rebase strategy; ApprovalContext.action enum +6 actions; RemoteProvider +2 methods; StorageProvider lock primitives surfaced; IdentityProvider.signingKey discriminated union; (§D) deps bumped — zod 3→4, vitest 1→4, typedoc 0.25→0.28; (§E) mission-config 7 fields added; (§F) `"sideEffects": false`; (§G) F13 picked (b) capabilities-gated throws-on-unsupported; F18 +2 errors; (§H) 8 refinements. v0.1 architect-draft → v0.2 (this version; engineer round-1 folds applied) → engineer round-2 audit → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
 **Mission name:** M-Branchcraft-V1 (idea-263; sub-mission #1 of meta-mission idea-261)
 **Mission-class:** substrate-introduction (foundational; first sub-mission of 11-sub-mission catalog; everything else uses branchcraft)
 **Source idea:** idea-263 (M-Branchcraft-V1)
@@ -35,10 +35,14 @@ All 5 interfaces ship in v1.0.0 per parent Q1=b full architectural posture. Stri
 #### §2.1.1 `IdentityProvider`
 
 ```typescript
+export type SigningKey =
+  | { type: 'gpg'; fingerprint: string }
+  | { type: 'ssh'; publicKey: string }; // public-key path or base64-encoded handle
+
 export interface AgentIdentity {
   readonly name: string;
   readonly email: string;
-  readonly signingKey?: string; // GPG fingerprint or SSH public-key handle; optional
+  readonly signingKey?: SigningKey; // discriminated union (v0.2 fold per §C.5); optional
 }
 
 export interface IdentityProvider {
@@ -47,16 +51,28 @@ export interface IdentityProvider {
 }
 ```
 
-**Default v1 implementation:** `LocalGitConfigIdentity` — reads `git config user.name` + `git config user.email`; signing-key from `git config user.signingkey` if set.
+**Default v1 implementation:** `LocalGitConfigIdentity` — reads `git config user.name` + `git config user.email`; if `git config user.signingkey` set: GPG fingerprint detected by hex-format match (40-char hex), else SSH public-key path resolution.
 
 #### §2.1.2 `ApprovalPolicy`
 
 ```typescript
+export type ApprovalAction =
+  | "commit"
+  | "push"
+  | "force-push"          // v0.2 fold per §C.2 — distinct from regular push
+  | "pull"                // v0.2 fold per §C.2
+  | "merge"
+  | "branch-create"       // v0.2 fold per §C.2 — F16 wip-branch needs approval surface
+  | "branch-delete"       // v0.2 fold per §C.2 — wip-branch cleanup gate
+  | "mission-start"       // v0.2 fold per §C.2 — operator lifecycle gate
+  | "mission-complete"
+  | "mission-abandon";    // v0.2 fold per §C.2
+
 export interface ApprovalContext {
   readonly missionId: string;
   readonly repoUrl: string;
   readonly branch: string;
-  readonly action: "commit" | "push" | "merge" | "mission-complete";
+  readonly action: ApprovalAction;
   readonly metadata: Record<string, unknown>;
 }
 
@@ -82,6 +98,13 @@ export interface WorkspaceHandle {
   readonly path: string; // absolute filesystem path
 }
 
+export interface LockHandle {
+  readonly id: string;            // unique identifier for the lock
+  readonly missionId: string;
+  readonly acquiredAt: Date;
+  readonly expiresAt: Date;
+}
+
 export interface StorageProvider {
   /** Allocate workspace for mission + repo. Idempotent on re-allocate. */
   allocate(missionId: string, repoUrl: string): Promise<WorkspaceHandle>;
@@ -89,12 +112,24 @@ export interface StorageProvider {
   release(handle: WorkspaceHandle, options?: { retain?: boolean }): Promise<void>;
   /** List active workspaces for a mission. */
   list(missionId: string): Promise<WorkspaceHandle[]>;
+  /** Bulk-release for mission cleanup. v0.2 fold per §C.4. */
+  cleanup(missionId: string): Promise<void>;
+
+  // Lock primitives (v0.2 fold per §C.4 — surfaced into interface contract for 3rd-party StorageProvider implementations)
+  /** Acquire mission-lock (single-writer-per-mission). Throws LockTimeoutError if held + timeout exceeded. */
+  acquireMissionLock(missionId: string, options: { timeoutMs: number }): Promise<LockHandle>;
+  /** Acquire repo-lock (one-active-mission-per-repo). Throws WorkspaceConflictError if held by different mission. */
+  acquireRepoLock(repoUrl: string, missionId: string, options: { timeoutMs: number }): Promise<LockHandle>;
+  /** Release lock (idempotent on already-released). */
+  releaseLock(lock: LockHandle): Promise<void>;
+  /** Check lock state without acquiring. */
+  inspectLock(missionId: string): Promise<LockHandle | null>;
 }
 ```
 
-**Default v1 implementation:** `LocalFilesystemStorage` — workspaces live under `${BRC_WORKSPACE_ROOT}/<missionId>/<repo-name>/` (default root `~/.branchcraft/missions`); release destroys directory unless `retain: true`.
+**Default v1 implementation:** `LocalFilesystemStorage` — workspaces under `${BRC_WORKSPACE_ROOT}/<missionId>/<repo-name>/` (default `~/.branchcraft/missions`); locks via `${BRC_WORKSPACE_ROOT}/<missionId>/.lock` + `${BRC_WORKSPACE_ROOT}/<repo-name>/.repo-lock` files (atomic create-via-`O_EXCL`); stale-lock recovery via `expiresAt` check + `releaseLock` on expired (per §H.2 v0.2 fold).
 
-#### §2.1.4 `GitEngine`
+#### §2.1.4 `GitEngine` (v0.2 fold per §C.1 — comprehensive API)
 
 ```typescript
 export interface GitOptions {
@@ -107,17 +142,58 @@ export interface CommitOptions {
   readonly message: string;
   readonly author?: AgentIdentity;
   readonly amend?: boolean;
+  readonly autoStage?: boolean; // v0.2 fold — explicit stage-everything-tracked vs caller-controlled
+}
+
+export type MergeStrategy = "ff" | "no-ff" | "squash" | "rebase"; // v0.2 fold per §C.1 — added rebase
+
+export interface PushOptions {
+  readonly branch?: string;
+  readonly remote?: string;        // v0.2 fold per §C.1 — explicit remote (default 'origin')
+  readonly force?: boolean;
+  readonly tags?: boolean;         // v0.2 fold — push tags
+}
+
+export interface LogEntry {
+  readonly sha: string;
+  readonly author: AgentIdentity;
+  readonly message: string;
+  readonly timestamp: Date;
+  readonly parents: string[];
 }
 
 export interface GitEngine {
+  // Lifecycle
   init(workspace: WorkspaceHandle, options: GitOptions): Promise<void>;
   clone(workspace: WorkspaceHandle, repoUrl: string, options: GitOptions): Promise<void>;
+
+  // Refs (branches + tags)
   branch(workspace: WorkspaceHandle, branchName: string, options?: { from?: string }): Promise<void>;
+  checkout(workspace: WorkspaceHandle, branchName: string): Promise<void>;                       // v0.2 fold per §C.1 — branch-switch primitive
+  getCurrentBranch(workspace: WorkspaceHandle): Promise<string>;                                  // v0.2 fold per §C.1
+  tag(workspace: WorkspaceHandle, name: string, options?: { ref?: string; message?: string }): Promise<void>; // v0.2 fold per §C.1 — release-tag primitive (dogfood-gap closure)
+  revparse(workspace: WorkspaceHandle, ref: string): Promise<string>;                             // v0.2 fold per §C.1 — ref→sha resolution
+
+  // Working tree + commit
+  stage(workspace: WorkspaceHandle, paths: string[] | "all"): Promise<void>;                      // v0.2 fold per §C.1 — explicit staging primitive
   commit(workspace: WorkspaceHandle, options: CommitOptions): Promise<string /* sha */>;
-  push(workspace: WorkspaceHandle, options?: { branch?: string; force?: boolean }): Promise<void>;
-  pull(workspace: WorkspaceHandle, options?: { branch?: string }): Promise<void>;
-  merge(workspace: WorkspaceHandle, sourceBranch: string, options?: { strategy?: "ff" | "no-ff" | "squash" }): Promise<void>;
+  /** v0.2 fold per §B.1 — commit-to-ref WITHOUT moving HEAD; load-bearing for §2.6.1 wip-branch mechanism */
+  commitToRef(workspace: WorkspaceHandle, ref: string, options: CommitOptions): Promise<string /* sha */>;
+
+  // Wire
+  fetch(workspace: WorkspaceHandle, options?: { remote?: string; branch?: string }): Promise<void>; // v0.2 fold per §C.1
+  push(workspace: WorkspaceHandle, options?: PushOptions): Promise<void>;
+  pull(workspace: WorkspaceHandle, options?: { branch?: string; remote?: string }): Promise<void>;
+  merge(workspace: WorkspaceHandle, sourceBranch: string, options?: { strategy?: MergeStrategy }): Promise<void>;
+
+  // Read
   status(workspace: WorkspaceHandle): Promise<GitStatus>;
+  log(workspace: WorkspaceHandle, options?: { ref?: string; maxCount?: number }): Promise<LogEntry[]>; // v0.2 fold per §C.1
+
+  // Remote management
+  addRemote(workspace: WorkspaceHandle, name: string, url: string): Promise<void>;       // v0.2 fold per §C.1
+  removeRemote(workspace: WorkspaceHandle, name: string): Promise<void>;                  // v0.2 fold per §C.1
+  listRemotes(workspace: WorkspaceHandle): Promise<{ name: string; url: string }[]>;      // v0.2 fold per §C.1
 }
 
 export interface GitStatus {
@@ -130,9 +206,9 @@ export interface GitStatus {
 }
 ```
 
-**Default v1 implementation:** `IsomorphicGitEngine` — wraps `isomorphic-git` library; pure-TS; portable; no native bindings; works with any IsomorphicGit-compatible filesystem (default `node:fs`; pluggable for `memfs` or custom).
+**Default v1 implementation:** `IsomorphicGitEngine` — wraps `isomorphic-git` library; pure-TS; portable; no native bindings; works with any IsomorphicGit-compatible filesystem (default `node:fs`; pluggable for `memfs` or custom). `commitToRef` uses `isomorphic-git`'s low-level `git.writeTree` + `git.writeCommit` + `git.writeRef` plumbing to commit without moving HEAD.
 
-#### §2.1.5 `RemoteProvider`
+#### §2.1.5 `RemoteProvider` (v0.2 fold per §G F13 — capabilities-gated throws-on-unsupported)
 
 ```typescript
 export interface RemoteProviderCapabilities {
@@ -148,14 +224,19 @@ export interface PullRequestSpec {
   readonly draft?: boolean;
 }
 
-export interface RemoteProvider {
-  readonly capabilities: RemoteProviderCapabilities;
-  /** Authenticate with the remote (token retrieval + validation). */
-  authenticate(): Promise<void>;
-  /** Open a pull request (only if capabilities.supportsPullRequests). */
-  openPullRequest?(repoUrl: string, spec: PullRequestSpec): Promise<{ url: string; number: number }>;
-  /** Read repo metadata via API (only if capabilities.supportsApi). */
-  getRepoMetadata?(repoUrl: string): Promise<RepoMetadata>;
+export interface PullRequestSummary {
+  readonly url: string;
+  readonly number: number;
+  readonly state: "open" | "closed" | "merged";
+  readonly title: string;
+  readonly head: string;
+  readonly base: string;
+}
+
+export interface PullRequestFilter {
+  readonly state?: "open" | "closed" | "merged" | "all";
+  readonly head?: string;
+  readonly base?: string;
 }
 
 export interface RepoMetadata {
@@ -163,11 +244,32 @@ export interface RepoMetadata {
   readonly visibility: "public" | "private";
   readonly description?: string;
 }
+
+export interface RemoteUser {
+  readonly login: string;
+  readonly email?: string;
+}
+
+/** v0.2 fold per §G F13 — capabilities-gated throws-on-unsupported pattern.
+ *  Methods are NOT optional; callers MUST check capabilities + branchcraft throws UnsupportedOperationError if mismatch. */
+export interface RemoteProvider {
+  readonly capabilities: RemoteProviderCapabilities;
+  /** Authenticate with the remote (token retrieval + validation). */
+  authenticate(): Promise<void>;
+  /** Get authenticated user identity. v0.2 fold per §C.3. Throws UnsupportedOperationError if !capabilities.supportsApi. */
+  getCurrentUser(): Promise<RemoteUser>;
+  /** Open a pull request. Throws UnsupportedOperationError if !capabilities.supportsPullRequests. */
+  openPullRequest(repoUrl: string, spec: PullRequestSpec): Promise<PullRequestSummary>;
+  /** List pull requests. v0.2 fold per §C.3. Throws UnsupportedOperationError if !capabilities.supportsPullRequests. */
+  listPullRequests(repoUrl: string, filter?: PullRequestFilter): Promise<PullRequestSummary[]>;
+  /** Read repo metadata via API. Throws UnsupportedOperationError if !capabilities.supportsApi. */
+  getRepoMetadata(repoUrl: string): Promise<RepoMetadata>;
+}
 ```
 
 **Default v1 implementation:** NONE (pure-git mode; no RemoteProvider configured; `push`/`pull` work via plain git wire-protocol).
 
-**Opt-in v1 implementation:** `GitHubRemoteProvider` via `gh` CLI subprocess invocation — `authenticate()` shells `gh auth status`; `openPullRequest()` shells `gh pr create`; `getRepoMetadata()` shells `gh repo view --json`. Clean dependency surface (no Octokit; no hand-rolled HTTP); single auth flow via `gh auth token`.
+**Opt-in v1 implementation:** `GitHubRemoteProvider` via `gh` CLI subprocess invocation — `capabilities = { supportsPullRequests: true, supportsApi: true }`; `authenticate()` shells `gh auth status`; `getCurrentUser()` shells `gh api user --jq '{login, email}'`; `openPullRequest()` shells `gh pr create`; `listPullRequests()` shells `gh pr list --json`; `getRepoMetadata()` shells `gh repo view --json`. Clean dependency surface (no Octokit; no hand-rolled HTTP); single auth flow via `gh auth token`. `authenticate()` validates `gh` presence + version at startup; clear error if unavailable.
 
 ### §2.2 Default-stack composition (v1)
 
@@ -220,12 +322,20 @@ CLI verb taxonomy (v1 complete enumeration; per F5 Survey-flag architect-recomme
 | `brc remote remove <name>` | (no flags) | Remove configured remote |
 | `brc config get <key>` | (no flags) | Get config value |
 | `brc config set <key> <value>` | (no flags) | Set config value |
-| `brc citations validate` | `[<file-or-glob>]` | (sub-mission #2 deliverable; F-pending) Validate citations |
-| `brc cross-repo-pr fan-out` | `--target=<version>` | (sub-missions #3-#11 deliverable; parent F12 PROBE; defer to ratification) Coordinate cross-repo PR fan-out |
+| `brc fetch` | `[--branch <name>] [--remote <name>]` | Fetch from remote (without merge); v0.2 fold per §C.1 |
+| `brc checkout <branch>` | (no flags) | Switch HEAD to branch; v0.2 fold per §C.1 |
+| `brc tag <name>` | `[--ref <ref>] [--message <msg>]` | Create tag (annotated if `--message`); v0.2 fold per §C.1 (release-tag dogfood-gap closure) |
+| `brc log` | `[--ref <ref>] [--max-count <n>]` | Show commit history; v0.2 fold per §C.1 |
+| `brc revparse <ref>` | (no flags) | Resolve ref to SHA; v0.2 fold per §C.1 |
+| `brc stage <paths...\|--all>` | (no flags) | Explicit staging primitive; v0.2 fold per §C.1 |
 | `brc --help` / `<verb> --help` | (per-verb help) | Documentation |
 | `brc --version` | (no flags) | Version output |
 
-**v1 minimum:** `init/clone/branch/commit/push/pull/merge/status/mission start/status/complete/abandon/remote add/list/remove/config get/set/--help/--version` (19 verbs/sub-verbs). `citations validate` is sub-mission #2's contribution. `cross-repo-pr fan-out` defers to parent F12 PROBE ratification.
+**v0.2 §A fold — REMOVED from v1 surface (calibration #62 catch):**
+- ~~`brc citations validate`~~ — was a deferred-verb-without-impl violating Strict-1.0; sub-mission #2 (citation-validator-tooling) ships its own CLI extension OR plugins-into-branchcraft via separate add-on package
+- ~~`brc cross-repo-pr fan-out`~~ — was a deferred-verb-without-impl violating Strict-1.0; sub-missions #3-#11 ship coordinated PR fan-out via their own CLI extension OR via OIS-side orchestration
+
+**v1 minimum (24 verbs/sub-verbs):** `init/clone/branch/checkout/fetch/commit/stage/push/pull/merge/tag/log/revparse/status/mission start/status/complete/abandon/remote add/list/remove/config get/set/--help/--version`. Strict-1.0 commitment: every verb here is final shape; post-v1 verb additions require major-bump.
 
 #### §2.3.2 Library-SDK persona
 
@@ -278,93 +388,118 @@ await mission.complete();
 
 NOT in v1 scope. Built post-v1 via OIS-side adapter consuming the library-SDK persona.
 
-### §2.4 Workspace contract (per parent §2.2.3 + Survey §0)
+### §2.4 Workspace contract (per parent §2.2.3 + Survey §0; v0.2 folds per §H.1 + §H.2)
 
 - **Mission ID format:** `<id>` is the Hub mission entity ID (e.g., `mission-77`); branchcraft itself is agnostic to ID source
-- **Workspace path:** `${workspaceRoot}/<missionId>/<repo-name>/` — default `${workspaceRoot}=~/.branchcraft/missions`; configurable via `BRC_WORKSPACE_ROOT` env-var OR `--workspace-root` CLI flag OR `workspace-root` mission-config field (per F7 Survey-flag architect-recommendation)
-- **Single-writer-per-mission lock:** acquired at `brc mission start`; lockfile at `${workspaceRoot}/<missionId>/.lock`; lock-timeout configurable (default 24h; Phase 4 design call)
-- **One-active-mission-per-repo lock:** repo-level lock at `${workspaceRoot}/<repo-name>/.repo-lock`; prevents two missions checking out conflicting branches
+- **Workspace path:** `${workspaceRoot}/<missionId>/<repo-name>/` — default `${workspaceRoot}=~/.branchcraft/missions`
+- **Configuration precedence (v0.2 fold per §H.1):** **CLI flag > env-var > mission-config field > default**. So `--workspace-root /custom` (CLI) wins over `BRC_WORKSPACE_ROOT=/env-path` (env) wins over `workspace-root: /config-path` (mission-config) wins over `~/.branchcraft/missions` (default). Same precedence model applies to ALL configurable fields.
+- **Single-writer-per-mission lock:** acquired via `StorageProvider.acquireMissionLock(missionId, { timeoutMs })` at `brc mission start`; lockfile at `${workspaceRoot}/<missionId>/.lock`; lock-timeout configurable (default 24h per F14)
+- **One-active-mission-per-repo lock:** acquired via `StorageProvider.acquireRepoLock(repoUrl, missionId, { timeoutMs })`; lockfile at `${workspaceRoot}/<repo-name>/.repo-lock`; prevents two missions checking out conflicting branches
+- **Lock-timeout recovery (v0.2 fold per §H.2):** at lock-acquire, if existing lock's `expiresAt` is in past → automatic `releaseLock` of stale lock + acquire fresh (fail-safe recovery); if `expiresAt` in future → `LockTimeoutError` thrown to caller. Mission-state at expiry: stale lock means prior holder process likely dead; mission-state derivable from wip-branch + snapshotRoot per §2.6
 - **Ephemeral by default:** mission workspaces destroyed at `brc mission complete` (operator opt-in to retain via `--retain` flag); long-lived workspaces only for ops-repos (operator-explicit)
 - **Auto-merge configurability (parent §2.2.4):** CLI flag (`brc merge --auto`) for ad-hoc; mission-config-driven (`auto-merge: true` field) for governance-scope; auto-merge ≠ auto-deploy
 
-### §2.5 Mission-config schema
+### §2.5 Mission-config schema (v0.2 fold per §E — 7 fields added)
 
-YAML format (TypeScript-validated via zod or equivalent at load-time). Per F6 Survey-flag architect-recommendation:
+YAML format (TypeScript-validated via zod at load-time). Per F6 Survey-flag + §E engineer round-1 audit:
 
 ```yaml
 # branchcraft mission config
 mission:
   id: mission-77
   description: "Extract storage-provider to sovereign repo"
+  tags:                              # v0.2 fold per §E — mission-level metadata for cross-system correlation
+    correlation-id: "ois-2026-05-08"
+    ois.io/mission-id: "mission-77"
 
 # Workspace
 workspace-root: ~/.branchcraft/missions  # optional override
+default-branch: main                 # v0.2 fold per §E — clone target default (main | master | trunk)
 
 # Lock behavior
-lock-timeout-ms: 86400000  # 24h default
+lock-timeout-ms: 86400000            # 24h default
 
 # Pluggable overrides (all optional; defaults from Branchcraft constructor)
 identity:
-  provider: local-git-config  # OR custom resolver path
+  provider: local-git-config         # OR custom resolver path
 approval:
-  provider: trust-all  # OR rule-based with rules array
-  # rules: [...]  # for rule-based provider
+  provider: trust-all                # OR rule-based with rules array
+  # rules: [...]                     # for rule-based provider
 storage:
   provider: local-filesystem
 git-engine:
   provider: isomorphic-git
 remote:
-  provider: gh-cli  # OR null for pure-git mode
+  provider: gh-cli                   # OR null for pure-git mode
   # gh-cli-path: gh
 
-# State durability config (per Q1=d comprehensive coverage)
+# State durability config (per Q1=d comprehensive coverage; v0.2 fold per §B + §E)
 state-durability:
-  mechanism: layered  # layered | per-repo-git-commits | snapshot-store | fs-adapter-journal
-  cadence-ms: 30000  # 30s default
-  process-crash-recovery: true  # per Q1=d
-  disk-failure-recovery: true   # per Q1=d
-  network-partition-resilience: true  # per Q1=d
+  mechanism: layered                 # layered (default) | per-repo-git-commits | snapshot-store | fs-adapter-journal
+  wip-cadence-ms: 30000              # 30s default — §2.6.1 wip-branch commit cadence
+  snapshot-cadence-ms: 300000        # v0.2 fold per §E — 5min default — §2.6.2 bundle cadence
+  snapshot-root: /var/branchcraft/snapshots  # v0.2 fold per §E — different fs from workspace-root for disk-failure recovery
+  snapshot-retention:                # v0.2 fold per §E + F15 — keep last N OR last X-hours whichever larger
+    min-count: 5
+    min-age-hours: 24
+  wip-branch-cleanup: delete-on-complete-retain-on-abandon  # v0.2 fold per §E + F16 — delete-on-complete-retain-on-abandon | always-delete | always-retain
+  process-crash-recovery: true       # per Q1=d
+  disk-failure-recovery: true        # per Q1=d
+  network-partition-resilience: true # per Q1=d
+  # Network-partition retry config (v0.2 fold per §E + §2.6.3)
+  network-retry:
+    max-attempts: 5                  # default
+    backoff-ms: 1000                 # initial backoff; exponential
 
 # Auto-merge (per parent §2.2.4)
 auto-merge: false
-auto-merge-strategy: squash  # squash | merge | rebase
+auto-merge-strategy: squash          # squash | merge | rebase | ff
 ```
 
 ### §2.6 Periodic state durability mechanism (load-bearing per Q1=d + F1 CRITICAL)
 
 **Q1=d comprehensive durability** mandates coverage of process-crash + disk-failure + network-partition equally. **Q5=b no chaos-testing** means validation-strategy is via design-discipline + targeted-integration-tests (per F1 architect-recommendation).
 
-**Architect-design (v0.1):** **layered durability mechanism** combining 3 sub-mechanisms:
+**Architect-design (v0.2 — engineer round-1 §B folds applied):** **layered durability mechanism** combining 3 sub-mechanisms with explicit cross-mechanism ordering invariants.
 
-#### §2.6.1 Process-crash recovery — per-repo `.git/` commits
+**Cross-mechanism ordering invariant (v0.2 fold per §B.2):** every §2.6.2 bundle-write happens AFTER its corresponding §2.6.1 wip-commit — bundle includes the wip-commit's tree state. Bundle-write failure leaves wip-commit landed (always-recoverable from §2.6.1). Atomic-bundle-write via write-to-temp-then-rename (POSIX `rename(2)` is atomic on same-fs); partial bundles never visible. **§2.6.1 → §2.6.2 dependency:** §2.6.2 bundles the WIP-BRANCH HISTORY (not "working tree state") — git-bundle operates on git objects in the object store, which §2.6.1 has populated.
 
-- Every N seconds (cadence configurable; default 30s), branchcraft commits dirty workspace state to a `wip/<mission-id>` branch (commit-only; no push)
-- On `kill -9` / OOM / panic: process restart reads workspace; `wip/<mission-id>` branch carries last durable state; mission resumes from there
+#### §2.6.1 Process-crash recovery — per-repo `wip/<mission-id>` branch via `commitToRef` plumbing (v0.2 fold per §B.1)
+
+- Every N seconds (cadence configurable; default 30s via `state-durability.wip-cadence-ms`), branchcraft uses `GitEngine.commitToRef(workspace, 'refs/heads/wip/<mission-id>', { message, autoStage: true })` to commit dirty workspace state to a wip-branch **without moving HEAD** (operator's feature-branch checkout preserved)
+- Foreground/background race resolution (v0.2 fold per §B.1): wip-cadence task acquires the workspace's storage-lock briefly during `commitToRef` invocation; user-driven `commit()` operations also acquire the lock; operations serialize (no concurrent writes to refs)
+- Wip-branch object accumulation (v0.2 fold per §B.1): after wip-cadence-tick N, branchcraft GCs wip-branch history older than retention-window (default: keep last 100 wip-commits); periodic `gc.auto` invocation for object pruning
+- On `kill -9` / OOM / panic: process restart reads workspace; `refs/heads/wip/<mission-id>` carries last durable tree state; mission resumes from there
 - Cost: minor disk I/O per cadence-tick; near-zero startup overhead
 - Coverage: process-crash with workspace-disk intact
 
-#### §2.6.2 Disk-failure recovery — out-of-band snapshot store
+#### §2.6.2 Disk-failure recovery — out-of-band snapshot store (v0.2 fold per §B.2 + §B.3)
 
-- Every M seconds (cadence configurable; default 5min — coarser than per-repo cadence), branchcraft serializes workspace state (`git bundle create` of working tree) to `${snapshotRoot}/<missionId>/snapshot-<timestamp>.bundle`
-- `snapshotRoot` is a different filesystem path from `workspaceRoot` (operator configures cross-disk OR cross-mount snapshot path)
-- On disk-failure: workspace storage lost; branchcraft restores from latest bundle on snapshotRoot
-- Cost: bundle-create per cadence-tick (M=5min default reduces frequency); snapshot disk-space proportional to workspace-size × snapshot-retention
-- Coverage: workspace-disk corruption / accidental delete (assuming snapshotRoot is on different disk)
+- Every M seconds (cadence configurable; default 5min via `state-durability.snapshot-cadence-ms` — coarser than wip-cadence), branchcraft creates a git-bundle of the wip-branch history: `git bundle create ${snapshotRoot}/<missionId>/snapshot-<timestamp>.bundle.tmp refs/heads/wip/<mission-id>` then atomic-renames to `snapshot-<timestamp>.bundle`
+- **Bundle scope (v0.2 fold per §B.3):** wip-branch history (NOT "working tree state" — git-bundle operates on git objects in the object store; uncommitted dirty files are not bundleable directly; §2.6.1 wip-commits ensure dirty state IS in the object store before §2.6.2 bundles)
+- `snapshotRoot` is a different filesystem path from `workspaceRoot` (operator configures cross-disk OR cross-mount); rejection at startup if same filesystem (defeats disk-failure resilience)
+- Snapshot retention per `state-durability.snapshot-retention.{min-count, min-age-hours}`: keep last N OR last X-hours whichever-larger (default 5 + 24h)
+- On disk-failure: workspace storage lost; branchcraft restores from latest valid bundle on snapshotRoot via `git clone <bundle-path>` + workspace re-allocation
+- Cost: bundle-create per cadence-tick (5min default); atomic-rename overhead negligible; snapshot disk-space proportional to workspace-size × retention
+- Coverage: workspace-disk corruption / accidental delete (assuming snapshotRoot is cross-disk)
 
-#### §2.6.3 Network-partition resilience — IsomorphicGit resumable-push semantics
+#### §2.6.3 Network-partition resilience — push retry-loop with exponential backoff (v0.2 fold per §B.4 — claim correction)
 
-- IsomorphicGit's `push()` is resumable at protocol level (smart-HTTP supports range requests; native git/SSH supports pack-resumption)
-- branchcraft wraps push in `with-retry-on-network-error`: detect `ECONNRESET` / `ETIMEDOUT` / `ENOTFOUND`; retry with exponential backoff up to N attempts (configurable; default 5)
-- Mid-push partition: workspace state remains durable on disk via §2.6.1; push retries until success or operator-abort
-- Cost: per-push retry-loop overhead (negligible on healthy network); no separate substrate
-- Coverage: push/pull interrupted mid-flight; state survives partition; completes when network returns
+**v0.2 correction (§B.4):** v0.1 incorrectly claimed "IsomorphicGit's `push()` is resumable at protocol level (smart-HTTP supports range requests; native git/SSH supports pack-resumption)". **Both halves were wrong:** smart-HTTP push uses POST with full pack body; no Range-request resumption. IsomorphicGit doesn't speak SSH transport at all. The actual mechanism is **retry-on-failure with full-pack-restart**.
+
+- branchcraft wraps `GitEngine.push()` in a `with-retry-on-network-error` wrapper: detect `ECONNRESET` / `ETIMEDOUT` / `ENOTFOUND` / `socket hang up`; retry with exponential backoff (`state-durability.network-retry.max-attempts`, default 5; initial backoff `network-retry.backoff-ms`, default 1000ms)
+- Each retry attempts the FULL push (pack-restart). For mid-push partition: drop = restart; workspace state remains durable on disk via §2.6.1; push retries until success or `max-attempts` exceeded (then `NetworkRetryExhaustedError`)
+- Cost: per-push retry-loop overhead (negligible on healthy network); full-pack-restart per attempt (proportional to push size; acceptable for typical mission cadence)
+- Coverage: push/pull interrupted mid-flight; state survives partition (via §2.6.1); push completes when network returns OR operator-abort after retry-exhaustion
 
 #### §2.6.4 Validation strategy (Q5=b bounded; per F1 architect-recommendation)
 
-**Targeted-integration-tests** (one per failure-mode; stays within Q5=b "integration" tier):
+**Targeted-integration-tests** (within Q5=b "integration" tier; v0.2 expanded per §B + §H.3):
 1. **Process-crash test:** spawn branchcraft mission; mid-commit `kill -9` the process; restart; assert mission state recovered from `wip/<mission-id>` branch
 2. **Disk-failure test:** spawn branchcraft mission; `rm -rf` workspaceRoot mid-mission; assert snapshotRoot bundle restoration recovers state
-3. **Network-partition test:** spawn branchcraft mission; mid-push toggle network (mock `iptables -A OUTPUT -j DROP` equivalent OR use undici mock); assert push retry-loop completes when network returns
+3. **Network-partition test:** spawn branchcraft mission; mid-push toggle network (undici mock OR test-fixture HTTP server that drops connections); assert push retry-loop completes when network returns
+4. **Cross-mechanism crash test (v0.2 fold per §B.2):** spawn branchcraft mission; mid-bundle-write `kill -9` the process while wip-cadence ticking; restart; assert wip-branch is intact + partial bundle was atomically-renamed-or-not (no half-bundle); assert recovery from wip/branch (snapshot restoration falls back to last valid bundle)
+5. **Lock-timeout-recovery test (v0.2 fold per §H.3):** acquire lock; force `expiresAt` to past; concurrent acquire from second mission attempt; assert second acquire succeeds + first lock auto-released
 
 **NO chaos / fault-injection tests.** **NO cross-version-compatibility tests.** Q5=b boundary respected.
 
@@ -381,7 +516,7 @@ auto-merge-strategy: squash  # squash | merge | rebase
 
 - **End-to-end mission lifecycle:** init → clone (test fixture repo) → branch → commit → push → pull → merge → mission complete; verify workspace destroyed unless `--retain`
 - **Mission-config integration:** load YAML config; verify pluggable overrides applied
-- **3 targeted-failure-mode tests** (per §2.6.4): process-crash + disk-failure + network-partition recovery
+- **5 targeted-failure-mode tests (v0.2 fold per §B + §H.3):** process-crash + disk-failure + network-partition recovery + cross-mechanism crash (mid-bundle-write while wip-cadence) + lock-timeout-recovery (stale-lock auto-release)
 - **Lock semantics:** single-writer-per-mission (concurrent `brc mission start` on same mission → second fails); one-active-mission-per-repo (concurrent `brc mission start` on same repo from different missions → second fails)
 
 #### §2.7.3 Test infrastructure choice
@@ -413,6 +548,7 @@ auto-merge-strategy: squash  # squash | merge | rebase
     "brc": "dist/cli.js"
   },
   "files": ["dist/", "README.md", "LICENSE"],
+  "sideEffects": false,
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -423,20 +559,21 @@ auto-merge-strategy: squash  # squash | merge | rebase
   "dependencies": {
     "isomorphic-git": "^1.x",
     "yaml": "^2.x",
-    "zod": "^3.x"
+    "zod": "^4.x"
   },
   "devDependencies": {
     "@types/node": "^20.x",
     "typescript": "^5.x",
-    "vitest": "^1.x",
-    "typedoc": "^0.25.x",
+    "vitest": "^4.x",
+    "typedoc": "^0.28.x",
     "memfs": "^4.x"
   },
   "engines": {
     "node": ">=20"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "repository": {
     "type": "git",
@@ -445,24 +582,37 @@ auto-merge-strategy: squash  # squash | merge | rebase
 }
 ```
 
+**v0.2 folds (per §D + §F):**
+- `"sideEffects": false` (per §F — required signal for tree-shake-friendly bundling beyond named-exports alone)
+- `zod ^3.x` → `^4.x` (current 4.4.3; minor breaking changes around `.parse()` defaults — Phase 6 implementation handles)
+- `vitest ^1.x` → `^4.x` (current 4.1.5; multiple breaking-config changes — Phase 6 implementation handles)
+- `typedoc ^0.25.x` → `^0.28.x` (current 0.28.19; mostly additive)
+- `publishConfig.provenance: true` (per §H.4 — npm provenance attestation; OIDC-signed via GitHub Actions; supply-chain integrity for sub-mission #2-#11 consumers)
+
+**Browser-shape note (per §F):** branchcraft v1 is **Node-only** (`engines.node >=20`); `LocalGitConfigIdentity` shells `git config` via `child_process` which is Node-only. Browser/edge consumers explicitly out-of-scope at v1; future v2+ MAY add browser-conditional exports if demand surfaces.
+
 Lean dep surface: 3 runtime deps (`isomorphic-git` + `yaml` + `zod`); no Octokit; no hand-rolled HTTP.
 
 #### §2.9.2 `tsconfig.json`
 
 Standard strict TypeScript; ES2022 target; ESM module; declarations emitted.
 
-#### §2.9.3 CI/CD (per F11 Survey-flag GitHub-Actions-only)
+#### §2.9.3 CI/CD (per F11 Survey-flag GitHub-Actions-only; v0.2 folds per §H.4 + §H.5 + §H.6)
 
 `.github/workflows/ci.yml`:
 - Trigger: push to `main` + PRs to `main`
-- Matrix: node 20.x + 22.x
+- **OS matrix (v0.2 fold per §H.5):** ubuntu-latest + macos-latest (CLI tool tested on linux + macOS; Windows out-of-scope at v1)
+- Node matrix: node 20.x + 22.x
 - Steps: `npm ci` → `npm run build` → `npm test`
 - Status check: `vitest (branchcraft)` + `tsc-build`
 
 `.github/workflows/release.yml`:
 - Trigger: tag matching `v*.*.*`
-- Steps: `npm ci` → `npm run build` → `npm test` → `npm publish` (requires `NODE_AUTH_TOKEN` secret)
-- Concurrent: TypeDoc deploy to GitHub Pages
+- **Permissions (v0.2 fold per §H.4 + F17):** `id-token: write` (OIDC for npm provenance) + `contents: read` + `pages: write` (TypeDoc deploy)
+- Steps: `npm ci` → `npm run build` → `npm test` → `npm publish --provenance` (OIDC-signed; per `publishConfig.provenance: true`)
+- Concurrent: TypeDoc deploy to GitHub Pages via `actions/setup-pages` + `actions/upload-pages-artifact`
+
+**Release-tagging discipline (v0.2 fold per §H.6):** tags applied via `changesets` (`@changesets/cli` devDep) — operator runs `npx changeset` to create a changeset; merged changesets accumulate in `.changeset/`; `npx changeset version` bumps version + generates CHANGELOG.md; `npx changeset publish` creates the tag + triggers release.yml. Strict-1.0 commitment means EVERY breaking change emits a major-changeset (rejected at PR-time if not explicit).
 
 #### §2.9.4 LICENSE
 
@@ -535,16 +685,26 @@ Apache 2.0
 | F11 | CI/CD scope at v1 | MINOR | §2.9.3 GitHub Actions only |
 | F12 | License + CLA | MINOR | §2.9.4 Apache 2.0; NO CLA at v1 |
 
-**NEW v0.1 architect-flags surfaced during Design draft (request engineer round-1 audit):**
+**NEW v0.1 architect-flags (F13-F18 — engineer round-1 dispositions per §G):**
+
+| # | Flag | Class | v0.2 Disposition |
+|---|---|---|---|
+| F13 | RemoteProvider opt-in pattern | MEDIUM | **RATIFIED v0.2 capabilities-gated throws-on-unsupported per §G engineer-counter**. Methods NOT optional; capabilities-flag check is caller-discipline; branchcraft throws `UnsupportedOperationError` if mismatch. Cleaner than redundant optional-method+capabilities-flag signal. §2.1.5 updated. |
+| F14 | Lock-timeout default value | PROBE | **RATIFIED 24h per §G engineer concur**. §2.4 + §2.5 |
+| F15 | Snapshot retention policy | MEDIUM | **RATIFIED keep last 5 OR last 24h whichever larger per §G engineer concur**. §2.5 schema fields: `snapshot-retention.{min-count: 5, min-age-hours: 24}`. |
+| F16 | wip-branch cleanup post-mission | MEDIUM | **RATIFIED delete-on-complete + retain-on-abandon per §G engineer concur**. §2.5 schema field: `wip-branch-cleanup: delete-on-complete-retain-on-abandon`. |
+| F17 | TypeDoc deploy mechanism | MINOR | **RATIFIED GitHub Pages from release.yml per §G engineer concur**. §2.9.3 updated with `permissions: pages: write` + `actions/setup-pages` per engineer pattern-recommendation. |
+| F18 | Error class hierarchy | MEDIUM | **RATIFIED 7 classes (architect 5 + engineer 2)**: `BranchcraftError` (base) + `LockTimeoutError` + `StorageAllocationError` + `RemoteAuthError` + `ApprovalDeniedError` + `MissionStateError` + **`WorkspaceConflictError`** (v0.2 add per §G engineer; one-active-mission-per-repo violation) + **`ConfigValidationError`** (v0.2 add per §G engineer; zod parse failure). Plus `UnsupportedOperationError` (per F13 disposition) + `NetworkRetryExhaustedError` (per §2.6.3). Total 9 classes. |
+
+**NEW v0.2 architect-flags (F19-F23 surfaced during round-1 fold-pass; request engineer round-2 audit):**
 
 | # | Flag | Class | Architect-recommendation |
 |---|---|---|---|
-| F13 | RemoteProvider opt-in pattern — `?` optional methods on interface vs throws-on-unsupported | MEDIUM | §2.1.5 uses optional `?` methods + `capabilities.supportsPullRequests` flag. Caller checks capabilities before calling optional method. Engineer round-1 may prefer `throws { code: 'UNSUPPORTED' }` pattern instead. |
-| F14 | Lock-timeout default value | PROBE | §2.5 specifies 24h default; aggressive enough to recover from typical mission cycles; tight enough to release stale locks. Engineer round-1 may surface alternative (1h? 4h? 1 week?) |
-| F15 | Snapshot retention policy | MEDIUM | §2.6.2 doesn't specify how many bundle snapshots are retained per mission. Need policy: keep last N? keep last N OR last 24h whichever larger? Engineer round-1 audit. Architect-lean: keep last 5 OR last 24h whichever larger. |
-| F16 | `wip/<mission-id>` branch cleanup post-mission-complete | MEDIUM | §2.6.1 doesn't specify. Architect-lean: `mission complete` deletes the wip branch (workspace destroyed anyway). `mission abandon` retains wip-branch for forensics? Engineer audit. |
-| F17 | TypeDoc deploy mechanism — GitHub Pages? OR npm-package-shipped HTML? | MINOR | §2.9.3 GitHub Pages from `release.yml`. Engineer concur or alternative. |
-| F18 | Error class hierarchy — branchcraft-specific error classes (`BranchcraftError`, `LockTimeoutError`, etc.)? | MEDIUM | §2.1 doesn't surface error-shape. Architect-recommendation: ship `BranchcraftError` base + 4-6 specialized classes (`LockTimeoutError` / `StorageAllocationError` / `RemoteAuthError` / `ApprovalDeniedError` / `MissionStateError`). Engineer round-1 may surface alternative. |
+| F19 | `commitToRef` plumbing primitive on GitEngine — does this break clean abstraction (commit + commitToRef as siblings)? OR is it a justified low-level primitive? | MEDIUM | Recommend keep as sibling primitive; `commit()` is the high-level surface (HEAD-aware); `commitToRef()` is plumbing-mode (HEAD-unaware) for §2.6.1 wip-mechanism. Engineer round-2 may argue alternative (e.g., commit() with options.targetRef discriminator). |
+| F20 | Mission-config schema versioning — schema itself is committed contract under Strict-1.0; how do mission-config additions in v1.x ship without breaking? | MEDIUM | Recommend `mission-config-schema-version: 1` field; v1.x can ADD optional fields (additive-only); REMOVING or RENAMING fields requires v2 + new schema-version. Engineer round-2 may surface alternative. |
+| F21 | StorageProvider interface bundles locking primitives — does this couple storage + lock concerns inappropriately? OR is it the cleanest spot? | MEDIUM | Recommend bundled per §G engineer-counter (vs 6th LockProvider pluggable). Workspace allocation + locking are tightly coupled (atomic). 6th pluggable would over-modularize. Engineer round-2 concur or argue extraction. |
+| F22 | Changesets discipline ratification — `@changesets/cli` devDep adds CI ceremony; is the strict-1.0 enforcement worth the operator-friction? | MINOR | Recommend yes — strict-1.0 needs PR-time changeset discipline; alternative (manual semver bumps) drifts under load. Engineer concur or surface alternative. |
+| F23 | Browser-shape post-v1 path — engineer §F flagged `LocalGitConfigIdentity` is Node-only; future browser support deferred. Should v1 explicitly REJECT browser usage at module-level? OR allow runtime shape detection? | PROBE | Recommend explicit Node-only at v1 (engines.node>=20 already constrains); browser-export consideration deferred to v2 if demand surfaces. No active rejection at module-level (operator gets natural import-error). |
 
 ---
 
@@ -606,10 +766,10 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 
 | Version | Date | Trigger | Notes |
 |---|---|---|---|
-| **v0.1 DRAFT** | **2026-05-08** | **architect-side draft post Survey envelope ratification @ SHA `efbc5ad`** | **this version; pre-engineer-audit** |
-| v0.2 (planned) | TBD | engineer round-1 audit folds | engineer surfaces F1-F18 challenges + new architect-flags (if any) |
+| v0.1 DRAFT | 2026-05-08 | architect-side draft post Survey envelope ratification @ SHA `efbc5ad` | pushed at SHA `e064f56` |
+| **v0.2 DRAFT** | **2026-05-08** | **engineer round-1 audit folds (thread-509 round 1/20)** | **this version; substantial v0.2 fold per engineer round-1 audit: §A drop deferred CLI verbs (calibration #62 catch); §B §2.6 mechanism rewrite (commitToRef plumbing + ordering invariant + atomic-bundle + resumable-push correction); §C API completeness (GitEngine +9 methods + merge rebase + ApprovalContext +6 actions + RemoteProvider +2 methods + StorageProvider lock primitives + IdentityProvider signingKey discriminated union); §D dep majors (zod 3→4, vitest 1→4, typedoc 0.25→0.28); §E mission-config 7 fields; §F sideEffects:false + Node-only note; §G F13 capabilities-gated throws; F18 9 errors; §H 8 refinements. F19-F23 NEW v0.2 architect-flags surfaced for round-2 audit |
 | v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-2 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
 
-**Phase 4 dispatch destination:** greg / engineer; round-1 bilateral audit thread thread-509; **maxRounds=20** per Director directive ("ensure thread has 20 turns available for extensive discussion"); semanticIntent=seek_rigorous_critique.
+**Phase 4 dispatch destination:** greg / engineer; round-1 bilateral audit thread-509; **maxRounds=20** per Director directive; semanticIntent=seek_rigorous_critique.
 
-**Architect-side commit pin v0.1:** committed + pushed in same dispatch step per `feedback_narrative_artifact_convergence_discipline.md` atomic pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → THIS COMMIT (post-push). Per `feedback_narrative_artifact_convergence_discipline.md` atomic pattern.
