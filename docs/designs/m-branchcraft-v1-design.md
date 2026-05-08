@@ -1,6 +1,6 @@
-# M-Branchcraft-V1 — Design v0.2 DRAFT
+# M-Branchcraft-V1 — Design v0.3 DRAFT
 
-**Status:** **v0.2 DRAFT** (architect-side; post engineer round-1 audit folds). v0.1 → v0.2 folds: (§A) deferred CLI verbs `citations validate` + `cross-repo-pr fan-out` REMOVED from v1 surface (calibration #62 amplification-loop catch); (§B) §2.6 durability mechanism rewritten — `commitToRef` plumbing primitive on GitEngine for wip-commits without HEAD-movement; explicit cross-mechanism ordering invariant (§2.6.1 → §2.6.2 dependency); atomic-bundle-write via write-to-temp + rename; §2.6.3 resumable-push claim corrected to retry-on-failure; (§C) API completeness — GitEngine +9 methods (fetch/checkout/tag/log/revparse/addRemote/removeRemote/getCurrentBranch/commitToRef/stage) + merge rebase strategy; ApprovalContext.action enum +6 actions; RemoteProvider +2 methods; StorageProvider lock primitives surfaced; IdentityProvider.signingKey discriminated union; (§D) deps bumped — zod 3→4, vitest 1→4, typedoc 0.25→0.28; (§E) mission-config 7 fields added; (§F) `"sideEffects": false`; (§G) F13 picked (b) capabilities-gated throws-on-unsupported; F18 +2 errors; (§H) 8 refinements. v0.1 architect-draft → v0.2 (this version; engineer round-1 folds applied) → engineer round-2 audit → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
+**Status:** **v0.3 DRAFT** (architect-side; post engineer round-2 audit folds). v0.2 → v0.3 folds: (§AA) `commitToRef` index-pollution risk surfaced; design moves to **bypass-index via filesystem-walk + writeBlob + explicit-tree-construction** per engineer round-2 (b) recommendation — `commitToRef` operates without poisoning operator's staging area; (§BB) F18 count fix 9→10 + parent-child inheritance spec (flat hierarchy; all specialized extend `BranchcraftError`); (§CC) StorageProvider lock-acquire `timeoutMs` split into `waitMs` + `validityMs` (separate concepts); inspect surface generalized to `inspectLocks`; (§DD) §2.6.2 bundle-restoration spec — validity check via `git bundle verify`; ref-rewriting on clone-from-bundle (`refs/remotes` → `refs/heads`); same-fs detection via `stat().dev`; (§EE) GitEngine `deleteBranch` added (load-bearing for F16 wip-cleanup); minor `tag.force` + `fetch.prune` + `log.since/path`; (§FF) F22 CI gate spec (`npx changeset status` build-step); F20 schema-version top-level field; (§GG) 5 minor refinements. v0.1 → v0.2 (engineer round-1 folds) → v0.3 (this version; engineer round-2 folds applied) → engineer round-3 audit → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
 **Mission name:** M-Branchcraft-V1 (idea-263; sub-mission #1 of meta-mission idea-261)
 **Mission-class:** substrate-introduction (foundational; first sub-mission of 11-sub-mission catalog; everything else uses branchcraft)
 **Source idea:** idea-263 (M-Branchcraft-V1)
@@ -115,15 +115,23 @@ export interface StorageProvider {
   /** Bulk-release for mission cleanup. v0.2 fold per §C.4. */
   cleanup(missionId: string): Promise<void>;
 
-  // Lock primitives (v0.2 fold per §C.4 — surfaced into interface contract for 3rd-party StorageProvider implementations)
-  /** Acquire mission-lock (single-writer-per-mission). Throws LockTimeoutError if held + timeout exceeded. */
-  acquireMissionLock(missionId: string, options: { timeoutMs: number }): Promise<LockHandle>;
+  // Lock primitives (v0.2 fold per §C.4 — surfaced into interface contract for 3rd-party StorageProvider implementations;
+  //                  v0.3 fold per §CC — `timeoutMs` split into `waitMs` + `validityMs` (separate concepts);
+  //                  inspect surface generalized to `inspectLocks`)
+  /** Acquire mission-lock (single-writer-per-mission). Throws LockTimeoutError if waitMs exceeded; auto-releases stale locks where Date.now() > existing.expiresAt. */
+  acquireMissionLock(missionId: string, options: {
+    waitMs?: number;        // wait-timeout (how long to wait if held by another); default 0 (fail-fast)
+    validityMs?: number;    // lock TTL (auto-expiry for stale-recovery); default 86400000 (24h per F14)
+  }): Promise<LockHandle>;
   /** Acquire repo-lock (one-active-mission-per-repo). Throws WorkspaceConflictError if held by different mission. */
-  acquireRepoLock(repoUrl: string, missionId: string, options: { timeoutMs: number }): Promise<LockHandle>;
+  acquireRepoLock(repoUrl: string, missionId: string, options: {
+    waitMs?: number;        // default 0 (fail-fast)
+    validityMs?: number;    // default 86400000 (24h)
+  }): Promise<LockHandle>;
   /** Release lock (idempotent on already-released). */
   releaseLock(lock: LockHandle): Promise<void>;
-  /** Check lock state without acquiring. */
-  inspectLock(missionId: string): Promise<LockHandle | null>;
+  /** Check lock state without acquiring. v0.3 fold per §CC — generalized over both lock-types. */
+  inspectLocks(filter?: { missionId?: string; repoUrl?: string }): Promise<LockHandle[]>;
 }
 ```
 
@@ -171,24 +179,30 @@ export interface GitEngine {
   branch(workspace: WorkspaceHandle, branchName: string, options?: { from?: string }): Promise<void>;
   checkout(workspace: WorkspaceHandle, branchName: string): Promise<void>;                       // v0.2 fold per §C.1 — branch-switch primitive
   getCurrentBranch(workspace: WorkspaceHandle): Promise<string>;                                  // v0.2 fold per §C.1
-  tag(workspace: WorkspaceHandle, name: string, options?: { ref?: string; message?: string }): Promise<void>; // v0.2 fold per §C.1 — release-tag primitive (dogfood-gap closure)
+  tag(workspace: WorkspaceHandle, name: string, options?: { ref?: string; message?: string; force?: boolean }): Promise<void>; // v0.2 fold per §C.1 — release-tag primitive; v0.3 fold per §EE — +force for re-tag scenarios
   revparse(workspace: WorkspaceHandle, ref: string): Promise<string>;                             // v0.2 fold per §C.1 — ref→sha resolution
 
   // Working tree + commit
   stage(workspace: WorkspaceHandle, paths: string[] | "all"): Promise<void>;                      // v0.2 fold per §C.1 — explicit staging primitive
   commit(workspace: WorkspaceHandle, options: CommitOptions): Promise<string /* sha */>;
-  /** v0.2 fold per §B.1 — commit-to-ref WITHOUT moving HEAD; load-bearing for §2.6.1 wip-branch mechanism */
+  /** v0.3 fold per §AA — commit-to-ref WITHOUT moving HEAD AND WITHOUT polluting operator's INDEX (staging area).
+   *  Implementation contract: filesystem-walk of working-tree → per-file `git.writeBlob` → explicit tree-construction
+   *  via `git.writeTree({ tree: [...] })` overload (NOT the index-derived form) → `git.writeCommit` → `git.writeRef`.
+   *  Operator's `git status` post-call shows no staged paths from the wip-commit operation.
+   *  Load-bearing for §2.6.1 wip-branch mechanism. */
   commitToRef(workspace: WorkspaceHandle, ref: string, options: CommitOptions): Promise<string /* sha */>;
+  /** v0.3 fold per §EE — branch-delete primitive; load-bearing for F16 wip-branch cleanup on mission-complete */
+  deleteBranch(workspace: WorkspaceHandle, branchName: string, options?: { force?: boolean }): Promise<void>;
 
   // Wire
-  fetch(workspace: WorkspaceHandle, options?: { remote?: string; branch?: string }): Promise<void>; // v0.2 fold per §C.1
+  fetch(workspace: WorkspaceHandle, options?: { remote?: string; branch?: string; prune?: boolean }): Promise<void>; // v0.3 fold per §EE — +prune
   push(workspace: WorkspaceHandle, options?: PushOptions): Promise<void>;
   pull(workspace: WorkspaceHandle, options?: { branch?: string; remote?: string }): Promise<void>;
   merge(workspace: WorkspaceHandle, sourceBranch: string, options?: { strategy?: MergeStrategy }): Promise<void>;
 
   // Read
   status(workspace: WorkspaceHandle): Promise<GitStatus>;
-  log(workspace: WorkspaceHandle, options?: { ref?: string; maxCount?: number }): Promise<LogEntry[]>; // v0.2 fold per §C.1
+  log(workspace: WorkspaceHandle, options?: { ref?: string; maxCount?: number; since?: Date; path?: string }): Promise<LogEntry[]>; // v0.3 fold per §EE — +since +path
 
   // Remote management
   addRemote(workspace: WorkspaceHandle, name: string, url: string): Promise<void>;       // v0.2 fold per §C.1
@@ -308,7 +322,8 @@ CLI verb taxonomy (v1 complete enumeration; per F5 Survey-flag architect-recomme
 | `brc init` | `[--workspace-root <path>]` | Initialize branchcraft config in current directory; creates `.branchcraft/` config dir |
 | `brc clone <repo-url>` | `[--mission <id>] [--branch <name>]` | Clone repo into workspace |
 | `brc branch <name>` | `[--from <branch>]` | Create branch from current HEAD or specified branch |
-| `brc commit` | `-m <message> [--amend]` | Create commit; uses IdentityProvider for author |
+| `brc branch delete <name>` | `[--force]` | Delete branch; v0.3 fold per §EE — load-bearing for F16 wip-branch cleanup |
+| `brc commit` | `-m <message> [--amend] [--auto-stage]` | Create commit; uses IdentityProvider for author |
 | `brc push` | `[--branch <name>] [--force]` | Push to remote; uses RemoteProvider auth if configured |
 | `brc pull` | `[--branch <name>]` | Pull from remote |
 | `brc merge <source-branch>` | `[--strategy ff\|no-ff\|squash]` | Merge source-branch into current branch |
@@ -335,7 +350,7 @@ CLI verb taxonomy (v1 complete enumeration; per F5 Survey-flag architect-recomme
 - ~~`brc citations validate`~~ — was a deferred-verb-without-impl violating Strict-1.0; sub-mission #2 (citation-validator-tooling) ships its own CLI extension OR plugins-into-branchcraft via separate add-on package
 - ~~`brc cross-repo-pr fan-out`~~ — was a deferred-verb-without-impl violating Strict-1.0; sub-missions #3-#11 ship coordinated PR fan-out via their own CLI extension OR via OIS-side orchestration
 
-**v1 minimum (24 verbs/sub-verbs):** `init/clone/branch/checkout/fetch/commit/stage/push/pull/merge/tag/log/revparse/status/mission start/status/complete/abandon/remote add/list/remove/config get/set/--help/--version`. Strict-1.0 commitment: every verb here is final shape; post-v1 verb additions require major-bump.
+**v1 minimum (25 verbs/sub-verbs after v0.3 +`brc branch delete`):** `init/clone/branch/branch-delete/checkout/fetch/commit/stage/push/pull/merge/tag/log/revparse/status/mission start/status/complete/abandon/remote add/list/remove/config get/set/--help/--version`. Strict-1.0 commitment: every verb here is final shape; post-v1 verb additions require major-bump.
 
 #### §2.3.2 Library-SDK persona
 
@@ -405,10 +420,11 @@ YAML format (TypeScript-validated via zod at load-time). Per F6 Survey-flag + §
 
 ```yaml
 # branchcraft mission config
+mission-config-schema-version: 1     # v0.3 fold per §FF + F20 — top-level field; additive-only schema model under Strict-1.0; v1.x ADDs optional fields; renames/removals require v2 + new schema-version
 mission:
   id: mission-77
   description: "Extract storage-provider to sovereign repo"
-  tags:                              # v0.2 fold per §E — mission-level metadata for cross-system correlation
+  tags:                              # v0.2 fold per §E — mission-level metadata for cross-system correlation; Record<string,string> with no v1-validation (operator self-discipline)
     correlation-id: "ois-2026-05-08"
     ois.io/mission-id: "mission-77"
 
@@ -466,7 +482,7 @@ auto-merge-strategy: squash          # squash | merge | rebase | ff
 
 #### §2.6.1 Process-crash recovery — per-repo `wip/<mission-id>` branch via `commitToRef` plumbing (v0.2 fold per §B.1)
 
-- Every N seconds (cadence configurable; default 30s via `state-durability.wip-cadence-ms`), branchcraft uses `GitEngine.commitToRef(workspace, 'refs/heads/wip/<mission-id>', { message, autoStage: true })` to commit dirty workspace state to a wip-branch **without moving HEAD** (operator's feature-branch checkout preserved)
+- Every N seconds (cadence configurable; default 30s via `state-durability.wip-cadence-ms`), branchcraft uses `GitEngine.commitToRef(workspace, 'refs/heads/wip/<mission-id>', { message, autoStage: true })` to commit dirty workspace state to a wip-branch **without moving HEAD AND without polluting operator's INDEX** (v0.3 fold per §AA — implementation contract: filesystem-walk + per-file `git.writeBlob` + explicit-tree-construction via `git.writeTree({ tree: [...] })` overload, NOT the index-derived form; operator's feature-branch checkout + staging area both preserved)
 - Foreground/background race resolution (v0.2 fold per §B.1): wip-cadence task acquires the workspace's storage-lock briefly during `commitToRef` invocation; user-driven `commit()` operations also acquire the lock; operations serialize (no concurrent writes to refs)
 - Wip-branch object accumulation (v0.2 fold per §B.1): after wip-cadence-tick N, branchcraft GCs wip-branch history older than retention-window (default: keep last 100 wip-commits); periodic `gc.auto` invocation for object pruning
 - On `kill -9` / OOM / panic: process restart reads workspace; `refs/heads/wip/<mission-id>` carries last durable tree state; mission resumes from there
@@ -479,7 +495,10 @@ auto-merge-strategy: squash          # squash | merge | rebase | ff
 - **Bundle scope (v0.2 fold per §B.3):** wip-branch history (NOT "working tree state" — git-bundle operates on git objects in the object store; uncommitted dirty files are not bundleable directly; §2.6.1 wip-commits ensure dirty state IS in the object store before §2.6.2 bundles)
 - `snapshotRoot` is a different filesystem path from `workspaceRoot` (operator configures cross-disk OR cross-mount); rejection at startup if same filesystem (defeats disk-failure resilience)
 - Snapshot retention per `state-durability.snapshot-retention.{min-count, min-age-hours}`: keep last N OR last X-hours whichever-larger (default 5 + 24h)
-- On disk-failure: workspace storage lost; branchcraft restores from latest valid bundle on snapshotRoot via `git clone <bundle-path>` + workspace re-allocation
+- On disk-failure: workspace storage lost; branchcraft restores from latest valid bundle on snapshotRoot.
+  - **Bundle validity check (v0.3 fold per §DD):** iterate snapshotRoot/<missionId>/snapshot-*.bundle in newest-first order; for each candidate, run IsomorphicGit's bundle-verify (or shell `git bundle verify <path>`); skip bundles failing verify (truncated mid-rename, corrupted) + try next-newest until first valid bundle found
+  - **Restoration command (v0.3 fold per §DD):** `git clone --bare <bundle-path>` would put refs at `refs/remotes/origin/...`; instead use `git fetch <bundle-path> 'refs/heads/*:refs/heads/*'` to pull bundled refs as local branches in fresh workspace; equivalently in IsomorphicGit `git.fetch({ url: bundlePath, ref: 'refs/heads/wip/<mission-id>' })` then re-checkout
+  - **Same-fs detection at startup (v0.3 fold per §DD):** `stat(snapshotRoot).dev !== stat(workspaceRoot).dev` (POSIX device-ID comparison via Node `fs.statSync().dev`); rejection at startup if same; defeats disk-failure resilience otherwise
 - Cost: bundle-create per cadence-tick (5min default); atomic-rename overhead negligible; snapshot disk-space proportional to workspace-size × retention
 - Coverage: workspace-disk corruption / accidental delete (assuming snapshotRoot is cross-disk)
 
@@ -614,6 +633,8 @@ Standard strict TypeScript; ES2022 target; ESM module; declarations emitted.
 
 **Release-tagging discipline (v0.2 fold per §H.6):** tags applied via `changesets` (`@changesets/cli` devDep) — operator runs `npx changeset` to create a changeset; merged changesets accumulate in `.changeset/`; `npx changeset version` bumps version + generates CHANGELOG.md; `npx changeset publish` creates the tag + triggers release.yml. Strict-1.0 commitment means EVERY breaking change emits a major-changeset (rejected at PR-time if not explicit).
 
+**Changeset CI gate (v0.3 fold per §FF + F22):** `.github/workflows/ci.yml` adds a build step `npx changeset status --since=main` which fails the build if any source-code-change PR lacks a changeset. Mechanized enforcement (no external bot dep). Operator manually selects patch-vs-minor-vs-major at changeset-creation time (CI doesn't auto-classify — strict-1.0 makes major a serious-decision-point so operator-explicit is correct).
+
 #### §2.9.4 LICENSE
 
 `LICENSE` file: full Apache 2.0 text. NO Contributor License Agreement (CLA) at v1 per F12 Survey-flag architect-recommendation.
@@ -694,7 +715,7 @@ Apache 2.0
 | F15 | Snapshot retention policy | MEDIUM | **RATIFIED keep last 5 OR last 24h whichever larger per §G engineer concur**. §2.5 schema fields: `snapshot-retention.{min-count: 5, min-age-hours: 24}`. |
 | F16 | wip-branch cleanup post-mission | MEDIUM | **RATIFIED delete-on-complete + retain-on-abandon per §G engineer concur**. §2.5 schema field: `wip-branch-cleanup: delete-on-complete-retain-on-abandon`. |
 | F17 | TypeDoc deploy mechanism | MINOR | **RATIFIED GitHub Pages from release.yml per §G engineer concur**. §2.9.3 updated with `permissions: pages: write` + `actions/setup-pages` per engineer pattern-recommendation. |
-| F18 | Error class hierarchy | MEDIUM | **RATIFIED 7 classes (architect 5 + engineer 2)**: `BranchcraftError` (base) + `LockTimeoutError` + `StorageAllocationError` + `RemoteAuthError` + `ApprovalDeniedError` + `MissionStateError` + **`WorkspaceConflictError`** (v0.2 add per §G engineer; one-active-mission-per-repo violation) + **`ConfigValidationError`** (v0.2 add per §G engineer; zod parse failure). Plus `UnsupportedOperationError` (per F13 disposition) + `NetworkRetryExhaustedError` (per §2.6.3). Total 9 classes. |
+| F18 | Error class hierarchy | MEDIUM | **RATIFIED 10 classes (v0.3 count fix per §BB) — flat hierarchy under `BranchcraftError` base; all 9 specialized extend the base directly**: `BranchcraftError` (base; extends Error) + `LockTimeoutError` + `StorageAllocationError` + `RemoteAuthError` + `ApprovalDeniedError` + `MissionStateError` + `WorkspaceConflictError` + `ConfigValidationError` + `UnsupportedOperationError` + `NetworkRetryExhaustedError`. Total 10. Consumer can `instanceof BranchcraftError` for catch-all; specialized class for typed handling. No multi-level inheritance per v0.3 §BB. |
 
 **NEW v0.2 architect-flags (F19-F23 surfaced during round-1 fold-pass; request engineer round-2 audit):**
 
@@ -767,8 +788,9 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | Version | Date | Trigger | Notes |
 |---|---|---|---|
 | v0.1 DRAFT | 2026-05-08 | architect-side draft post Survey envelope ratification @ SHA `efbc5ad` | pushed at SHA `e064f56` |
-| **v0.2 DRAFT** | **2026-05-08** | **engineer round-1 audit folds (thread-509 round 1/20)** | **this version; substantial v0.2 fold per engineer round-1 audit: §A drop deferred CLI verbs (calibration #62 catch); §B §2.6 mechanism rewrite (commitToRef plumbing + ordering invariant + atomic-bundle + resumable-push correction); §C API completeness (GitEngine +9 methods + merge rebase + ApprovalContext +6 actions + RemoteProvider +2 methods + StorageProvider lock primitives + IdentityProvider signingKey discriminated union); §D dep majors (zod 3→4, vitest 1→4, typedoc 0.25→0.28); §E mission-config 7 fields; §F sideEffects:false + Node-only note; §G F13 capabilities-gated throws; F18 9 errors; §H 8 refinements. F19-F23 NEW v0.2 architect-flags surfaced for round-2 audit |
-| v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-2 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
+| v0.2 DRAFT | 2026-05-08 | engineer round-1 audit folds (thread-509 round 1/20) | substantial fold: §A drop deferred CLI verbs; §B §2.6 mechanism rewrite (commitToRef + ordering invariant + atomic-bundle + resumable-push correction); §C API completeness; §D dep majors; §E mission-config 7 fields; §F sideEffects:false; §G F13 capabilities-gated; F18 9 errors; §H 8 refinements. F19-F23 surfaced. Pushed at SHA `4d585ad` |
+| **v0.3 DRAFT** | **2026-05-08** | **engineer round-2 audit folds (thread-509 round 3/20)** | **this version; v0.3 fold: §AA `commitToRef` index-pollution risk fix — bypass-index via filesystem-walk + writeBlob + explicit-tree-construction (analogous to v0.1 resumable-push pattern catch); §BB F18 count fix 9→10 + flat-hierarchy spec (all extend `BranchcraftError`); §CC `timeoutMs` split into `waitMs` + `validityMs`; `inspectLocks` generalized; §DD bundle-restoration spec (validity check + ref-rewriting + same-fs detection); §EE GitEngine `deleteBranch` (load-bearing for F16) + minor `tag.force` + `fetch.prune` + `log.since/path`; §FF F22 CI gate (`npx changeset status`) + F20 schema-version top-level field; §GG 5 minor refinements |
+| v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-3 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
 
 **Phase 4 dispatch destination:** greg / engineer; round-1 bilateral audit thread-509; **maxRounds=20** per Director directive; semanticIntent=seek_rigorous_critique.
 
