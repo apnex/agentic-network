@@ -13,7 +13,7 @@ import type { IPolicyContext, PolicyResult } from "./types.js";
 import type { ThreadAuthor, ThreadIntent, StagedAction, StagedActionOp, Thread, ThreadRoutingMode, ThreadContext } from "../state.js";
 import { ThreadConvergenceGateError, CONVERGENCE_GATE_REMEDIATION } from "../state.js";
 import type { DomainEvent } from "./types.js";
-import { callerLabels } from "./labels.js";
+import { callerLabels, scopeLabels } from "./labels.js";
 import {
   LIST_PAGINATION_SCHEMA,
   LIST_LABELS_SCHEMA,
@@ -234,9 +234,17 @@ async function createThread(args: Record<string, unknown>, ctx: IPolicyContext):
     // Explicit pool discovery: architect → any engineer; engineer
     // opens only happen in peer-to-peer contexts which require
     // unicast, so broadcast openers are always from the architect.
+    //
+    // bug-58 (Director-ratified at thread-505): only scope-class labels
+    // (env) auto-inherit as matchLabels filter. Identity-class labels
+    // (ois.io/github/login) and custom-class labels are filing/auditing
+    // properties on thread.labels, NOT delivery filters. Auto-copying
+    // all labels narrowed the broadcast pool to the creator's own
+    // tenant, silently dropping cross-tenant dispatch (mission-of-
+    // missions Phase 4 stall + thread-504 smoke-test 0-match).
     openSelector = {
       roles: [author === "architect" ? "engineer" : "architect"] as ("engineer" | "architect")[],
-      matchLabels: thread.labels,
+      matchLabels: scopeLabels(thread.labels),
     };
   } else if (recipientAgentId) {
     // unicast with required recipientAgentId (validator enforced).

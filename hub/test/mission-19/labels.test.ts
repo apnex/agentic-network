@@ -209,7 +209,17 @@ describe("Mission-19 Labels — Thread inherits opener labels (INV-TH9)", () => 
     expect(thread?.labels).toEqual({ team: "platform" });
   });
 
-  it("thread_message dispatch carries thread.labels", async () => {
+  it("thread_message dispatch matchLabels is scope-class-filtered (bug-58: only env auto-inherits)", async () => {
+    // bug-58 (Director-ratified at thread-505): broadcast openSelector
+    // matchLabels auto-inherit was changed from "all caller labels" to
+    // "env scope-class labels only". Custom-class labels (`team`, etc.)
+    // remain on thread.labels for filing/auditing but are NOT delivery
+    // filters. Pre-bug-58 this test asserted the buggy behavior;
+    // post-fix, no env scope-class label is set on this caller so the
+    // broadcast selector matchLabels is `{}` (open pool, env-
+    // unconstrained). thread.labels at the thread-state level still
+    // inherits team — Mission-19 INV-TH9 thread-inheritance is
+    // unchanged; only the selector-derivation step is filtered.
     await registerCallerAgent(ctx, "architect", { team: "platform" });
     await router.handle("register_role", { role: "architect" }, ctx);
 
@@ -221,7 +231,9 @@ describe("Mission-19 Labels — Thread inherits opener labels (INV-TH9)", () => 
 
     const dispatched = ctx.dispatchedEvents.find((e) => e.event === "thread_message");
     expect(dispatched).toBeDefined();
-    expect(dispatched!.selector.matchLabels).toEqual({ team: "platform" });
+    expect(dispatched!.selector.matchLabels).toEqual({});
+    const thread = await ctx.stores.thread.getThread((dispatched!.data as any).threadId);
+    expect(thread?.labels).toEqual({ team: "platform" });
   });
 });
 
