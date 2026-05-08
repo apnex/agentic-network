@@ -1,6 +1,6 @@
-# M-Multi-Agent-Mission-Coordination-Architecture — Design v1.0 BILATERAL RATIFIED
+# M-Multi-Agent-Mission-Coordination-Architecture — Design v1.1
 
-**Status:** **v1.0 BILATERAL RATIFIED** (thread-507 round-5 engineer converged-close 2026-05-08T09:30:09Z + round-6 architect label-flip + bilateral-commit close 2026-05-08T09:31Z). v0.1 architect-draft → v0.2 engineer-round-1-folds → v1.0 PENDING-BILATERAL engineer-round-2-folds → v1.0 BILATERAL RATIFIED engineer-round-3-converge-close. Round-budget closed at 6/12 — first-canonical mission-of-missions audit-cadence validated. See §8 Status for full version-trajectory.
+**Status:** **v1.1** (Director-direct cosmetic fold 2026-05-08 — symbol-chain format spaces dropped around `>` separator at §2.1 row 2 + §2.3.1; no architectural change). Composes from **v1.0 BILATERAL RATIFIED** (thread-507 round-5 engineer converged-close 2026-05-08T09:30:09Z + round-6 architect label-flip + bilateral-commit close 2026-05-08T09:31Z). v0.1 architect-draft → v0.2 engineer-round-1-folds → v1.0 PENDING-BILATERAL engineer-round-2-folds → v1.0 BILATERAL RATIFIED engineer-round-3-converge-close → v1.1 Director-direct cosmetic fold (this version). Round-budget closed at 6/12 for v1.0 audit-cycle — first-canonical mission-of-missions audit-cadence validated. See §8 Status for full version-trajectory.
 **Mission name:** M-Multi-Agent-Mission-Coordination-Architecture (idea-261; meta-mission)
 **Mission-class:** structural-inflection (umbrella; meta-mission shape — deliverable = catalog of downstream sub-missions, not direct substrate); each sub-mission carries its own mission-class candidate (per §2 catalog)
 **Source idea:** idea-261 (M-Multi-Agent-Mission-Coordination-Architecture)
@@ -58,7 +58,7 @@ Layer 2 (depends on Layer 0/1; mutually independent at this layer):
 | # | Sub-mission | Mission-class | Source path → Target repo | Scope (1-line) | Dependencies (runtime) | Tele primaries |
 |---|---|---|---|---|---|---|
 | 1 | M-Branchcraft-V1 | substrate-introduction | NEW: `github.com/apnex/branchcraft` | Sovereign component: 5 pluggables (`IdentityProvider` / `ApprovalPolicy` / `StorageProvider` / `GitEngine` / `RemoteProvider`); 2 personas (standalone-CLI `brc` + library-SDK); IsomorphicGit primary; gh CLI GitHubRemoteProvider | none (foundational) | tele-3, tele-2 |
-| 2 | M-Citation-Validator-Tooling | substrate-introduction | branchcraft repo (subcommand `brc citations validate`) per F1 | Cross-repo citation resolver + PR-time validator gate; symbol-chain format `<component> > <file-path> > <class.method/function/symbol/type>`; version-aware resolution | #1 | tele-2, tele-12 |
+| 2 | M-Citation-Validator-Tooling | substrate-introduction | branchcraft repo (subcommand `brc citations validate`) per F1 | Cross-repo citation resolver + PR-time validator gate; symbol-chain format `<component>><file-path>><class.method|function|symbol|type>` (v1.1 cosmetic: no spaces around `>` separator; Director-direct fold 2026-05-08); version-aware resolution | #1 | tele-2, tele-12 |
 | 3 | M-Component-Repo-Extract-StorageProvider | structural-inflection | `packages/storage-provider/` → `github.com/apnex-org/storage-provider` | First migration playbook validation; TRUE-zero @apnex/* deps (runtime + dev); cleanest playbook-validation surface | #1, #2 | tele-3, tele-7 |
 | 4 | M-Component-Repo-Extract-MessageRouter | structural-inflection | `packages/message-router/` → `github.com/apnex-org/message-router` | True-leaf extraction; zero @apnex/* deps; second playbook validation on simple-leaf | #1, #2 | tele-3, tele-7 |
 | 5 | M-Component-Repo-Extract-CognitiveLayer | structural-inflection | `packages/cognitive-layer/` → `github.com/apnex-org/cognitive-layer` | True-leaf extraction; zero @apnex/* deps; third playbook validation on simple-leaf — playbook now battle-tested 3× before devDep complexity | #1, #2 | tele-3, tele-7 |
@@ -123,12 +123,14 @@ Architect has no recommendation; surface as Design-phase open-question.
 
 #### §2.3.1 Citation format (canonical; spec-as-runtime per tele-2)
 
-**Symbol-chain format:** `<component> > <file-path> > <class.method | function | symbol | type>`
+**Symbol-chain format:** `<component>><file-path>><class.method|function|symbol|type>`
+
+(v1.1 cosmetic fold: no spaces around `>` separator per Director-direct 2026-05-08; denser citation literal; reads as drilling-deeper directional indicator.)
 
 **Examples:**
-- `network-adapter > src/dispatcher.ts > Dispatcher.handleMessage`
-- `hub > src/policy/session-policy.ts > sessionPolicy`
-- `branchcraft > src/engine/isomorphic-git-engine.ts > IsomorphicGitEngine.commit`
+- `network-adapter>src/dispatcher.ts>Dispatcher.handleMessage`
+- `hub>src/policy/session-policy.ts>sessionPolicy`
+- `branchcraft>src/engine/isomorphic-git-engine.ts>IsomorphicGitEngine.commit`
 
 #### §2.3.2 Resolution semantics
 
@@ -317,7 +319,8 @@ Calibration #62 (deferred-runtime-gate-becomes-silent-defect-surface) currently 
 | v0.1 DRAFT | 2026-05-08 | architect-side draft post Director-approved-to-Design at SHA `b27781e` | pre-engineer-audit; pushed at SHA `b6b4a55` |
 | v0.2 DRAFT | 2026-05-08 | engineer round-1 audit folds (thread-507) | CRITICAL §2.1 dependency-graph corrections; F2 swap; F18 NEW; F19 rename; §6.2 reframe; §6.6 ratify (b) just-in-time; §6.5 npm-scope correction; §7.2 deferred-surfaces enumerated; pushed at SHA `23371e3` |
 | v1.0 PENDING-BILATERAL-RATIFICATION | 2026-05-08 | engineer round-2 audit folds (thread-507) | (1) §2.1 sub-mission ordering re-sequenced per engineer strict-simplicity-progression — true-leaves #3-#5 (storage-provider / message-router / cognitive-layer) before devDep-richer #6 (repo-event-bridge); (2) F13 RATIFIED architect-call — `hub` → `@apnex/hub` rename at sub-mission #10 extraction time; pushed at SHA `1ca56da` |
-| **v1.0 BILATERAL RATIFIED** | **2026-05-08** | **engineer round-3 converge-close (thread-507 round 5/12) + architect label-flip + bilateral-commit close (round 6/12)** | **this version; label-flip only — no substantive content change from v1.0 PENDING-BILATERAL @ SHA `1ca56da`. Phase 5 Manifest unblocked: creates sub-mission #1 (M-Branchcraft-V1) Hub entity at execution-time-window per §6.6 (b) just-in-time discipline; downstream sub-missions per topological order** |
+| v1.0 BILATERAL RATIFIED | 2026-05-08 | engineer round-3 converge-close (thread-507 round 5/12) + architect label-flip + bilateral-commit close (round 6/12) | label-flip only — no substantive content change from v1.0 PENDING-BILATERAL @ SHA `1ca56da`. Pushed at SHA `4112fc1`. Phase 5 Manifest unblocked: creates sub-mission #1 (M-Branchcraft-V1) Hub entity at execution-time-window per §6.6 (b) just-in-time discipline; downstream sub-missions per topological order |
+| **v1.1** | **2026-05-08** | **Director-direct cosmetic fold post bilateral-ratify** | **this version; symbol-chain format spaces dropped around `>` separator at §2.1 row 2 + §2.3.1 examples (v1.0: `<component> > <file-path> > <symbol>` → v1.1: `<component>><file-path>><symbol>`). No architectural change; cosmetic literal-form only. Engineer-side notification only (not re-audit) since cosmetic. M-Branchcraft-V1 Phase 5 launch authorization composed with this fold per Director "keen to start on branchcraft" directive** |
 
 **Phase 4 thread:** thread-507 (post bug-57 + bug-58 substrate-corrected dispatch path; first canonical broadcast architect→engineer audit cycle on the corrected substrate); maxRounds=12; round-budget consumed at v1.0 dispatch: 4/12.
 
