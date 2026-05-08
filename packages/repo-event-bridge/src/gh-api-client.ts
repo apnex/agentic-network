@@ -42,6 +42,52 @@ export interface PollResult {
 }
 
 /**
+ * One workflow run record as returned by `/repos/:owner/:repo/actions/runs`.
+ * The Actions REST API shape — distinct from the WorkflowRunEvent webhook
+ * envelope; idea-255 / M-Workflow-Run-Events-Hub-Integration §1.2 + F1
+ * fold reframed to use this REST endpoint shape (workflow_run is webhook-
+ * only on the /events API surface).
+ *
+ * Field subset preserves what the Hub-side translator + handler need —
+ * full GH response is wider; ignored fields are not enumerated here.
+ */
+export interface WorkflowRun {
+  readonly id: number;
+  readonly name: string;
+  readonly status: "queued" | "in_progress" | "completed" | string;
+  readonly conclusion:
+    | "success"
+    | "failure"
+    | "cancelled"
+    | "skipped"
+    | "neutral"
+    | "timed_out"
+    | "action_required"
+    | "stale"
+    | null;
+  readonly event: string;
+  readonly head_sha: string;
+  readonly head_branch: string | null;
+  readonly html_url: string;
+  readonly run_started_at?: string;
+  readonly updated_at: string;
+  readonly created_at: string;
+  readonly actor?: { login?: string };
+  readonly triggering_actor?: { login?: string };
+  readonly run_number?: number;
+  readonly run_attempt?: number;
+}
+
+export interface WorkflowRunsResponse {
+  readonly workflow_runs: WorkflowRun[];
+  readonly total_count: number;
+  /** Epoch seconds (from `X-RateLimit-Reset`); set on every successful poll. */
+  readonly rateLimitReset?: number;
+  /** Authenticated requests remaining in the current rate-limit window. */
+  readonly rateLimitRemaining?: number;
+}
+
+/**
  * Thrown when the server signals throttling. `resumeAt` is an epoch
  * milliseconds timestamp computed from `Retry-After` (seconds) or
  * `X-RateLimit-Reset` (epoch seconds), preferring `Retry-After` when
@@ -216,6 +262,68 @@ export class GhApiClient {
       notModified: false,
       events: Array.isArray(events) ? events : [],
       etag: response.headers.get("etag") ?? undefined,
+      rateLimitReset: parseEpochSec(response.headers.get("x-ratelimit-reset")),
+      rateLimitRemaining: parseInt(
+        response.headers.get("x-ratelimit-remaining") ?? "",
+        10,
+      ),
+    };
+  }
+
+  /**
+   * Poll `/repos/:repoId/actions/runs` for workflow runs.
+   * idea-255 / M-Workflow-Run-Events-Hub-Integration F1 fold: workflow_run is
+   * NOT in the /events API; this is the REST equivalent. No ETag conditional-
+   * GET flow — caller filters server-side via `created` query param + LRU
+   * dedupes on run.id.
+   *
+   * Outcomes:
+   *   - 200 → workflow_runs array + rate-limit headers
+   *   - 401/403 → GhApiAuthError (terminal)
+   *   - 429 → GhApiRateLimitError with resumeAtMs (header-driven)
+   *   - 5xx / network → GhApiTransientError (caller exp-backs-off)
+   */
+  async pollWorkflowRuns(
+    repoId: string,
+    options: { createdSince?: string; perPage?: number } = {},
+  ): Promise<WorkflowRunsResponse> {
+    const params = new URLSearchParams();
+    params.set("per_page", String(options.perPage ?? 50));
+    if (options.createdSince) {
+      params.set("created", `>=${options.createdSince}`);
+    }
+    const url = `${this.baseUrl}/repos/${repoId}/actions/runs?${params.toString()}`;
+
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, { headers: this.headers() });
+    } catch (err) {
+      throw new GhApiTransientError(null, (err as Error)?.message ?? String(err));
+    }
+
+    if (response.status === 429) {
+      throw new GhApiRateLimitError(parseRateLimitResume(response.headers));
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      const remaining = response.headers.get("x-ratelimit-remaining");
+      if (response.status === 403 && remaining === "0") {
+        throw new GhApiRateLimitError(parseRateLimitResume(response.headers));
+      }
+      throw new GhApiAuthError(response.status, await safeText(response));
+    }
+
+    if (!response.ok) {
+      throw new GhApiTransientError(response.status, await safeText(response));
+    }
+
+    const body = (await response.json()) as {
+      workflow_runs?: WorkflowRun[];
+      total_count?: number;
+    };
+    return {
+      workflow_runs: Array.isArray(body.workflow_runs) ? body.workflow_runs : [],
+      total_count: typeof body.total_count === "number" ? body.total_count : 0,
       rateLimitReset: parseEpochSec(response.headers.get("x-ratelimit-reset")),
       rateLimitRemaining: parseInt(
         response.headers.get("x-ratelimit-remaining") ?? "",

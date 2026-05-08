@@ -189,7 +189,7 @@ describe("deriveRenderContext (§1.2 + §2.2 resolution table)", () => {
 });
 
 describe("Source-class enum contract (§3)", () => {
-  it("includes exactly the 7 ratified classes (§1.2)", () => {
+  it("includes exactly the 8 ratified classes (§1.2 + idea-255 System-Workflow)", () => {
     expect(SOURCE_CLASSES).toEqual([
       "Hub",
       "Director",
@@ -198,6 +198,7 @@ describe("Source-class enum contract (§3)", () => {
       "System-PR",
       "System-Pulse",
       "System-Audit",
+      "System-Workflow",
     ]);
   });
 });
