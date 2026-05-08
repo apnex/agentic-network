@@ -21,7 +21,6 @@
   "scripts": {
     "prebuild": "node ../../scripts/build/write-build-info.js",
     "build": "tsc",
-    "prepare": "npm run build",
     "prepack": "node ../../scripts/build/write-build-info.js",
     "start": "node dist/shim.js",
     "dev": "tsx src/shim.ts",
