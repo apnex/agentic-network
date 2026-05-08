@@ -1,6 +1,6 @@
-# M-Branchcraft-V1 — Design v0.6 DRAFT
+# M-Branchcraft-V1 — Design v0.7 DRAFT
 
-**Status:** **v0.6 DRAFT** (architect-side; post engineer round-5 audit folds). v0.5 → v0.6 folds: (§AAAAA CRITICAL) §2.1.4 MergeStrategy enum had `squash` + `rebase` — IsomorphicGit only supports `ff` + `no-ff` (5th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern; n=5; ~100% audit-rate per substrate-claim). **Architect-call: option (a) DROP `squash` + `rebase` from MergeStrategy enum + compositional schema fold** — Strict-1.0 + Q5=b alignment; v1 ships substrate's actual merge capability surface (ff + no-ff); v1.x can add other strategies via major-bump if operator demand surfaces. (§BBBBB) IsomorphicGitEngine implementation-mapping mini-table added to §2.1.4 (5-row wrapper-name reference for 3rd-party engine implementers). (§GGGGG.2) `git.deleteBranch` loose-only limitation note added at §2.6.1. **Pattern-empirics now robust: n=5 over 5 consecutive rounds; calibration #62 audit-rubric extension proposal is empirically systemic-default, NOT edge-case.** v0.1 → v0.2 → v0.3 → v0.4 → v0.5 → v0.6 (this version; engineer round-5 folds applied) → engineer round-6 audit → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
+**Status:** **v0.7 DRAFT** (architect-side; post engineer round-6 audit folds). v0.6 → v0.7 folds: (§AAAAAA CRITICAL) §2.9.1 `engines.node >= 20` + CI matrix `node 20.x + 22.x` referenced **Node 20 which EOL'd 2026-04-30 (8 days before today 2026-05-08)** per official Node.js Release Schedule (6th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern; n=6; ~100% audit-rate). **Pattern variant:** runtime-substrate-currency (NOT library-API); extends to runtime-platform release-schedule + EOL calendar. Architect-call: bump `engines.node` to `>=22` + CI matrix to `22.x + 24.x` (Node 22 maintenance until 2027-04-30; Node 24 active LTS until 2028-04-30). Strict-1.0 means v1.x can't tighten engines without major-bump → MUST be correct at v1 ship. (§BBBBBB micro) implementation-mapping table merge-row clarification: fastForward/fastForwardOnly mapping disambiguation. (§CCCCCC micro) gh CLI minimum-version specified at GitHubRemoteProvider startup-validation (`gh >= 2.40.0` per current major; spec-detail). **Pattern-empirics now broader: n=6 across both library-API + runtime-platform substrate-currency dimensions; calibration #62 audit-rubric extension MUST cover both dimensions.** v0.1 → v0.2 → v0.3 → v0.4 → v0.5 → v0.6 → v0.7 (this version; engineer round-6 folds applied) → engineer round-7 audit → v1.0 BILATERAL RATIFIED. See §8 Status for version-trajectory.
 **Mission name:** M-Branchcraft-V1 (idea-263; sub-mission #1 of meta-mission idea-261)
 **Mission-class:** substrate-introduction (foundational; first sub-mission of 11-sub-mission catalog; everything else uses branchcraft)
 **Source idea:** idea-263 (M-Branchcraft-V1)
@@ -231,7 +231,7 @@ export interface GitStatus {
 | `removeRemote(name)` | `git.deleteRemote({ remote })` | git-CLI uses `remove`, isomorphic-git uses `delete` |
 | `log(options.path)` | `git.log({ filepath })` | branchcraft option name `path` mapped internally to isomorphic-git's `filepath` |
 | `tag(name, options.message?)` | `git.tag(...)` (lightweight) + `git.annotatedTag(...)` (annotated) | single branchcraft method dispatches based on whether `message` is provided |
-| `merge(strategy: "ff"\|"no-ff")` | `git.merge({ ours, theirs, fastForward, fastForwardOnly })` | strategy "ff" → `fastForwardOnly: true`; "no-ff" → `fastForward: false`. v1 enum is intentionally limited per §AAAAA — IsomorphicGit doesn't support `squash`/`rebase` |
+| `merge(strategy: "ff"\|"no-ff")` | `git.merge({ ours, theirs, fastForward, fastForwardOnly })` | v0.7 fold per §BBBBBB micro: strategy `"ff"` → `fastForwardOnly: true` + `fastForward: true` (require ff; fail otherwise); strategy `"no-ff"` → `fastForwardOnly: false` + `fastForward: false` (always create merge-commit). v1 enum is intentionally limited per §AAAAA — IsomorphicGit doesn't support `squash`/`rebase` |
 | `deleteBranch(name)` | `git.deleteBranch({ ref })` | **Limitation:** isomorphic-git only deletes loose branches (not packed). For wip-branch cleanup (F16): wip-branches are typically loose (created mid-mission), so this works at v1. Long-running missions where wip-branch gets packed (no longer relevant since GC dropped per §AAAA) would have stale-cleanup. |
 | `commitToRef(workspace, ref, options)` | `git.writeBlob` + `git.writeTree({tree:[...]})` + `git.writeCommit` + `git.writeRef` (composed; bypass-INDEX per §AA) | Plumbing-mode primitive; HEAD-unaware AND index-unaware |
 
@@ -296,7 +296,7 @@ export interface RemoteProvider {
 
 **Default v1 implementation:** NONE (pure-git mode; no RemoteProvider configured; `push`/`pull` work via plain git wire-protocol).
 
-**Opt-in v1 implementation:** `GitHubRemoteProvider` via `gh` CLI subprocess invocation — `capabilities = { supportsPullRequests: true, supportsApi: true }`; `authenticate()` shells `gh auth status`; `getCurrentUser()` shells `gh api user --jq '{login, email}'`; `openPullRequest()` shells `gh pr create`; `listPullRequests()` shells `gh pr list --json`; `getRepoMetadata()` shells `gh repo view --json`. Clean dependency surface (no Octokit; no hand-rolled HTTP); single auth flow via `gh auth token`. `authenticate()` validates `gh` presence + version at startup; clear error if unavailable.
+**Opt-in v1 implementation:** `GitHubRemoteProvider` via `gh` CLI subprocess invocation — `capabilities = { supportsPullRequests: true, supportsApi: true }`; `authenticate()` shells `gh auth status`; `getCurrentUser()` shells `gh api user --jq '{login, email}'`; `openPullRequest()` shells `gh pr create`; `listPullRequests()` shells `gh pr list --json`; `getRepoMetadata()` shells `gh repo view --json`. Clean dependency surface (no Octokit; no hand-rolled HTTP); single auth flow via `gh auth token`. `authenticate()` validates `gh` presence + **minimum version `gh >= 2.40.0`** (v0.7 fold per §CCCCCC micro — current major; covers all referenced subcommands stably); clear error if unavailable or version-stale.
 
 ### §2.2 Default-stack composition (v1)
 
@@ -605,7 +605,7 @@ auto-merge-strategy: ff              # ff | no-ff (v0.6 fold per §GGGGG.1 + §A
     "memfs": "^4.x"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public",
@@ -625,7 +625,7 @@ auto-merge-strategy: ff              # ff | no-ff (v0.6 fold per §GGGGG.1 + §A
 - `typedoc ^0.25.x` → `^0.28.x` (current 0.28.19; mostly additive)
 - `publishConfig.provenance: true` (per §H.4 — npm provenance attestation; OIDC-signed via GitHub Actions; supply-chain integrity for sub-mission #2-#11 consumers)
 
-**Browser-shape note (per §F):** branchcraft v1 is **Node-only** (`engines.node >=20`); `LocalGitConfigIdentity` shells `git config` via `child_process` which is Node-only. Browser/edge consumers explicitly out-of-scope at v1; future v2+ MAY add browser-conditional exports if demand surfaces.
+**Browser-shape note (per §F):** branchcraft v1 is **Node-only** (`engines.node >=22`); `LocalGitConfigIdentity` shells `git config` via `child_process` which is Node-only. Browser/edge consumers explicitly out-of-scope at v1; future v2+ MAY add browser-conditional exports if demand surfaces.
 
 Lean dep surface: 3 runtime deps (`isomorphic-git` + `yaml` + `zod`); no Octokit; no hand-rolled HTTP.
 
@@ -638,7 +638,7 @@ Standard strict TypeScript; ES2022 target; ESM module; declarations emitted.
 `.github/workflows/ci.yml`:
 - Trigger: push to `main` + PRs to `main`
 - **OS matrix (v0.2 fold per §H.5):** ubuntu-latest + macos-latest (CLI tool tested on linux + macOS; Windows out-of-scope at v1)
-- Node matrix: node 20.x + 22.x
+- Node matrix: node 22.x + 24.x (v0.7 fold per §AAAAAA — Node 20 EOL'd 2026-04-30; current LTS = Node 22 maintenance + Node 24 active)
 - Steps: `npm ci` → `npm run build` → `npm test`
 - Status check: `vitest (branchcraft)` + `tsc-build`
 
@@ -817,8 +817,9 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | v0.3 DRAFT | 2026-05-08 | engineer round-2 audit folds (thread-509 round 3/20) | §AA index-pollution + §BB count fix + §CC waitMs/validityMs + §DD bundle-restoration + §EE deleteBranch + §FF F22 CI gate + §GG 5 refinements; pushed at SHA `4768ff8` |
 | v0.4 DRAFT | 2026-05-08 | engineer round-3 audit folds (thread-509 round 5/20) | §AAA CRITICAL shell-out-to-native-git for bundle ops; §DDD.1+§DDD.2+§DDD.3; pushed at SHA `f5946b5` |
 | v0.5 DRAFT | 2026-05-08 | engineer round-4 audit folds (thread-509 round 7/20) | §AAAA CRITICAL drop-GC-discipline; §BBBB HIGH event-conditional gate; §DDDD/§EEEE/§FFFF; pushed at SHA `8cd9afe` |
-| **v0.6 DRAFT** | **2026-05-08** | **engineer round-5 audit folds (thread-509 round 9/20)** | **this version; v0.6 fold: §AAAAA CRITICAL — MergeStrategy `squash` + `rebase` NOT supported by IsomorphicGit (only ff + no-ff per official docs); 5th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern; n=5 ~100% audit-rate; architect-call option (a) DROP `squash` + `rebase` from MergeStrategy + compositional schema fold; v1 ships substrate's actual merge capability surface; §BBBBB IsomorphicGitEngine implementation-mapping mini-table (3rd-party engine-implementer reference); §GGGGG.1 auto-merge-strategy schema enum compositional fold; §GGGGG.2 git.deleteBranch loose-only limitation note. Pattern empirics: n=5 systemic-default not edge-case |
-| v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-6 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
+| v0.6 DRAFT | 2026-05-08 | engineer round-5 audit folds (thread-509 round 9/20) | §AAAAA CRITICAL drop-squash-rebase; §BBBBB mapping table; §GGGGG compositional folds; pushed at SHA `4ebbc69` |
+| **v0.7 DRAFT** | **2026-05-08** | **engineer round-6 audit folds (thread-509 round 11/20)** | **this version; v0.7 fold: §AAAAAA CRITICAL — Node 20 EOL'd 2026-04-30 (8 days before today); v0.6 `engines.node >= 20` + CI matrix `node 20.x + 22.x` referenced now-EOL'd platform; 6th consecutive instance of architect-spec-level-recall-misses-substrate-coupling pattern; n=6 across both library-API + RUNTIME-PLATFORM substrate-currency dimensions; pattern broader than initially characterized; bump engines.node to >=22 + CI matrix to 22.x + 24.x (Node 22 maintenance until 2027-04-30; Node 24 active LTS until 2028-04-30); §BBBBBB micro merge-row mapping clarification (fastForwardOnly+fastForward semantic); §CCCCCC micro gh CLI minimum-version `>=2.40.0` specified at GitHubRemoteProvider startup-validation |
+| v1.0 BILATERAL RATIFIED (planned) | TBD | engineer round-7 audit close-of-bilateral | architect-side commit pin + Phase 5 Manifest entry trigger |
 
 **Phase 4 dispatch destination:** greg / engineer; round-1 bilateral audit thread-509; **maxRounds=20** per Director directive; semanticIntent=seek_rigorous_critique.
 
