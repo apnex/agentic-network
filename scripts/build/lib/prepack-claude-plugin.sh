@@ -3,18 +3,29 @@
 # scripts/build/lib/prepack-claude-plugin.sh — claude-plugin release-pack
 # orchestration.
 #
-# M-GitHub-Releases-Plugin-Distribution Design v1.0 §1.4. Drives the
+# M-GitHub-Releases-Plugin-Distribution Design v1.0 §1.4 + post-merge
+# hot-fix (PR #196 calibration #62 15th-instance closure). Drives the
 # full pre-pack pipeline that produces a self-contained tarball at
 # $REPO_ROOT/release-artifacts/apnex-claude-plugin-<version>.tgz:
 #
-#   1. Refresh dist/build-info.json (idea-256 substrate)
-#   2. Stage REPO_ROOT/skills/ → adapters/claude-plugin/skills/
+#   1. Topologically build the 3 sovereign packages (network-adapter ↔
+#      message-router import cycle requires multi-pass build)
+#   2. Build claude-plugin via tsc
+#   3. Refresh dist/build-info.json (idea-256 substrate)
+#   4. Stage REPO_ROOT/skills/ → adapters/claude-plugin/skills/
 #      (F1 fold for skills/ co-location at package boundary)
-#   3. Pack sovereign packages + swap claude-plugin/package.json deps
+#   5. Pack sovereign packages + swap claude-plugin/package.json deps
 #      via transient-package-swap.sh helper (F2 fold for sovereign-dep
-#      bundling). prepare → npm run build → tsc compiles dist/ during
-#      the npm pack lifecycle (F4 fold).
-#   4. npm pack from adapters/claude-plugin/ into release-artifacts/
+#      bundling)
+#   6. npm pack from adapters/claude-plugin/ into release-artifacts/
+#
+# **Local-user contract:** to produce a release tarball locally, INVOKE
+# THIS HELPER, not bare `npm pack`. claude-plugin/package.json
+# intentionally has no `prepare` hook (calibration #62 15th instance:
+# `--ignore-scripts` doesn't suppress prepare on the workspace target
+# itself, so a prepare hook poisons workflow `npm install` steps that
+# need to run BEFORE the topological sovereign build). This helper is
+# the single canonical pack path; bare `npm pack` would skip the build.
 #
 # Single trap restores all state on EXIT/INT/TERM/HUP: deletes staged
 # skills/ + delegates to _tps_cleanup_state for sovereign-tarball +
@@ -45,12 +56,13 @@ trap cleanup_all EXIT INT TERM HUP
 
 echo "[prepack-claude-plugin] REPO_ROOT: $REPO_ROOT"
 
-# Step 0 — ensure scoped workspace symlinks are populated, but DO NOT fire
-# any prepare hooks. The adapter-side sovereigns (cognitive-layer,
-# message-router, network-adapter) don't have prepare hooks, but
-# claude-plugin's prepare = `npm run build` would invoke tsc against
-# unbuilt sovereign dists and fail. --ignore-scripts populates symlinks
-# only; we drive builds explicitly below in topological order.
+# Step 0 — ensure scoped workspace symlinks are populated. claude-plugin
+# no longer has a prepare hook (post-PR-#196 hot-fix; calibration #62
+# 15th instance), so this install step is safe — no prepare on the
+# workspace target poisons it. --ignore-scripts is retained as a
+# defense-in-depth belt against future regressions: any sovereign that
+# grows a prepare hook would hit the same chicken-and-egg vs the
+# topological build below.
 #
 # Scoped install (NOT --workspaces) avoids the opencode-plugin stale
 # `ois-*.tgz` lockfile-ref hazard from M-Deployment-Hygiene PR #192 (F7
@@ -90,9 +102,17 @@ rm -rf \
 rm -rf "$REPO_ROOT/packages/network-adapter/dist"
 ( cd "$REPO_ROOT/packages/network-adapter" && npm run build --silent )
 
-# Step 1 — refresh build-info.json (defensive; npm pack lifecycle also fires it
-# via prepare → prebuild + prepack, but local invocations may want a fresh
-# build-info before any other steps inspect dist/).
+# Step 0.6 — build claude-plugin. With the prepare hook removed (hot-fix),
+# nothing else drives tsc for claude-plugin; the npm pack at Step 4 just
+# packs whatever's in dist/. So compile here, after sovereign dists are
+# fresh, before pack.
+echo "[prepack-claude-plugin] ──────── Build claude-plugin ────────"
+rm -rf "$CP_DIR/dist"
+( cd "$CP_DIR" && npm run build --silent )
+
+# Step 1 — refresh build-info.json. The prepack hook on claude-plugin will
+# fire again during npm pack (Step 4), but emit it here too so any local
+# inspection of dist/ between steps sees a fresh stamp.
 echo "[prepack-claude-plugin] ──────── Refresh build-info.json ────────"
 ( cd "$CP_DIR" && node "$REPO_ROOT/scripts/build/write-build-info.js" )
 
@@ -118,8 +138,10 @@ swap_workspace_deps_to_tarballs "$CP_DIR" \
   "@apnex/message-router:packages/message-router" \
   "@apnex/network-adapter:packages/network-adapter"
 
-# Step 4 — npm pack (prepare → prebuild + tsc compiles dist/ + prepack
-# stamps build-info.json). Output: release-artifacts/apnex-claude-plugin-V.tgz
+# Step 4 — npm pack. With prepare removed, tsc was already invoked at
+# Step 0.6; pack just bundles dist/ + files: array entries. The prepack
+# hook still fires (writes a fresh build-info.json into dist/).
+# Output: release-artifacts/apnex-claude-plugin-V.tgz
 echo "[prepack-claude-plugin] ──────── npm pack claude-plugin → $RELEASE_ARTIFACTS ────────"
 mkdir -p "$RELEASE_ARTIFACTS"
 TARBALL_NAME=$( cd "$CP_DIR" && npm pack --pack-destination "$RELEASE_ARTIFACTS" --silent )
