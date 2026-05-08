@@ -2,20 +2,39 @@
 
 Install the OIS agent adapter plugin into Claude Code. This bridges Claude Code into the OIS agentic network as an Engineer agent via the MCP Relay Hub.
 
-## Quick install (from GitHub)
+## Install (no source clone required)
 
-No clone required. Run these in any terminal:
+Each tagged release attaches a self-contained tarball to the GitHub
+Release. No clone, no workspace, no toolchain — just `gh` + `tar` + `bash`:
 
 ```bash
-claude plugin marketplace add github:apnex/agentic-network
-claude plugin install agent-adapter@agentic-network
+gh release download <TAG> --repo apnex-org/agentic-network --pattern 'apnex-claude-plugin-*.tgz'
+tar xzf apnex-claude-plugin-*.tgz
+bash package/install.sh
 ```
 
-Then configure credentials (see step 1 below) and launch:
+Replace `<TAG>` with the desired release (e.g., `v0.1.5`). The tarball
+bundles the compiled shim, the install script, the sovereign-package
+tarballs, and the Skill bootstrap library — `install.sh` resolves its
+own dependencies offline from the bundled tarballs.
+
+After install, configure credentials (see [Developer install §1
+below](#1-configure-hub-credentials)) and launch:
 
 ```bash
 claude --dangerously-load-development-channels plugin:agent-adapter@agentic-network
 ```
+
+### Verify build identity
+
+The release tarball embeds a build-info stamp. Confirm post-install:
+
+```bash
+cat ~/.claude/plugins/cache/agentic-network/agent-adapter/*/dist/build-info.json
+```
+
+Expect a JSON object with `commitSha`, `dirty`, `buildTime`, and
+`branch` matching the release.
 
 ---
 
@@ -133,4 +152,5 @@ You should see Hub tools available when you type `/` in Claude Code. The adapter
 
 - **"Hub credentials not found"** — Neither config file nor env vars are set. Check that `.ois/adapter-config.json` exists in your working directory, or set `OIS_HUB_URL` and `OIS_HUB_TOKEN`.
 - **Plugin not found** — Ensure the marketplace was added with the correct absolute path to the `agentic-network` root directory.
-- **Build errors** — Run `npm install` again. The `@apnex/network-adapter` dependency resolves from a local tarball (`ois-network-adapter-2.0.0.tgz`) which must be present in the plugin directory.
+- **Build errors (developer install)** — Run `npm install` again from the repo root so workspace symlinks for `@apnex/{network-adapter,message-router,cognitive-layer}` are populated.
+- **Tarball install fails to resolve `@apnex/...`** — The release tarball bundles `apnex-*.tgz` sovereign-package tarballs alongside `install.sh`; if those are missing the package is malformed. Re-download from the GitHub Release page.

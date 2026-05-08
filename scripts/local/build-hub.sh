@@ -130,11 +130,13 @@ LOCAL_TAG="ois-hub:local"
 # hub/.gcloudignore; the Dockerfile's `npm install` reverts to `npm ci`
 # for strict lockfile-validation against the committed
 # (workspaces-resolved) lockfile.
+#
+# Lib-extracted (M-GitHub-Releases-Plugin-Distribution Design v1.0 §1.4):
+# the pack-and-swap-then-restore primitive lives at
+# scripts/build/lib/transient-package-swap.sh; consumed by
+# release-plugin.yml workflow as well.
 
 HUB_DIR="$REPO_ROOT/hub"
-BACKUP_DIR=""
-STAGED_TARBALLS=()
-SWAP_APPLIED=0
 
 # Sovereign packages staged into hub/ as tarballs for Cloud Build.
 # Format: "<package-name>:<source-dir-relative-to-REPO_ROOT>"
@@ -143,61 +145,10 @@ SOVEREIGN_PACKAGES=(
   "@apnex/repo-event-bridge:packages/repo-event-bridge"
 )
 
-cleanup_tarball_swap() {
-  local rc=$?
-  trap - EXIT INT TERM HUP
-  if [[ $SWAP_APPLIED -eq 1 && -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]]; then
-    [[ -f "$BACKUP_DIR/package.json" ]] && mv -f "$BACKUP_DIR/package.json" "$HUB_DIR/package.json"
-  fi
-  if [[ ${#STAGED_TARBALLS[@]} -gt 0 ]]; then
-    for tarball in "${STAGED_TARBALLS[@]}"; do
-      [[ -f "$tarball" ]] && rm -f "$tarball"
-    done
-  fi
-  if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]]; then
-    rm -rf "$BACKUP_DIR"
-  fi
-  exit "$rc"
-}
-trap cleanup_tarball_swap EXIT INT TERM HUP
+source "$REPO_ROOT/scripts/build/lib/transient-package-swap.sh"
+trap tps_cleanup EXIT INT TERM HUP
 
-BACKUP_DIR=$(mktemp -d -t build-hub-XXXXXX)
-cp "$HUB_DIR/package.json" "$BACKUP_DIR/package.json"
-SWAP_APPLIED=1
-
-for entry in "${SOVEREIGN_PACKAGES[@]}"; do
-  PKG_NAME="${entry%%:*}"
-  PKG_SOURCE="${entry#*:}"
-  PKG_DIR="$REPO_ROOT/$PKG_SOURCE"
-
-  echo "[build-hub] ──────── Pack $PKG_NAME ────────"
-  # Pre-install package devDeps so the `prepare` hook (which runs `tsc`)
-  # can succeed during npm pack. Fresh checkouts lack node_modules; the
-  # prepare hook's `tsc` needs @types/node + typescript + the package's
-  # own deps. Idempotent: subsequent runs no-op if node_modules current.
-  ( cd "$PKG_DIR" && npm install --no-audit --no-fund --silent )
-  TARBALL_NAME=$( cd "$PKG_DIR" && npm pack --pack-destination "$HUB_DIR" --silent )
-  if [[ -z "$TARBALL_NAME" || ! -f "$HUB_DIR/$TARBALL_NAME" ]]; then
-    echo "[build-hub] ERROR: npm pack did not produce a tarball for $PKG_NAME." >&2
-    exit 1
-  fi
-  STAGED_TARBALLS+=("$HUB_DIR/$TARBALL_NAME")
-  echo "[build-hub] Tarball: $TARBALL_NAME"
-
-  # Swap file:../<pkg-source> → file:./<tarball> in hub/package.json.
-  # The build context for gcloud builds submit is hub/, so the tarball
-  # ref must resolve relative to hub/. The container resolves its own
-  # dep tree at build time via Dockerfile's `npm install` (T5; bug-38).
-  sed -i.sedbak "s|\"${PKG_NAME}\": \"file:\\.\\./${PKG_SOURCE}\"|\"${PKG_NAME}\": \"file:./${TARBALL_NAME}\"|" "$HUB_DIR/package.json"
-  rm -f "$HUB_DIR/package.json.sedbak"
-
-  if ! grep -q "file:./${TARBALL_NAME}" "$HUB_DIR/package.json"; then
-    echo "[build-hub] ERROR: $PKG_NAME ref swap did not take effect in hub/package.json." >&2
-    exit 1
-  fi
-done
-
-echo "[build-hub] Staged ${#STAGED_TARBALLS[@]} tarball(s); package.json refs swapped."
+swap_workspace_deps_to_tarballs "$HUB_DIR" "${SOVEREIGN_PACKAGES[@]}"
 
 # ── Build via Cloud Build ──────────────────────────────────────────────
 
