@@ -1,6 +1,6 @@
-# M-Missioncraft-V1 — Design v1.5 PENDING-ROUND-5
+# M-Missioncraft-V1 — Design v1.6 PENDING-ROUND-6
 
-**Status:** **v1.5 PENDING-ROUND-5** (architect-side; engineer round-4 audit fold on thread-510 — 14 findings: 1 HIGH cluster of 3 sub-issues + 11 MEDIUM + 2 MINOR — all dispositioned). Composes from **v1.4 PENDING-ROUND-4** at SHA `22f1778` (engineer round-3 fold-pass; 14 findings dispositioned). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch → v1.1 PENDING-BILATERAL (Director-direct refinement reshape) → v1.2 PENDING-ROUND-2 (engineer round-1 fold) → v1.3 PENDING-ROUND-3 (engineer round-2 fold) → v1.4 PENDING-ROUND-4 (engineer round-3 fold) → **v1.5 PENDING-ROUND-5** (this version; engineer round-4 fold-pass) → engineer round-5 audit on thread-510 → v1.x BILATERAL RATIFIED.
+**Status:** **v1.6 PENDING-ROUND-6** (architect-side; engineer round-5 audit fold on thread-510 — 11 findings: 1 HIGH + 7 MEDIUM + 3 MINOR — all dispositioned; pattern-decay finally tracking thread-509 empirics R5=11). Composes from **v1.5 PENDING-ROUND-5** at SHA `8663f9e` (engineer round-4 fold-pass; 14 findings dispositioned). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch → v1.1 → v1.2 → v1.3 → v1.4 → v1.5 (engineer round-4 fold) → **v1.6 PENDING-ROUND-6** (this version; engineer round-5 fold-pass) → engineer round-6 audit on thread-510 → v1.x BILATERAL RATIFIED.
 
 **v1.1 Director-direct architectural refinements 2026-05-08-evening:**
 
@@ -98,7 +98,7 @@ export interface ApprovalPolicy {
 }
 ```
 
-**Default v1 implementation:** `TrustAllPolicy` — `{approved: true}` for every context. Operator opts in to ceremony explicitly via mission-config or alternative pluggable.
+**Default v1 implementation:** `TrustAllPolicy` — `{approved: true}` for every context. Operator opts in to ceremony explicitly via mission-config or alternative pluggable. **`static readonly providerName = 'trust-all'`** (v1.6 fold per MINOR-R5.1; required for SDK-injection vs mission-config string-name validation per MEDIUM-R4.2).
 
 #### §2.1.3 `StorageProvider`
 
@@ -146,7 +146,7 @@ export interface StorageProvider {
 }
 ```
 
-**Default v1 implementation:** `LocalFilesystemStorage` — under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`):
+**Default v1 implementation:** `LocalFilesystemStorage` — **`static readonly providerName = 'local-filesystem'`** (v1.6 fold per MINOR-R5.1) — under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`):
 - Mission configs at `${MSN_WORKSPACE_ROOT}/config/<missionId>.yaml` (declarative manifests; preserved across `complete` unless `--purge-config`)
 - Mission runtime workspaces at `${MSN_WORKSPACE_ROOT}/missions/<missionId>/<repo-name>/` (ephemeral; destroyed at `complete` unless `--retain`)
 - Mission-locks at `${MSN_WORKSPACE_ROOT}/locks/missions/<missionId>.lock` (single-writer-per-mission; per-mission scope)
@@ -236,7 +236,7 @@ export interface GitStatus {
 }
 ```
 
-**Default v1 implementation:** `IsomorphicGitEngine` — wraps `isomorphic-git` library; pure-TS; portable; no native bindings; works with any IsomorphicGit-compatible filesystem (default `node:fs`; pluggable for `memfs` or custom). `commitToRef` uses `isomorphic-git`'s low-level `git.writeBlob` + `git.writeTree({tree:[...]})` + `git.writeCommit` + `git.writeRef` plumbing to commit without moving HEAD AND without polluting INDEX (per §2.6.1 implementation contract).
+**Default v1 implementation:** `IsomorphicGitEngine` — **`static readonly providerName = 'isomorphic-git'`** (v1.6 fold per MINOR-R5.1) — wraps `isomorphic-git` library; pure-TS; portable; no native bindings; works with any IsomorphicGit-compatible filesystem (default `node:fs`; pluggable for `memfs` or custom). `commitToRef` uses `isomorphic-git`'s low-level `git.writeBlob` + `git.writeTree({tree:[...]})` + `git.writeCommit` + `git.writeRef` plumbing to commit without moving HEAD AND without polluting INDEX (per §2.6.1 implementation contract).
 
 **IsomorphicGitEngine implementation-mapping (v0.6 fold per §BBBBB — for 3rd-party engine implementers):**
 
@@ -357,7 +357,7 @@ const missioncraft = new Missioncraft({
 });
 ```
 
-OR via CLI: `msn remote add github --provider=gh-cli`.
+OR via mission-config YAML `remote.provider: gh-cli` (engine instantiates `GitHubRemoteProvider` from PROVIDER_REGISTRY at start-time). (v1.6 fold per HIGH-R5.1: `msn remote add` CLI surface removed; per-mission RemoteProvider configured via SDK constructor injection OR mission-config field.)
 
 ### §2.3 Personas (v1.1 reshape — SDK-primary; CLI as sovereign-module-consumer; OIS-orchestrated persona collapsed)
 
@@ -442,6 +442,71 @@ interface StateDurabilityConfig {                         // v1.3 fold per MEDIU
 }
 ```
 
+**Mission resource type interfaces (v1.6 fold per MEDIUM-R5.2 — Strict-1.0 commits all SDK return-type shapes):**
+
+```typescript
+type MissionStatePhase =
+  | 'created'        // scaffolded config; no repos
+  | 'configured'     // ≥1 repo declared; not yet started
+  | 'started'        // transient transition state during configured→in-progress
+  | 'in-progress'    // active mission; workspace allocated; locks held
+  | 'completed'      // terminal; complete-event fired
+  | 'abandoned';     // terminal; abandon-event fired
+
+interface MissionHandle {
+  readonly id: string;          // canonical msn-<8-char-hash>
+  readonly name?: string;       // optional human-friendly slug
+}
+
+interface MissionState {
+  readonly id: string;
+  readonly name?: string;
+  readonly hubId?: string;
+  readonly description?: string;
+  readonly tags: Record<string, string>;
+  readonly repos: readonly RepoSpec[];
+  readonly lifecycleState: MissionStatePhase;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly remoteProviderName?: string;     // PROVIDER_REGISTRY string-name (e.g., 'gh-cli', 'pure-git')
+  readonly workspacePath?: string;          // populated when state ≥ started
+}
+
+interface MissionFilter {
+  readonly status?: MissionStatePhase | readonly MissionStatePhase[];
+  readonly name?: string;                   // exact match
+  readonly nameLike?: string;               // substring match
+  readonly hubId?: string;
+  readonly tags?: Record<string, string>;   // all-must-match
+}
+
+// MissionConfig is the parse-result of MissionConfigSchema (§2.5); see schema definition there.
+// Includes mission.{id, name, hubId?, description?, lifecycleState, createdAt, tags},
+// repos: RepoSpec[], pluggable-overrides, state-durability, etc.
+interface MissionConfig {
+  readonly missionConfigSchemaVersion: 1;
+  readonly mission: {
+    readonly id: string;
+    readonly name?: string;
+    readonly hubId?: string;
+    readonly description?: string;
+    readonly lifecycleState: MissionStatePhase;
+    readonly createdAt: Date;
+    readonly tags?: Record<string, string>;
+  };
+  readonly repos: readonly RepoSpec[];
+  readonly identity?: { provider: string };           // PROVIDER_REGISTRY string-name
+  readonly approval?: { provider: string };
+  readonly storage?: { provider: string };
+  readonly gitEngine?: { provider: string };
+  readonly remote?: { provider: string };
+  readonly workspaceRoot?: string;
+  readonly stateDurability?: StateDurabilityConfig;
+  readonly autoMerge?: { strategy: 'ff' | 'no-ff' };
+  readonly lockTimeout?: { waitMs?: number; validityMs?: number };
+}
+```
+
 The 4 required pluggables (identity/approval/storage/gitEngine) MUST be explicitly injected; v1 ships default-implementations that operators import + pass (e.g., `new Missioncraft({ identity: new LocalGitConfigIdentity(), ... })`). Future v1.x may add a `Missioncraft.withDefaults({ overrides? })` static-helper for ergonomics; out-of-scope v1.
 
 **Provider string-name registry mechanism (v1.3 fold per HIGH-R3.1 — closed registry at v1, option (a)):**
@@ -521,12 +586,16 @@ class Missioncraft {
   pushInMission(id: string, repoName: string, opts?: PushOptions): Promise<void>;
   // ... full set of GitEngine ops scoped to mission + repo
 
-  // Non-mission resource ops (configuration + remotes)
+  // Non-mission resource ops (operator configuration only)
   configGet(key: string): Promise<string | undefined>;
   configSet(key: string, value: string): Promise<void>;
-  remoteAdd(name: string, opts: { provider: 'gh-cli' | 'pure-git' }): Promise<void>;
-  remoteList(): Promise<RemoteConfig[]>;
-  remoteRemove(name: string): Promise<void>;
+
+  // (v1.6 fold per HIGH-R5.1: remoteAdd / remoteList / remoteRemove REMOVED — v1.0 carryover not reconciled with v1.1+ PROVIDER_REGISTRY model;
+  //  RemoteProvider is now singleton-per-mission via SDK constructor injection OR mission-config remote.provider field; engine instantiates from PROVIDER_REGISTRY.
+  //  v1 doesn't ship multi-remote support; v1.x can add named-multi-remote model if demand emerges via additive registerProvider expansion.)
+
+  // Platform-support pre-check (v1.6 fold per MINOR-R5.3 — adapter UX helper)
+  static isPlatformSupported(): boolean;     // returns false on Windows; adapter implementer can use at MCP-tool-list-time
 }
 ```
 
@@ -602,8 +671,7 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 | `msn <id> <repo-name> push` | `[--branch <name>] [--remote <name>] [--force] [--tags]` | `pushInMission` | Push |
 | `msn <id> <repo-name> pull / fetch / merge / tag / log / revparse / status` | (varied flags) | (corresponding `*InMission` methods) | Wire + read ops |
 | **Non-mission resource ops (explicit resource prefix)** | | | |
-| `msn remote add <name>` | `--provider=<gh-cli\|pure-git>` | `remoteAdd` | Configure RemoteProvider |
-| `msn remote list / remove <name>` | (no flags) | `remoteList` / `remoteRemove` | Remote management |
+| ~~`msn remote add` / `list` / `remove`~~ | (REMOVED v1.6 fold per HIGH-R5.1) | — | RemoteProvider configured per-mission via SDK constructor injection OR mission-config `remote.provider` field; no separate CLI surface for multi-remote management at v1 |
 | `msn config get <key>` / `msn config set <key> <value>` | (no flags) | `configGet` / `configSet` | Operator config |
 | **Help + version** | | | |
 | `msn --help` / `<verb> --help` | (per-verb help) | — | Documentation |
@@ -631,9 +699,7 @@ Per-verb required/optional positional + flag spec for Rule 6 post-dispatch arg-c
 | `msn <id\|name> <repo-name> commit` | 0 | 0 | `-m <msg>` (required) + global |
 | `msn <id\|name> <repo-name> push` | 0 | 0 | `--force-with-lease` + global |
 | `msn <id\|name> <repo-name> <other-git-verb>` | (per git-verb signature) | (per git-verb signature) | (per git-verb signature) + global |
-| `msn remote add` | 1 (`<remote-name>`) | 0 | `--provider=<gh-cli\|pure-git>` (required) + global |
-| `msn remote list` | 0 | 0 | `--output json\|yaml` + global |
-| `msn remote remove` | 1 (`<remote-name>`) | 0 | global |
+| ~~`msn remote add` / `list` / `remove`~~ | — | — | (REMOVED v1.6 fold per HIGH-R5.1) |
 | `msn config get` | 1 (`<key>`) | 0 | `--output json\|yaml` + global |
 | `msn config set` | 2 (`<key> <value>`) | 0 | global |
 
@@ -656,12 +722,12 @@ Global flags apply UNIFORMLY across all verbs; per-verb flags shown in CLI table
 
 CLI grammar tokenization rules (parser-disambiguation):
 
-1. **Reserved-verbs list (top-level):** `create / list / show / start / apply / complete / abandon / status / remote / config / --help / --version`. First positional matching this list = top-level verb dispatch. First positional NOT matching = mission-selector.
+1. **Reserved-verbs list (top-level):** `create / list / show / start / apply / complete / abandon / status / config / --help / --version` (v1.6 fold per HIGH-R5.1: `remote` removed). First positional matching this list = top-level verb dispatch. First positional NOT matching = mission-selector.
 
 2. **Reserved sub-actions (3 scoped vocabularies; v1.4 fold per MEDIUM-R3.7 — distinct vocabularies per scope):**
    - **Mission-scoped sub-actions** (after mission-selector positional): `repo-add / repo-remove / repo-list` (only these; per Rule 3 git-op shape covers free-form repo-name)
-   - **`remote`-scoped sub-actions** (after `msn remote` top-level verb): `add / list / remove`
    - **`config`-scoped sub-actions** (after `msn config` top-level verb): `get / set`
+   - (`remote`-scoped sub-actions REMOVED v1.6 fold per HIGH-R5.1)
    - **(v1.3 fold per HIGH-R2.1: singular `repo` REMOVED from mission-scoped reserved-sub-actions list; per-mission git-op grammar picks Shape (b) — 4-positional `msn <mission-selector> <repo-name> <git-verb>` without literal `repo` keyword)**
 
 3. **Per-mission git op selector (Shape (b) per HIGH-R2.1 v1.3 fold):** `msn <mission-selector> <repo-name> <git-verb> [args]` (4-positional pattern) where `<git-verb>` ∈ `{branch / branch delete / checkout / fetch / commit / stage / push / pull / merge / tag / log / revparse / status}`. Second positional (repo-name) is free-form (not in any reserved list); third positional is the git-verb. NO `repo` keyword as 2nd positional — k8s-shape resource-name-then-verb pattern (e.g., `kubectl logs <pod>` not `kubectl pod <pod> logs`).
@@ -675,11 +741,24 @@ CLI grammar tokenization rules (parser-disambiguation):
 
 5. **Reserved-words protection:** operator cannot create mission with name matching reserved-verb (e.g., `msn create --name list` → error "reserved verb"); cannot create mission with `--name msn-<anything>` (auto-id namespace; v1.3 fold per MEDIUM-R2.6); prevents future ambiguity if verb is added in v2.
 
-6. **Post-dispatch arg-count validation (v1.4 fold per MEDIUM-R3.6):** after Rules 1-3 land a dispatch (top-level verb / mission-scoped action / scope-sub-action / git-op), validate per-CLI-table arg-count + flag signatures. Three error-classes:
+6. **Post-dispatch arg-count validation (v1.4 fold per MEDIUM-R3.6; v1.6 fold per MEDIUM-R5.4 — disjunctive arg-shape):** after Rules 1-3 land a dispatch (top-level verb / mission-scoped action / scope-sub-action / git-op), validate per-CLI-table arg-count + flag signatures. Four error-classes:
    - **missing-verb**: 0 positionals → "no command specified; use `msn --help`"
    - **missing-arg**: verb dispatched; required positional missing → "missing required arg `<arg-name>` for `<verb>`"
    - **extra-positional**: verb dispatched; unexpected positional after flag-only signature → "unexpected positional `<arg>` for `<verb>`; use `--<flag>` for inputs"
-   - Per-verb arg-count tables anchor in §2.3.2 CLI table (`msn show <id|name>` requires 1 selector; `msn list` is flag-only; `msn <id> repo-add <url>` requires URL; etc.)
+   - **mutually-exclusive**: verb's disjunctive arg-shape received both branches → "mutually-exclusive: use `<branch-A>` OR `<branch-B>`, not both"
+   - Per-verb arg-count tables anchor in §2.3.2 normalized arg-count table (`msn show <id|name>` requires 1 selector; `msn list` is flag-only; etc.)
+   - **Disjunctive arg-shape grammar:** when normalized arg-count table cell uses "OR" (e.g., `msn start | 0 (with -f <path>) OR 1 (<id|name>)`), Rule 6 algorithm:
+     1. Check flag-presence FIRST (`-f <path>` for `msn start`)
+     2. If matching flag present → validate against alternate arg-count (0 positional); reject extra positionals as mutually-exclusive
+     3. If matching flag absent → validate against default arg-count (1 positional); reject 0 positionals as missing-arg
+     4. Optional positional shape (`[<id|name>]` for `msn status`): accept 0 OR 1; reject 2+ as extra-positional
+   - Disjunctive walk-through traces:
+     - `msn start -f /tmp/m.yaml` → flag present → 0 positional expected → valid
+     - `msn start storage-extract` → flag absent → 1 positional expected → valid
+     - `msn start -f /tmp/m.yaml storage-extract` → flag present + extra positional → "mutually-exclusive: use `-f <path>` OR `<id|name>`, not both"
+     - `msn start` → flag absent + 0 positional → "missing required arg `<id|name>` for `start` (or use `-f <path>`)"
+     - `msn status` → 0 positional acceptable (lists all missions); valid
+     - `msn status storage-extract extra-arg` → extra-positional error
 
 **Algorithm walk-through on edge cases (v1.3 fold per round-2 ask 2; v1.4 fold extended per round-3 ask 4):**
 - `msn list show` → `[0]=list ∈ top-level verbs` → top-level `list` dispatch with extra positional `show`. **Rule 6:** `msn list` is flag-only signature → error "unexpected positional `show` for `list`; use `--status <state>` / `--output ...`"
@@ -690,7 +769,6 @@ CLI grammar tokenization rules (parser-disambiguation):
 - `msn storage-extract repo-add` → 2 positional. `[0]` mission-selector; `[1]=repo-add` reserved sub-action. **Rule 6:** `repo-add` requires `<file|url>` arg → error "missing required arg `<file|url>` for `repo-add`"
 - `msn complete msn-a3bd610c` → 2 positional. `[0]=complete ∈ top-level` → top-level dispatch; arg=`msn-a3bd610c` matches `<id|name>` selector signature. Resolved (auto-id form passes through; uniform with name-form).
 - `msn create` → 1 positional → top-level verb `create` (no mission-name; `--name` flag separate or auto-id assigned). Resolved.
-- `msn remote add github` → 3 positional. `[0]=remote ∈ top-level` → `remote` scope. `[1]=add ∈ remote-scoped sub-actions` → `remote add` dispatch; arg=`github`. Resolved.
 - `msn config get identity.provider` → 3 positional. `[0]=config ∈ top-level` → `config` scope. `[1]=get ∈ config-scoped sub-actions` → `config get` dispatch; arg=`identity.provider`. Resolved.
 
 This is the PARSER-LEVEL contract; v1.0 commits this disambiguation. Future v2 verb additions must avoid colliding with existing mission-name slugs (Strict-1.0 cross-version compat).
@@ -725,11 +803,19 @@ Both rooted under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`). Clean sep
   4. Mission persisted with both id + name uniqueness enforced
   - Symlink approach avoids workspace-level create-lock (faster; lock-free for the create-path); also enables fast name→id resolution at CLI invocation (read symlink target instead of scanning all configs).
 - **OS-support boundary (v1.5 fold per MEDIUM-R4.1):** v1 supports **Linux + macOS only** (POSIX symlink + `O_EXCL` mechanism). Windows operators receive clear platform-rejection at SDK constructor (`new Missioncraft({...})` runtime-checks `os.platform()`; throws `UnsupportedOperationError("missioncraft v1 requires Linux or macOS; Windows support deferred")` if `process.platform === 'win32'`). v1.x can add Windows support via lock-file alternative (NDB-style; `<slug>.lock` file with PID + checked at create-time) OR junction-points fallback. CI matrix per §2.9.3 already restricted to `ubuntu-latest + macos-latest`.
-- **Name-rename flow (v1.5 fold per MEDIUM-R4.4):** `applyMission` pre-start with mutated `mission.name` triggers symlink-rename. Two-step (delete + create) is non-atomic; race-window where name `foo` freed but `bar` not yet linked. **Mechanism:** acquire mission-lock for the entire rename sequence (per MEDIUM-R4.7 applyMission pre-start mission-lock requirement); within the lock:
-  1. Attempt `fs.symlink(<id>.yaml, <workspace>/config/.names/<bar>.yaml)` with `O_EXCL` — if exists → name-collision → `MissionStateError("name 'bar' already taken")`; rollback (no name-mutation applied)
-  2. `fs.unlink(<workspace>/config/.names/<foo>.yaml)` (delete old symlink)
-  3. Atomic-write updated `<id>.yaml` with new name
-  Mission-lock guards against concurrent applyMission on same mission; `O_EXCL` guards against concurrent create-or-rename collision on `bar`.
+- **Name-rename flow (v1.5 fold per MEDIUM-R4.4; v1.6 fold per MEDIUM-R5.6 — explicit rollback boundary; reordered config-write FIRST for cleaner failure semantics):** `applyMission` pre-start with mutated `mission.name` triggers symlink-rename. Two-step (delete + create) on its own is non-atomic. **Mechanism:** acquire mission-lock for the entire rename sequence (per MEDIUM-R4.7 applyMission pre-start mission-lock requirement); within the lock — **config-write FIRST then symlink swap** (per v1.6 fold; if config-write fails before any symlink mutation, original state preserved):
+  1. **Atomic-write updated `<id>.yaml`** with new name to temp file (`<id>.yaml.tmp`); on failure → `ConfigValidationError`; original config + symlink preserved (no rollback needed)
+  2. **`O_EXCL` on new symlink** `fs.symlink(<id>.yaml, <workspace>/config/.names/<bar>.yaml)` — on collision → `MissionStateError("name 'bar' already taken")`; **rollback:** delete `<id>.yaml.tmp`; original config + symlink preserved
+  3. **`fs.unlink` old symlink** `<workspace>/config/.names/<foo>.yaml` — on failure (e.g., concurrent unlink, fs error) → **rollback:** unlink new symlink (restore single-name state); delete `<id>.yaml.tmp`; original config + symlink preserved; emit `StorageAllocationError`
+  4. **`fs.rename` temp config → final config** (`<id>.yaml.tmp` → `<id>.yaml`; POSIX atomic on same-fs) — on failure → **rollback:** recreate old symlink at `<workspace>/config/.names/<foo>.yaml` pointing to `<id>.yaml`; unlink new symlink; emit `StorageAllocationError`
+  Mission-lock guards concurrent-applyMission on same mission; `O_EXCL` guards concurrent create-or-rename collision on `bar`. Rollback invariant: ALL failure modes preserve operator-observable state (either old name fully intact OR new name fully active; never partial).
+- **`--purge-config` step-ordering on terminal-state transition (v1.6 fold per MEDIUM-R5.5 — Order A: locks-first, config-last):** `complete <id> --purge-config` from `started`/`in-progress` performs steps in order:
+  1. **Persist `lifecycle-state: completed` to config** via atomic-write (survives crash; recoverable if subsequent steps fail)
+  2. **Release mission-lock + repo-locks** via StorageProvider
+  3. **Destroy runtime workspace** at `<workspace>/missions/<id>/` (per `--retain` not set)
+  4. **(if `--purge-config`)** Delete `<id>.yaml` + `.names/<slug>.yaml` symlink (atomic — single transaction; both-or-neither)
+  Crash anywhere after step 1 leaves mission in `completed` state on-disk — recoverable via `complete --purge-config <id>` retry. Config-purge is the LAST step so partial-completion preserves config (operator forensics not lost). Same ordering applies to `abandon --purge-config` substituting `lifecycle-state: abandoned`.
+- **`--purge-config` on auto-id-only mission (no name-symlink) (v1.6 fold per MEDIUM-R5.7):** auto-id-only missions (operator didn't supply `--name`) have no `.names/<slug>.yaml` symlink. `--purge-config` step 4 gracefully no-ops the symlink-unlink if absent (existence-check before unlink); only deletes `<id>.yaml`. Operator-observable behavior identical regardless of name-presence.
 - **Terminal-state name-symlink retention (v1.5 fold per MEDIUM-R4.5; option (c) preserve both):** `complete`/`abandon` WITHOUT `--purge-config` flag (default) PRESERVES BOTH `<id>.yaml` AND `.names/<slug>.yaml` symlink. Name-namespace blocks reuse: `msn create --name <slug>` MUST reject if any TERMINAL mission with same name exists (until operator invokes `complete --purge-config` or `abandon --purge-config` to free the name). This:
   - Composes with mission-history-preservation default (config retained for forensics + replay)
   - Enables `msn list` to show terminal missions by-name (uniform UX)
@@ -741,6 +827,10 @@ Both rooted under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`). Clean sep
   3. ENOENT on either path → `MissionStateError("mission not found: <selector>")`
   - Strictly disjoint (regex match-or-not); no fallback ambiguity. Operator-supplied `--name` MUST NOT match auto-id regex (per parser rule 5 reject-on-create).
 - These mechanisms together (symlink + uniqueness + rename-under-lock + terminal-retention + prefix-detection) form the **name-mechanism contract** committed under Strict-1.0.
+- **Concurrent races between create-with-name and complete-with-purge resolution (v1.6 fold per MINOR-R5.2):** concurrent `msn create --name foo` + `msn complete <other-id> --purge-config` (where `<other-id>` had name `foo`) resolves cleanly under `O_EXCL` semantics:
+  - Operator-A's create check sees foo-symlink → reject A with `MissionStateError("name 'foo' already taken")`; OR
+  - Operator-A's create sees no symlink (B's purge already unlinked it) → A scaffold + `O_EXCL` succeeds
+  No silent-corruption window per `O_EXCL` atomicity. Operator-A retry (after seeing transient "name taken" error) is safe.
 - **Hub-side mission ID mapping:** Hub-delivered mission-config carries Hub's `mission-77`-style id as a field (`mission.hub-id: "mission-77"`); missioncraft keeps its own `msn-<hash>` internal id. Mapping recorded in mission-config metadata. Sovereignty preserved (missioncraft doesn't know what Hub IDs mean; just stores the mapping).
 - **Hub-id integrity boundary (v1.2 fold per MEDIUM-12):** `hub-id` is INFORMATIONAL ONLY at v1; missioncraft never queries by hub-id (only by `msn-<hash>` internal id). Hub-id rename (Hub-side mission rename) is operator's responsibility to fold via `applyMission` with updated config; missioncraft does NOT bidirectionally sync. Hub doesn't observe missioncraft's `msn-<hash>` either — Hub→missioncraft is one-way config-delivery; missioncraft→Hub is operator-invocation (e.g., `gh pr create` if RemoteProvider is gh-cli, but that's GitHub-side, not Hub-side).
 - **OIS adapter integration shape (v1.2 fold per MEDIUM-13; v1.3 fold per MEDIUM-R2.11 wire-format):** OIS adapter integrates via SDK-DIRECT method calls, NOT CLI shell-out. Canonical contract:
@@ -798,12 +888,19 @@ created ─[repo-add]─> configured ─[start]─> started ──[work...]─�
                        └─[abandon]─ from any non-terminal state
 ```
 
+**State lifetimes (v1.6 fold per MEDIUM-R5.3):**
+- `created` is a STABLE state; operator can leave a mission in `created` indefinitely (e.g., scaffolded config awaiting first repo-add). NOT instantaneous; NOT collapsed to `configured`.
+- `configured` is reached upon first repo entering the mission-config (via `repo-add` OR via `apply` with config containing ≥1 repos)
+- All states except `started` (transient transition) + `in-progress` (active) + `completed`/`abandoned` (terminal) are stable persistence states queryable via `getMission(id)`.
+
 **State transitions:**
 
 | From | Event | To | Notes |
 |---|---|---|---|
 | (none) | `msn create` | `created` | Config scaffold; no repos; no workspace |
 | `created` | `msn <id> repo-add` | `configured` | First repo added; config has at least 1 repo |
+| `created` | `msn apply -f <path>` (config has 0 repos) | `created` | No-op effectively; full upsert preserves zero-repos state (v1.6 fold per MEDIUM-R5.3) |
+| `created` | `msn apply -f <path>` (config has ≥1 repos) | `configured` | Full upsert + auto-state-promotion via repo-presence (v1.6 fold per MEDIUM-R5.3) |
 | `configured` | `msn <id> repo-add` | `configured` (self) | Additional repos added; mutates config |
 | `configured` | `msn <id> repo-remove` | `configured` (or `created` if last) | Pre-start mutation; allowed |
 | `configured` | `msn start <id>` | `started` | Engine realizes declared state — clones repos in parallel; allocates workspace; acquires locks; cold-start bundle written; mission ready for work |
@@ -924,6 +1021,8 @@ mission:
   name: storage-extract              # optional human-friendly slug; for `msn start storage-extract`
   hub-id: mission-77                 # optional; Hub-side mission entity id mapping (sovereignty preserved — missioncraft just stores)
   description: "Extract storage-provider to sovereign repo"
+  lifecycle-state: configured        # v1.6 fold per MEDIUM-R5.1 — single source of truth for mission state on disk; enum: 'created' | 'configured' | 'started' | 'in-progress' | 'completed' | 'abandoned'; mutated atomically on transitions per atomic-write discipline (MEDIUM-11); zod literal-string-union preserves wire-format kebab-case
+  created-at: "2026-05-09T01:00:00Z"  # ISO-8601; auto-set at `msn create`; immutable
   tags:                              # cross-system correlation; Record<string,string>; no v1-validation
     correlation-id: "ois-2026-05-08"
 
@@ -1471,8 +1570,9 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v1.3 PENDING-ROUND-3** | **2026-05-09** | **engineer round-2 audit fold (thread-510 round 3/20; 15 findings: 1 HIGH + 11 MEDIUM + 3 MINOR)** | **HIGH-R2.1 grammar-inconsistency picks Shape (b) (4-positional `msn <mission> <repo-name> <git-verb>`; drop `repo` keyword + sub-action; README + parser + CLI table aligned); MEDIUM-R2.1 linter resolver-chain spec (tsconfig paths + eslint-import-resolver-typescript); MEDIUM-R2.2 startMission({config}) extended semantics (3-case branch on id-existence + state); MEDIUM-R2.3 SDK-side zod-validate-at-entry on startMission/applyMission (defense-in-depth); MEDIUM-R2.4 id-vs-name resolution boundary (CLI-side; SDK is id-only) + name-uniqueness invariant; MEDIUM-R2.5 repo-name auto-derivation reserved-words rejection; MEDIUM-R2.6 msn- prefix rejection on operator --name; MEDIUM-R2.7 naming-convention values preserved as wire-format (no transform on values); MEDIUM-R2.8 explicit mission-lock acquisition order in configured→started transition (7 steps); MEDIUM-R2.9 MissioncraftConfig SDK constructor shape committed; MEDIUM-R2.10 config precedence chain extended (CLI > env > mission-config > SDK constructor > built-in default); MEDIUM-R2.11 OIS adapter wire-format spec (Hub→adapter JSON kebab-case keys + zod-parse via MissionConfigSchema); MINOR-R2.1 mission-config-schema-version z.literal(1) number not string; MINOR-R2.2 tags Record-keys exempt from kebab→camelCase transform; MINOR-R2.3 F18 ConfigValidationError invocation-sites annotated. Pending engineer round-3 audit on thread-510.** |
 | **v1.4 PENDING-ROUND-4** | **2026-05-09** | **engineer round-3 audit fold (thread-510 round 5/20; 14 findings: 1 HIGH + 11 MEDIUM + 2 MINOR)** | **HIGH-R3.1 provider string-name registry — closed registry at v1 (option a); built-in factory map for canonical 6 string-names; 3rd-party providers via SDK INSTANCE injection only; v2.x can open via Missioncraft.registerProvider; MEDIUM-R3.1 MissionConfigSchema + RepoSpecSchema added to SDK exports; MEDIUM-R3.2 StateDurabilityConfig interface committed (10 fields); MEDIUM-R3.3 concurrent create race-resolution via POSIX O_EXCL symlink at `<workspace>/config/.names/<slug>.yaml`; MEDIUM-R3.4 case-1 partial-failure rollback PRESERVE-CONFIG model (operator's config-input not lost); name-uniqueness check FIRST (BEFORE scaffold); MEDIUM-R3.5 id-vs-name resolution symlink-fast-path (O(1) name→id; linear-scan only for `msn list`); v1 documented operator-targeting limit ~1000s missions; MEDIUM-R3.6 algorithm Rule 6 post-dispatch arg-count validation (3 error-classes: missing-verb / missing-arg / extra-positional); MEDIUM-R3.7 algorithm Rule 2 extension (3 distinct sub-action vocabularies: mission-scoped + remote-scoped + config-scoped); MEDIUM-R3.8 tsc preserve-imports invariant (paths is type-resolution-only; no rewrite of `@apnex/missioncraft` imports post-tsc; v1 build pipeline tsc-only no bundler); MEDIUM-R3.9 lockTimeout single-shared-default (applies to BOTH mission-lock + repo-lock; per-acquire override at call-site); MEDIUM-R3.10 applyMission state-dependent semantics (created/configured = full upsert; started/in-progress = additive-only; terminal = error); MEDIUM-R3.11 mission.name validation enforced at every config-load via MissionConfigSchema (uniform across createMission + applyMission + startMission({config}) + YAML hydration + adapter MCP-payload-parse); MINOR-R3.1 Global flags table (workspace-root + wip-cadence-ms + snapshot-cadence-ms + lock-wait-ms + lock-validity-ms + output); MINOR-R3.2 createMission validation responsibility annotated. Pending engineer round-4 audit on thread-510.** |
 | **v1.5 PENDING-ROUND-5** | **2026-05-09** | **engineer round-4 audit fold (thread-510 round 7/20; 14 findings: 1 HIGH cluster of 3 sub-issues + 11 MEDIUM + 2 MINOR)** | **HIGH-R4.1 PROVIDER_REGISTRY substrate-inconsistency cluster — (1) drop `'trust-all'` from identity sub-registry (TrustAllIdentity doesn't exist; was incorrect duplicate); (2) rename remote `'github'` → `'gh-cli'` for cross-section consistency with §2.5+SDK+CLI usage; (3) spec PureGitRemoteProvider as null-object at §2.1.5 (capabilities.supportsPullRequests=false; throws UnsupportedOperationError on PR/API ops); MEDIUM-R4.1 OS-support boundary v1=Linux+macOS only (POSIX symlink); Windows runtime-rejection at SDK constructor; v1.x can add lock-file alternative; MEDIUM-R4.2 `static readonly providerName: string` contract on all provider classes (engine reads instance.constructor.providerName for SDK-injection vs mission-config string-name validation); MEDIUM-R4.3 networkRetry default aligned to 5 (was inconsistent 3 in §2.3.1 vs 5 in §2.5+§2.6.3); MEDIUM-R4.4 applyMission name-rename flow under mission-lock (O_EXCL on new + unlink old + atomic-write); MEDIUM-R4.5 terminal-state symlink retention option (c) preserve both — name-namespace blocks reuse until --purge-config; create-vs-terminal-mission name-collision rejected; MEDIUM-R4.6 applyMission id-vs-config.mission.id mismatch → ConfigValidationError (option a fail-fast); MEDIUM-R4.7 applyMission mission-lock requirement uniformly across pre-start + post-start (lost-update race protection); MEDIUM-R4.8 CLI lookup id-vs-name regex prefix-detection (^msn-[a-f0-9]{8}$ → id-form; else name-form); MEDIUM-R4.9 mission-id wording-fix (id ALWAYS auto-generated; --name is ADDITIONAL alias not replacement); MEDIUM-R4.10 case-1 step-4+ explicit rollback boundary (preserve config + symlink across all step-4-7 failures); MEDIUM-R4.11 normalized arg-count grammar table at §2.3.2 (parser-implementation contract; 21 verb-paths spec'd); MINOR-R4.1 orphan-config workflow concur (msn list --status configured + abandon --purge-config sufficient at v1; no separate --cleanup-orphans); MINOR-R4.2 core/ 3-file boundary rationale (types.ts SDK-internal vs mission-types.ts resource vs mission-config-schema.ts runtime-zod). Pending engineer round-5 audit on thread-510.** |
+| **v1.6 PENDING-ROUND-6** | **2026-05-09** | **engineer round-5 audit fold (thread-510 round 9/20; 11 findings: 1 HIGH + 7 MEDIUM + 3 MINOR)** | **HIGH-R5.1 v1.0-carryover SDK surface mismatch — DROP `remoteAdd / remoteList / remoteRemove` from SDK + CLI surfaces (option a); per-mission RemoteProvider configured via SDK constructor injection OR mission-config `remote.provider` field; `remote` removed from top-level reserved-verbs + remote-scoped sub-actions vocabulary; v1 doesn't ship multi-remote support (additive-evolution path open for v1.x); MEDIUM-R5.1 mission state persistence — single source of truth via `mission.lifecycle-state` field in mission-config YAML (option a); zod literal-string-union; mutated atomically on transitions; MEDIUM-R5.2 mission resource type interfaces committed at §2.3.1 — MissionStatePhase / MissionHandle / MissionState / MissionFilter / MissionConfig (Strict-1.0 SDK return-type shapes pinned); MEDIUM-R5.3 `created` × `apply` state-transition rows added (zero-repos no-op self-loop; ≥1-repo auto-promotion to `configured`); `created` is STABLE state confirmed (NOT instantaneous); MEDIUM-R5.4 Rule 6 disjunctive arg-shape grammar — flag-presence-first algorithm + 4 walk-through traces; mutually-exclusive error class added; MEDIUM-R5.5 `--purge-config` step-ordering Order A (lifecycle-state-persist FIRST, locks-release SECOND, workspace-destroy THIRD, config-purge LAST); crash-recovery preserves config; MEDIUM-R5.6 applyMission rename failure rollback boundary — config-write-FIRST reordering for cleaner failure semantics; ALL failure modes preserve operator-observable state; MEDIUM-R5.7 `--purge-config` on auto-id-only mission gracefully no-ops symlink-unlink if absent; MINOR-R5.1 static `providerName` examples added for 3 missing default-impls (TrustAllPolicy + LocalFilesystemStorage + IsomorphicGitEngine); MINOR-R5.2 concurrent create-with-name + complete-with-purge race composability note added; MINOR-R5.3 `Missioncraft.isPlatformSupported(): boolean` static helper added to SDK class for adapter UX. Pending engineer round-6 audit on thread-510.** |
 | v1.x BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on thread-510 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 PENDING-ROUND-2 → `b27b579`; v1.3 PENDING-ROUND-3 → `5b43351`; v1.4 PENDING-ROUND-4 → `22f1778`; **v1.5 PENDING-ROUND-5 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 PENDING-ROUND-2 → `b27b579`; v1.3 PENDING-ROUND-3 → `5b43351`; v1.4 PENDING-ROUND-4 → `22f1778`; v1.5 PENDING-ROUND-5 → `8663f9e`; **v1.6 PENDING-ROUND-6 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
