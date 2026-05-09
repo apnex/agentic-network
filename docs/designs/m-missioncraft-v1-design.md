@@ -1,6 +1,6 @@
-# M-Missioncraft-V1 — Design v1.2 PENDING-ROUND-2
+# M-Missioncraft-V1 — Design v1.3 PENDING-ROUND-3
 
-**Status:** **v1.2 PENDING-ROUND-2** (architect-side; engineer round-1 audit fold on thread-510 — 24 findings: 6 HIGH + 14 MEDIUM + 4 MINOR — all dispositioned). Composes from **v1.1 PENDING-BILATERAL** at SHA `aa35be2` (Director-direct architectural-refinement reshape via 6 refinements). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch → v1.1 PENDING-BILATERAL (Director-direct refinement reshape) → **v1.2 PENDING-ROUND-2** (this version; engineer round-1 fold-pass) → engineer round-2 audit on thread-510 → v1.2 BILATERAL RATIFIED.
+**Status:** **v1.3 PENDING-ROUND-3** (architect-side; engineer round-2 audit fold on thread-510 — 15 findings: 1 HIGH + 11 MEDIUM + 3 MINOR — all dispositioned). Composes from **v1.2 PENDING-ROUND-2** at SHA `b27b579` (engineer round-1 fold-pass; 24 findings dispositioned). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch → v1.1 PENDING-BILATERAL (Director-direct refinement reshape) → v1.2 PENDING-ROUND-2 (engineer round-1 fold) → **v1.3 PENDING-ROUND-3** (this version; engineer round-2 fold-pass) → engineer round-3 audit on thread-510 → v1.x BILATERAL RATIFIED.
 
 **v1.1 Director-direct architectural refinements 2026-05-08-evening:**
 
@@ -390,6 +390,39 @@ export { MissioncraftError, LockTimeoutError, StorageAllocationError,
          UnsupportedOperationError, NetworkRetryExhaustedError } from './errors';
 ```
 
+**`MissioncraftConfig` SDK constructor shape (Strict-1.0 commit; v1.3 fold per MEDIUM-R2.9):**
+
+```typescript
+interface MissioncraftConfig {
+  readonly identity: IdentityProvider;                    // required (no SDK-default; explicit-injection)
+  readonly approval: ApprovalPolicy;                      // required (no SDK-default)
+  readonly storage: StorageProvider;                      // required (no SDK-default)
+  readonly gitEngine: GitEngine;                          // required (no SDK-default)
+  readonly remote?: RemoteProvider;                       // optional (mission-config can override; per-mission)
+  readonly workspaceRoot?: string;                        // optional; default ~/.missioncraft
+  readonly stateDurability?: StateDurabilityConfig;       // optional; SDK-default if omitted
+  readonly lockTimeoutWaitMs?: number;                    // optional; default 0 (fail-fast)
+  readonly lockTimeoutValidityMs?: number;                // optional; default 86_400_000 (24h)
+}
+```
+
+The 4 required pluggables (identity/approval/storage/gitEngine) MUST be explicitly injected; v1 ships default-implementations that operators import + pass (e.g., `new Missioncraft({ identity: new LocalGitConfigIdentity(), ... })`). Future v1.x may add a `Missioncraft.withDefaults({ overrides? })` static-helper for ergonomics; out-of-scope v1.
+
+**Config precedence chain (v1.3 fold per MEDIUM-R2.10):**
+
+```
+CLI flag  >  env-var  >  mission-config field  >  SDK constructor (MissioncraftConfig)  >  built-in default
+```
+
+Highest-precedence wins. Example: `wipCadenceMs`:
+- CLI invocation `msn start --wip-cadence-ms=5000` → 5000 (CLI flag wins)
+- else `MSN_WIP_CADENCE_MS=10000` env-var → 10000
+- else mission-config `wip-cadence-ms: 30000` → 30000
+- else SDK constructor `stateDurability.wipCadenceMs: 60000` → 60000 (SDK-consumer-injected default for missions instantiated through this SDK)
+- else built-in default 60000 (matches SDK constructor default)
+
+SDK constructor sets DEFAULTS for missions instantiated through this SDK; mission-config = PER-MISSION OVERRIDE; CLI flag = PER-INVOCATION OVERRIDE; env-var = PER-PROCESS OVERRIDE.
+
 **SDK API shape (k8s-resource-shape applied to TypeScript):**
 
 ```typescript
@@ -511,17 +544,24 @@ CLI grammar tokenization rules (parser-disambiguation):
 
 1. **Reserved-verbs list (top-level):** `create / list / show / start / apply / complete / abandon / status / remote / config / --help / --version`. First positional matching this list = top-level verb dispatch. First positional NOT matching = mission-selector.
 
-2. **Reserved sub-actions (mission-scoped):** `repo-add / repo-remove / repo-list / repo`. Second positional matching this list (after a mission-selector) = mission-scoped action; remaining positionals are action arguments.
+2. **Reserved sub-actions (mission-scoped):** `repo-add / repo-remove / repo-list`. Second positional matching this list (after a mission-selector) = mission-scoped action; remaining positionals are action arguments. **(v1.3 fold per HIGH-R2.1: singular `repo` REMOVED from reserved-sub-actions list; per-mission git-op grammar picks Shape (b) — 4-positional `msn <mission-selector> <repo-name> <git-verb>` without literal `repo` keyword)**
 
-3. **Per-mission git op selector:** `msn <mission-selector> <repo-name> <git-verb>` (4-positional pattern) where `<git-verb>` ∈ `{branch / branch delete / checkout / fetch / commit / stage / push / pull / merge / tag / log / revparse / status}`. Second positional (repo-name) is free-form (not in any reserved list); third positional is the git-verb.
+3. **Per-mission git op selector (Shape (b) per HIGH-R2.1 v1.3 fold):** `msn <mission-selector> <repo-name> <git-verb> [args]` (4-positional pattern) where `<git-verb>` ∈ `{branch / branch delete / checkout / fetch / commit / stage / push / pull / merge / tag / log / revparse / status}`. Second positional (repo-name) is free-form (not in any reserved list); third positional is the git-verb. NO `repo` keyword as 2nd positional — k8s-shape resource-name-then-verb pattern (e.g., `kubectl logs <pod>` not `kubectl pod <pod> logs`).
 
 4. **Disambiguation algorithm:**
    - 1 positional: error ("missing verb or mission-selector")
    - 2 positionals: if `[0]` ∈ top-level verbs → top-level dispatch; else → `mission=<sel>, action=<verb>` BUT ONLY if `[1]` ∈ mission-scoped reserved sub-actions; else error
-   - 3+ positionals: if `[0]` ∈ top-level verbs (e.g., `remote add github`) → top-level + sub-action dispatch; else `[0]` is mission-selector; `[1]` is reserved-sub-action OR repo-name (resolved by membership in mission-scoped reserved list); `[2..]` is verb + args
-   - Slug-format restriction: mission `--name <slug>` MUST match `[a-z0-9][a-z0-9-]{1,62}` (DNS-style) AND NOT match any reserved verb/sub-action; reject at `msn create` time
+   - 3+ positionals: if `[0]` ∈ top-level verbs (e.g., `remote add github`) → top-level + sub-action dispatch; else `[0]` is mission-selector; `[1]` is reserved-sub-action OR repo-name (resolved by membership in mission-scoped reserved list per Rule 2; if `[1]` ∈ reserved-sub-actions then mission-scoped action shape; else `<repo-name>` per Rule 3 git-op shape); `[2..]` is verb + args
+   - Slug-format restriction: mission `--name <slug>` MUST match `[a-z0-9][a-z0-9-]{1,62}` (DNS-style) AND NOT match any reserved verb/sub-action AND NOT start with `msn-` prefix (auto-id namespace); reject at `msn create` time
+   - Repo-name auto-derivation (`msn <id> repo-add <url>` derives repo-name from URL last-segment): MUST reject if derived name matches reserved-sub-actions list (`repo-add / repo-remove / repo-list`); operator must use `--name <override>` for collision cases (v1.3 fold per MEDIUM-R2.5)
 
-5. **Reserved-words protection:** operator cannot create mission with name matching reserved-verb (e.g., `msn create --name list` → error "reserved verb"); prevents future ambiguity if verb is added in v2.
+5. **Reserved-words protection:** operator cannot create mission with name matching reserved-verb (e.g., `msn create --name list` → error "reserved verb"); cannot create mission with `--name msn-<anything>` (auto-id namespace; v1.3 fold per MEDIUM-R2.6); prevents future ambiguity if verb is added in v2.
+
+**Algorithm walk-through on edge cases (v1.3 fold per round-2 ask 2):**
+- `msn list show` → `[0]=list ∈ top-level verbs` → top-level `list` dispatch with arg `show`. (`show` is also a top-level verb; dispatched as `list <filter-arg>`; but mission-name `show` impossible since `show` is reserved-words-protected per Rule 5.)
+- `msn storage-extract storage-provider branch feature/foo` → `[0]=storage-extract` NOT in top-level verbs → mission-selector. `[1]=storage-provider` NOT in reserved-sub-actions → Rule 3 git-op shape; verb=`branch`; arg=`feature/foo`. Resolved.
+- `msn storage-extract repo-add https://...` → `[0]=storage-extract` NOT in top-level → mission-selector. `[1]=repo-add` ∈ reserved-sub-actions → mission-scoped action; arg=`https://...`. Resolved.
+- `msn create` → 1 positional → top-level verb `create` (no mission-name; `--name` flag separate or auto-id assigned). Resolved.
 
 This is the PARSER-LEVEL contract; v1.0 commits this disambiguation. Future v2 verb additions must avoid colliding with existing mission-name slugs (Strict-1.0 cross-version compat).
 
@@ -541,17 +581,25 @@ Both rooted under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`). Clean sep
 **Workspace contract details:**
 
 - **Mission ID format (per refinement #1+#2):** `msn-<8-char-hash>` auto-generated by `msn create`; operator-overridable via `--name <slug>` for human-friendly aliases. Composes with idea-251 agent-id format (`agent-XXXXXXXX`); sovereign-component-internal-id namespace.
+- **id-vs-name resolution boundary (v1.3 fold per MEDIUM-R2.4):** SDK signatures accept `id: string` ONLY (canonical `msn-<hash>` form); CLI accepts `<id|name>` and performs the resolution before invoking SDK. Resolution mechanism: CLI enumerates `<workspace>/config/*.yaml` (lazy-on-CLI-invocation) + parses each + matches against `mission.id` OR `mission.name`. SDK is id-only contract; CLI does the human-friendly translation. Keeps SDK signatures stable + canonical; matches k8s pattern (`kubectl` resolves resource-name to UID before kubelet call).
+- **Name-uniqueness invariant (v1.3 fold per MEDIUM-R2.4):** `msn create --name <slug>` MUST reject if any existing mission-config has same name (CLI scans `<workspace>/config/*.yaml` for collision pre-create); without uniqueness, name→id resolution is ambiguous. Auto-generated `msn-<8-char-hash>` ids have collision-detection per MEDIUM-1 (regenerate-with-retry-cap-3); name-collision detection is the operator-input variant of the same invariant.
 - **Hub-side mission ID mapping:** Hub-delivered mission-config carries Hub's `mission-77`-style id as a field (`mission.hub-id: "mission-77"`); missioncraft keeps its own `msn-<hash>` internal id. Mapping recorded in mission-config metadata. Sovereignty preserved (missioncraft doesn't know what Hub IDs mean; just stores the mapping).
 - **Hub-id integrity boundary (v1.2 fold per MEDIUM-12):** `hub-id` is INFORMATIONAL ONLY at v1; missioncraft never queries by hub-id (only by `msn-<hash>` internal id). Hub-id rename (Hub-side mission rename) is operator's responsibility to fold via `applyMission` with updated config; missioncraft does NOT bidirectionally sync. Hub doesn't observe missioncraft's `msn-<hash>` either — Hub→missioncraft is one-way config-delivery; missioncraft→Hub is operator-invocation (e.g., `gh pr create` if RemoteProvider is gh-cli, but that's GitHub-side, not Hub-side).
-- **OIS adapter integration shape (v1.2 fold per MEDIUM-13):** OIS adapter integrates via SDK-DIRECT method calls, NOT CLI shell-out. Canonical contract:
+- **OIS adapter integration shape (v1.2 fold per MEDIUM-13; v1.3 fold per MEDIUM-R2.11 wire-format):** OIS adapter integrates via SDK-DIRECT method calls, NOT CLI shell-out. Canonical contract:
+
+  **Hub→adapter wire format:** JSON payload with **kebab-case keys** (matches operator-facing YAML; single canonical wire-format across YAML disk + JSON wire). MCP tool result delivers `event.payload.missionConfig` as JSON-decoded object with kebab-case keys.
+
+  **Adapter responsibility:** zod-parse the payload via the SAME `MissionConfigSchema` used for YAML hydration; the schema's transform turns kebab-case keys into camelCase TS object before SDK call. Composes with §2.3.1 SDK-side zod-validate-at-entry (defense-in-depth; not redundancy).
+
   ```typescript
   // Inside the OIS adapter (claude-plugin / opencode-plugin):
-  import { Missioncraft } from '@apnex/missioncraft';
+  import { Missioncraft, MissionConfigSchema } from '@apnex/missioncraft';
   const mc = new Missioncraft({ /* operator-config */ });
 
-  // Hub delivers mission-config as object (via MCP tool result; JSON-encoded; adapter parses + validates)
+  // Hub delivers mission-config as JSON object with kebab-case keys (matches YAML wire-format)
   hub.on('mission_dispatched', async (event) => {
-    const missionConfig = event.payload.missionConfig;  // already-parsed object (Hub serializer + adapter zod-validate)
+    // Adapter zod-parses (kebab→camelCase transform applied at parse-time)
+    const missionConfig = MissionConfigSchema.parse(event.payload.missionConfig);
     try {
       await mc.startMission({ config: missionConfig });
     } catch (err) {
@@ -628,13 +676,35 @@ created ─[repo-add]─> configured ─[start]─> started ──[work...]─�
 
 **Cold-start bundle ordering (v1.2 fold per MEDIUM-7)**:
 - The `configured → started` transition is atomic — engine performs (in order, all under mission-lock): clone-all-repos-in-parallel → wait-all-success-or-rollback → acquire repo-locks → create wip-branch → **write first bundle to snapshotRoot** → release transition-lock → state = `started`
+
+**Explicit mission-lock acquisition order in `configured → started` transition (v1.3 fold per MEDIUM-R2.8)**:
+1. **Acquire mission-lock** via `acquireMissionLock(missionId, { waitMs: 0 })`; on failure → `LockTimeoutError`; mission stays `configured`
+2. **Per declared repo (parallel):** acquire repo-lock + clone via GitEngine; if ANY clone OR repo-lock-acquire fails → release ALL repo-locks acquired so far; release mission-lock; mission stays `configured` (per MEDIUM-4 rollback-all)
+3. **Create wip-branch** in each cloned repo via `gitEngine.branch(wipBranchName)` + `gitEngine.checkout(wipBranchName)`
+4. **Write first bundle** to snapshotRoot per §2.6.2; on failure → release everything (repo-locks + mission-lock); mission stays `configured`
+5. **Persist mission-state YAML** as `started` (atomic-write per MEDIUM-11)
+6. **Release transition-pseudolock** (mission-lock RETAINED for the active mission for its full lifecycle until `complete`/`abandon`)
+7. State = `started`
+
+Lock-acquisition is the FIRST step; all rollback paths know whether the mission-lock has been acquired (always yes after step 1).
 - Bundle-write is INSIDE the transition; if bundle-write fails, transition fails + rollback (mission stays `configured`)
 - Closes window-of-vulnerability where disk-failure between `started`-entered and first-bundle-written has nothing to restore
 
-**Idempotency contract for `startMission` (v1.2 fold per MEDIUM-5)**:
+**Idempotency contract for `startMission` (v1.2 fold per MEDIUM-5; v1.3 fold per MEDIUM-R2.2 extended for `{config}` form)**:
 - `startMission(id)` on already-`started` mission → `MissionStateError` ("mission already started; use `applyMission` for additive changes; or `complete` then re-create for non-additive")
+- `startMission({config})` semantics depend on `config.mission.id`:
+  - if `config.mission.id` NOT present in workspace → scaffold config at `<workspace>/config/<id>.yaml` + acquire mission-lock + clone repos + transition to `started` (single-call create+configure+start; OIS adapter integration shape)
+  - if `config.mission.id` present BUT mission state is `configured` (not yet started) → start the existing mission (transition `configured → started`)
+  - if `config.mission.id` present AND mission is already `started`/`in-progress` → `MissionStateError` ("mission already exists + started; use `applyMission` for additive changes; or `startMission(id)` to start a `configured` mission")
 - NOT idempotent at v1 (operator-intent ambiguous on repeat-start; safer to make explicit)
 - `applyMission(id, config)` is the idempotent re-shape primitive
+
+**SDK-side zod-validate at API entry-points (v1.3 fold per MEDIUM-R2.3)**:
+- `startMission({config})` zod-parses `config` against `MissionConfigSchema` at entry; rejects with `ConfigValidationError` on parse-fail
+- `applyMission({id, config})` zod-parses `config` at entry
+- Defense-in-depth: TypeScript types are erasable at runtime; `as MissionConfig` cast can pass invalid data through. SDK boundary validates regardless of caller-source.
+- Same zod schema reused for YAML hydration (CLI path; per MEDIUM-11 atomic-write discipline) + object validation (SDK direct path; this fold). Single canonical schema; no divergence risk.
+- Composes with adapter pattern (per §2.4 OIS adapter): adapter zod-parses Hub-delivered payload; SDK zod-parses again at entry — defense-in-depth not redundancy.
 
 **`applyMission` on non-existent id (v1.2 fold per MEDIUM-6)**:
 - `applyMission({id, config})` where mission doesn't exist → `MissionStateError` ("mission not found; use `createMission` first")
@@ -722,17 +792,26 @@ auto-merge-strategy: ff               # ff | no-ff (per v0.6 §AAAAA — Isomorp
 ```typescript
 interface RepoSpec {
   readonly url: string;             // git URL (HTTPS, SSH, file://)
-  readonly name?: string;           // local-name override; auto-derived from URL last segment if omitted
+  readonly name?: string;           // local-name override; auto-derived from URL last segment if omitted; MUST NOT match reserved-sub-actions list (`repo-add`, `repo-remove`, `repo-list`); MUST match DNS-style slug `[a-z0-9][a-z0-9-]{1,62}` (v1.3 fold per MEDIUM-R2.5)
   readonly branch?: string;         // mission's working branch; default: create `mission/<missionId>` from base
   readonly base?: string;           // base-branch to branch from; default: repo's default-branch
   readonly commitSha?: string;      // optional pin to specific commit for reproducibility (YAML: `commit-sha:`)
 }
 ```
 
-**Naming-convention contract (v1.2 fold per HIGH-4):** TypeScript types use camelCase property names; YAML schema uses kebab-case. zod schema transforms at parse-time. Same pattern applies throughout: `mission-config-schema-version` (YAML) ↔ `missionConfigSchemaVersion` (TS); `wip-cadence-ms` (YAML) ↔ `wipCadenceMs` (TS); etc. Strict-1.0 commits BOTH the TS-side type signatures + the YAML-side kebab-case wire-format.
+**Naming-convention contract (v1.2 fold per HIGH-4; v1.3 fold per MEDIUM-R2.7 + MINOR-R2.2 — values + tags exemption):**
+
+- **Property names:** TypeScript camelCase ↔ YAML kebab-case. zod schema transforms at parse-time. Same pattern applies throughout: `mission-config-schema-version` (YAML) ↔ `missionConfigSchemaVersion` (TS); `wip-cadence-ms` (YAML) ↔ `wipCadenceMs` (TS); etc.
+- **Values:** PRESERVE wire-format as-typed (kebab-case literal-strings preserved; NO transform on values). Examples:
+  - YAML `wip-branch-cleanup: delete-on-complete-retain-on-abandon` → TS `wipBranchCleanup: 'delete-on-complete-retain-on-abandon'` (literal-string-union; kebab preserved)
+  - YAML `auto-merge-strategy: ff` → TS `autoMergeStrategy: 'ff' | 'no-ff'`
+  - YAML `state-durability.mechanism: layered` → TS `stateDurability.mechanism: 'layered'`
+  - YAML `identity.provider: local-git-config` → TS `identity.provider: 'local-git-config' | 'trust-all' | 'gh-cli'`
+- **Tags Record-keys exemption (per MINOR-R2.2):** `tags: Record<string, string>` keys are operator-supplied; PRESERVED as-is (no kebab→camelCase transform). E.g., YAML `correlation-id: "ois-2026-05-08"` → TS `tags['correlation-id'] = 'ois-2026-05-08'`.
+- Strict-1.0 commits BOTH the TS-side type signatures + the YAML-side kebab-case wire-format. zod schema codifies which fields transform vs preserve.
 
 **Mission-config schema versioning under Strict-1.0:**
-- `mission-config-schema-version: 1` is REQUIRED at top of YAML (parser-side version-dispatch)
+- `mission-config-schema-version: 1` is REQUIRED at top of YAML (parser-side version-dispatch); **zod type `z.literal(1)` (number) NOT `z.literal("1")` (string)** — YAML 1.2 parses unquoted `1` as number (v1.3 fold per MINOR-R2.1)
 - v1.x can ADD optional fields (additive-only); REMOVING or RENAMING fields requires v2 + new schema-version
 - Engine rejects YAML with unknown `mission-config-schema-version` via `ConfigValidationError` (v1.2 fold per MEDIUM-14 — explicit error class for forward-compat reject)
 - **Atomic-write discipline for CLI mid-mission config mutations (v1.2 fold per MEDIUM-11):** every CLI mutation (`msn create`, `msn <id> repo-add`, `msn apply`) writes via `fs.writeFile(path + '.tmp')` + zod-validate-roundtrip the temp file (parse the temp; if parse fails, abort + emit `ConfigValidationError`) + `fs.rename(path + '.tmp', path)` (POSIX atomic on same-fs); never leaves partial-config visible. Prevents corruption if CLI crashes mid-mutation.
@@ -867,6 +946,25 @@ interface RepoSpec {
   }]
   ```
   Add `eslint-plugin-import` to devDependencies. typescript-eslint alone doesn't have an equivalent rule.
+- **Resolver-chain composition spec (v1.3 fold per MEDIUM-R2.1):** the linter rule + package-self-reference compose ONLY if the resolver maps `@apnex/missioncraft` → `./src/missioncraft-sdk/index.ts` (source path) at lint-time. `dist/` doesn't exist pre-compile; default node-resolver would FAIL. Required substrate:
+  1. **`tsconfig.json` paths field** — adds source-path mapping:
+     ```json
+     "compilerOptions": {
+       "paths": {
+         "@apnex/missioncraft": ["./src/missioncraft-sdk/index.ts"]
+       }
+     }
+     ```
+  2. **`eslint-import-resolver-typescript`** in devDependencies + ESLint config:
+     ```json
+     "settings": {
+       "import/resolver": {
+         "typescript": { "project": "./tsconfig.json" }
+       }
+     }
+     ```
+     The TypeScript resolver honors `tsconfig.paths`, mapping `@apnex/missioncraft` → `./src/missioncraft-sdk/index.ts` at lint-time.
+  3. **Path-string match invariant:** the `except` entry path-string in `no-restricted-paths` MUST equal the resolver's output path (`./src/missioncraft-sdk/index.ts`; not `@apnex/missioncraft`; not `./src/missioncraft-sdk/`). If resolver output drifts, `except` no longer matches → linter blocks the legitimate SDK index.ts import.
 - CLI is an SDK consumer, same shape as a 3rd-party consumer would be; ensures CLI doesn't accidentally couple to SDK internals.
 
 **Multi-module TypeScript build (v1.2 fold per MEDIUM-8):**
@@ -1006,11 +1104,11 @@ msn storage-extract repo-add https://github.com/example/repo.git
 # Start the mission (engine clones; allocates workspace; acquires locks)
 msn start storage-extract
 
-# Per-mission git ops (mission-selector → repo-name → verb)
-msn storage-extract repo branch feature/example
+# Per-mission git ops (mission-selector → repo-name → verb; Shape (b) v1.3 fold per HIGH-R2.1)
+msn storage-extract storage-provider branch feature/example
 # ... edit files in the workspace ...
-msn storage-extract repo commit -m "Initial work"
-msn storage-extract repo push
+msn storage-extract storage-provider commit -m "Initial work"
+msn storage-extract storage-provider push
 
 # Complete the mission (release locks; destroy workspace; preserve config)
 msn complete storage-extract
@@ -1077,7 +1175,7 @@ Apache 2.0
 | F15 | Snapshot retention policy | MEDIUM | **RATIFIED keep last 5 OR last 24h whichever larger per §G engineer concur**. §2.5 schema fields: `snapshot-retention.{min-count: 5, min-age-hours: 24}`. |
 | F16 | wip-branch cleanup post-mission | MEDIUM | **RATIFIED delete-on-complete + retain-on-abandon per §G engineer concur**. §2.5 schema field: `wip-branch-cleanup: delete-on-complete-retain-on-abandon`. |
 | F17 | TypeDoc deploy mechanism | MINOR | **RATIFIED GitHub Pages from release.yml per §G engineer concur**. §2.9.3 updated with `permissions: pages: write` + `actions/setup-pages` per engineer pattern-recommendation. |
-| F18 | Error class hierarchy | MEDIUM | **RATIFIED 10 classes (v0.3 count fix per §BB) — flat hierarchy under `MissioncraftError` base; all 9 specialized extend the base directly**: `MissioncraftError` (base; extends Error) + `LockTimeoutError` + `StorageAllocationError` + `RemoteAuthError` + `ApprovalDeniedError` + `MissionStateError` + `WorkspaceConflictError` + `ConfigValidationError` + `UnsupportedOperationError` + `NetworkRetryExhaustedError`. Total 10. Consumer can `instanceof MissioncraftError` for catch-all; specialized class for typed handling. No multi-level inheritance per v0.3 §BB. |
+| F18 | Error class hierarchy | MEDIUM | **RATIFIED 10 classes (v0.3 count fix per §BB) — flat hierarchy under `MissioncraftError` base; all 9 specialized extend the base directly**: `MissioncraftError` (base; extends Error) + `LockTimeoutError` + `StorageAllocationError` + `RemoteAuthError` + `ApprovalDeniedError` + `MissionStateError` + `WorkspaceConflictError` + `ConfigValidationError` + `UnsupportedOperationError` + `NetworkRetryExhaustedError`. Total 10. Consumer can `instanceof MissioncraftError` for catch-all; specialized class for typed handling. No multi-level inheritance per v0.3 §BB. **v1.2 + v1.3 fold:** explicit invocation sites for `ConfigValidationError` are §2.5 unknown-schema-version reject + §2.5 atomic-write zod-validate-roundtrip failure + §2.3.1 SDK-side zod-validate-at-entry on `startMission({config})`/`applyMission({id, config})` (defense-in-depth per MEDIUM-R2.3). |
 
 **NEW v0.2 architect-flags (F19-F23 surfaced during round-1 fold-pass; request engineer round-2 audit):**
 
@@ -1159,8 +1257,9 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | v1.0 BILATERAL RATIFIED | 2026-05-08 | engineer round-7 ratify-clean (thread-509 round 15/20) + architect round-19 label-flip + bilateral-commit close | trivial doc-micro fold per §EEEEEE engineer round-7; pattern empirical-baseline LOCKED at n=6 with 7-round closure; pushed at SHA `7fb1643` on `agent-lily/m-branchcraft-v1-survey` branch (preserved as historical artifact under former M-Branchcraft-V1 name) |
 | **v1.1 PENDING-BILATERAL-RATIFICATION** | **2026-05-08-evening** | **6 Director-direct architectural refinements (post v1.0 RATIFIED; pre-Phase-6)** | **this version; substantial reshape covering: (1) rename branchcraft→missioncraft + brc→msn; (2) drop "mission" verb prefix (k8s-resource-shape); (3) `apply` mid-mission additive-only; (4) SDK-primary contract surface (CLI demoted to consumer; OIS-orchestrated persona collapsed); (5) Shape B hybrid single-package + internal sovereign-module separation (Q3 refinement); (6) `-sdk`/`-cli`/`-api` suffix convention. New branch `agent-lily/m-missioncraft-v1-design`. New §2.4.1 mission state machine; new §2.5 declarative `repos: [...]` schema field; rewritten §2.3 personas + §2.3.2 CLI verb taxonomy in k8s-resource-shape; §2.9 package.json restructured for sovereign-module directory layout. Pending engineer round-1 audit on new thread (TBD; thread-510 candidate; maxRounds=20)** |
 | **v1.2 PENDING-ROUND-2** | **2026-05-09** | **engineer round-1 audit fold (thread-510 round 1/20; 24 findings: 6 HIGH + 14 MEDIUM + 4 MINOR)** | **HIGH-1 duplicate §2.5 carryover deleted; HIGH-2 BRC_WORKSPACE_ROOT→MSN_WORKSPACE_ROOT remaining 3 touch-points; HIGH-3 README skeleton k8s-shape rewrite; HIGH-4 RepoSpec camelCase + naming-convention contract; HIGH-5 cross-mission repo-lock path; HIGH-6 --purge-config flag; MEDIUM-1 mission-id derivation (crypto.randomBytes); MEDIUM-2 parser disambiguation 5-rule grammar; MEDIUM-3 concurrent apply mission-lock; MEDIUM-4 startMission rollback; MEDIUM-5 startMission idempotency; MEDIUM-6 applyMission on non-existent id; MEDIUM-7 cold-start bundle ordering; MEDIUM-8 single tsconfig + rootDir build; MEDIUM-9 eslint-plugin-import zone-restrict; MEDIUM-10 package self-reference for CLI→SDK; MEDIUM-11 atomic-write discipline; MEDIUM-12 hub-id integrity boundary informational-only; MEDIUM-13 OIS adapter SDK-direct canonical; MEDIUM-14 ConfigValidationError class; MINOR-1 §3 architect-flags annotation; MINOR-3 getMissionStatus removed (getMission + listMissions cover); MINOR-4 applyMission returns MissionState. Pending engineer round-2 audit on thread-510.** |
-| v1.1 BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on thread-510 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger |
+| **v1.3 PENDING-ROUND-3** | **2026-05-09** | **engineer round-2 audit fold (thread-510 round 3/20; 15 findings: 1 HIGH + 11 MEDIUM + 3 MINOR)** | **HIGH-R2.1 grammar-inconsistency picks Shape (b) (4-positional `msn <mission> <repo-name> <git-verb>`; drop `repo` keyword + sub-action; README + parser + CLI table aligned); MEDIUM-R2.1 linter resolver-chain spec (tsconfig paths + eslint-import-resolver-typescript); MEDIUM-R2.2 startMission({config}) extended semantics (3-case branch on id-existence + state); MEDIUM-R2.3 SDK-side zod-validate-at-entry on startMission/applyMission (defense-in-depth); MEDIUM-R2.4 id-vs-name resolution boundary (CLI-side; SDK is id-only) + name-uniqueness invariant; MEDIUM-R2.5 repo-name auto-derivation reserved-words rejection; MEDIUM-R2.6 msn- prefix rejection on operator --name; MEDIUM-R2.7 naming-convention values preserved as wire-format (no transform on values); MEDIUM-R2.8 explicit mission-lock acquisition order in configured→started transition (7 steps); MEDIUM-R2.9 MissioncraftConfig SDK constructor shape committed; MEDIUM-R2.10 config precedence chain extended (CLI > env > mission-config > SDK constructor > built-in default); MEDIUM-R2.11 OIS adapter wire-format spec (Hub→adapter JSON kebab-case keys + zod-parse via MissionConfigSchema); MINOR-R2.1 mission-config-schema-version z.literal(1) number not string; MINOR-R2.2 tags Record-keys exempt from kebab→camelCase transform; MINOR-R2.3 F18 ConfigValidationError invocation-sites annotated. Pending engineer round-3 audit on thread-510.** |
+| v1.x BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on thread-510 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); **v1.2 PENDING-ROUND-2 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 PENDING-ROUND-2 → `b27b579`; **v1.3 PENDING-ROUND-3 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
