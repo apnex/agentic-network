@@ -1,6 +1,6 @@
-# M-Missioncraft-V1 — Design v1.6 PENDING-ROUND-6
+# M-Missioncraft-V1 — Design v1.7 PENDING-ROUND-7
 
-**Status:** **v1.6 PENDING-ROUND-6** (architect-side; engineer round-5 audit fold on thread-510 — 11 findings: 1 HIGH + 7 MEDIUM + 3 MINOR — all dispositioned; pattern-decay finally tracking thread-509 empirics R5=11). Composes from **v1.5 PENDING-ROUND-5** at SHA `8663f9e` (engineer round-4 fold-pass; 14 findings dispositioned). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch → v1.1 → v1.2 → v1.3 → v1.4 → v1.5 (engineer round-4 fold) → **v1.6 PENDING-ROUND-6** (this version; engineer round-5 fold-pass) → engineer round-6 audit on thread-510 → v1.x BILATERAL RATIFIED.
+**Status:** **v1.7 PENDING-ROUND-7** (architect-side; engineer round-6 audit fold on thread-510 — 10 findings: 0 HIGH + 4 MEDIUM + 6 MINOR — all dispositioned; pattern-decay R5=11 → R6=10 in tail-of-decay zone). Composes from **v1.6 PENDING-ROUND-6** at SHA `dc24188` (engineer round-5 fold-pass; 11 findings dispositioned). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch → v1.1 → v1.2 → v1.3 → v1.4 → v1.5 → v1.6 (engineer round-5 fold) → **v1.7 PENDING-ROUND-7** (this version; engineer round-6 fold-pass) → engineer round-7 audit on thread-510 → v1.x BILATERAL RATIFIED.
 
 **v1.1 Director-direct architectural refinements 2026-05-08-evening:**
 
@@ -388,6 +388,7 @@ export type {
 
 // Runtime zod schemas (v1.3 fold per MEDIUM-R3.1 — adapter + 3rd-party consumers need .parse() at integration boundary)
 export { MissionConfigSchema, RepoSpecSchema } from './core/mission-config-schema';
+export { OperatorConfigSchema } from './core/operator-config-schema';   // v1.7 fold per MEDIUM-R6.4 — operator-config validation at configGet/configSet boundary
 
 // Pluggable interfaces (types)
 export type { IdentityProvider, AgentIdentity, SigningKey } from './pluggables/identity';
@@ -468,14 +469,25 @@ interface MissionState {
   readonly lifecycleState: MissionStatePhase;
   readonly createdAt: Date;
   readonly updatedAt: Date;
-  readonly remoteProviderName?: string;     // PROVIDER_REGISTRY string-name (e.g., 'gh-cli', 'pure-git')
-  readonly workspacePath?: string;          // populated when state ≥ started
+  // Symmetric pluggable-name exposure (v1.7 fold per MINOR-R6.1) — runtime-introspection without re-parsing config
+  readonly identityProviderName: string;
+  readonly approvalProviderName: string;
+  readonly storageProviderName: string;
+  readonly gitEngineProviderName: string;
+  readonly remoteProviderName?: string;     // PROVIDER_REGISTRY string-name (e.g., 'gh-cli', 'pure-git'); optional only because remote pluggable itself is optional
+  // workspacePath state-gating (v1.7 fold per MEDIUM-R6.3): populated ONLY when workspace exists on-disk;
+  //   - lifecycleState='in-progress' → ALWAYS populated
+  //   - lifecycleState='completed' OR 'abandoned' WITH --retain → populated
+  //   - lifecycleState='completed' OR 'abandoned' WITHOUT --retain → undefined (workspace destroyed)
+  //   - lifecycleState='created' OR 'configured' → undefined (no workspace allocated yet)
+  //   - lifecycleState='started' (transient transition) → caller is mission-lock-guarded so getMission waits or fails; no race
+  readonly workspacePath?: string;
 }
 
 interface MissionFilter {
   readonly status?: MissionStatePhase | readonly MissionStatePhase[];
-  readonly name?: string;                   // exact match
-  readonly nameLike?: string;               // substring match
+  readonly name?: string;                   // exact match (case-sensitive)
+  readonly nameLike?: string;               // case-insensitive plain substring match (UNIX-CLI convention; v1.7 fold per MINOR-R6.3 — `String.prototype.toLowerCase().includes(...)` semantic; NOT glob, NOT regex)
   readonly hubId?: string;
   readonly tags?: Record<string, string>;   // all-must-match
 }
@@ -547,7 +559,7 @@ v2.x can open the registry via `Missioncraft.registerProvider('my-custom', facto
 **Config precedence chain (v1.3 fold per MEDIUM-R2.10):**
 
 ```
-CLI flag  >  env-var  >  mission-config field  >  SDK constructor (MissioncraftConfig)  >  built-in default
+CLI flag  >  env-var  >  mission-config field  >  SDK constructor (MissioncraftConfig)  >  operator-config (v1.7 fold per MEDIUM-R6.4)  >  built-in default
 ```
 
 Highest-precedence wins. Example: `wipCadenceMs`:
@@ -651,7 +663,7 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 
 | Verb | Sub-verbs / Flags | SDK method | Description |
 |---|---|---|---|
-| `msn create` | `[--name <name>]` | `createMission({name})` | Scaffold mission config at `<workspace>/config/<id>.yaml`; auto-generates `msn-<8-char-hash>` id; optional `--name` for human-friendly slug |
+| `msn create` | `[--name <name>]` | `createMission({name})` | Scaffold mission config at `<workspace>/config/<id>.yaml`; auto-generates `msn-<8-char-hash>` id; optional `--name` for human-friendly slug. **stdout output (v1.7 fold per MINOR-R6.5):** prints canonical id one-line (`msn-a3bd610c\n`); with `--name`: prints id + name tab-delimited (`msn-a3bd610c\tstorage-extract\n`). Operator-discoverability of auto-id. |
 | `msn list` | `[--status <state>] [--output json\|yaml]` | `listMissions({status})` | Table view of all missions (k8s `get`) |
 | `msn show <id\|name>` | `[--output json\|yaml]` | `getMission(id)` | Detail view (k8s `describe`) |
 | `msn <id\|name> repo-add <file\|url>` | `[--name <local-name>] [--branch <name>] [--base <branch>]` | `addRepoToMission(id, repo)` | Add repo to mission's declared config; mutates `<workspace>/config/<id>.yaml`; auto-derives local-name from URL last segment unless `--name` override |
@@ -660,8 +672,8 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 | `msn start <id\|name>` | `[--retain]` | `startMission(id)` | Realize the declared state — clones repos in parallel; allocates workspace; acquires locks |
 | `msn start -f <path>` | `[--retain]` | `startMission({config: parsedYAML})` | Start from explicit YAML path (OIS-adapter integration shape) |
 | `msn apply -f <path>` | (no flags) | `applyMission({id, config})` | Upsert (per refinement #3); additive-only mid-mission (repo-add); non-additive errors |
-| `msn complete <id\|name>` | `[--purge-config]` | `completeMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace unless mission was started with `--retain`. `--purge-config` also deletes `<workspace>/config/<id>.yaml` (default: config preserved for mission-history). v1.2 fold per HIGH-6. |
-| `msn abandon <id\|name>` | `[--purge-config]` | `abandonMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace; `--purge-config` deletes config (default: preserved). v1.2 fold per HIGH-6. |
+| `msn complete <id\|name>` | `[--purge-config]` | `completeMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace unless mission was started with `--retain`. `--purge-config` also deletes `<workspace>/config/<id>.yaml` (default: config preserved for mission-history). **v1.7 fold per MINOR-R6.2:** if mission was started with `--retain` AND `--purge-config` is supplied at complete-time → reject with `MissionStateError("--retain (set at start) + --purge-config (at complete) would orphan workspace; choose one")`. v1.2 fold per HIGH-6. |
+| `msn abandon <id\|name>` | `[--purge-config]` | `abandonMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace; `--purge-config` deletes config (default: preserved). **v1.7 fold per MINOR-R6.2:** if mission was started with `--retain` AND `--purge-config` is supplied → reject with `MissionStateError("--retain + --purge-config would orphan workspace; choose one")`. v1.2 fold per HIGH-6. |
 | `msn status [<id\|name>]` | `[--output json\|yaml]` | `getMission(id)` if id given else `listMissions()` (v1.2 fold per MINOR-3) | Runtime status (single mission OR all if no id) — `getMission` returns full `MissionState` including runtime status; `getMissionStatus` removed |
 | **Per-mission git ops (scoped by mission + repo)** | | | |
 | `msn <id> <repo-name> branch <name>` | `[--from <branch>] [--delete] [--force]` | `branchInMission` / `deleteBranchInMission` | Branch ops within a mission's repo |
@@ -783,8 +795,61 @@ This is the PARSER-LEVEL contract; v1.0 commits this disambiguation. Future v2 v
 
 - `<workspace>/config/<id>.yaml` — declarative mission resource manifests (k8s-equivalent: `manifest.yaml`)
 - `<workspace>/missions/<id>/<repo-name>/` — runtime workspaces (active mission state)
+- `<workspace>/operator.yaml` — global operator-config (v1.7 fold per MEDIUM-R6.4)
 
 Both rooted under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`). Clean separation of declarative config vs runtime state.
+
+**Operator-config schema (v1.7 fold per MEDIUM-R6.4 — global preferences distinct from per-mission config):**
+
+File location: `${MSN_WORKSPACE_ROOT}/operator.yaml` (default `~/.missioncraft/operator.yaml`). Schema versioned + atomic-write disciplined per MEDIUM-11.
+
+```yaml
+operator-config-schema-version: 1
+
+defaults:                                # operator-side defaults (lower-precedence than mission-config + CLI flag + env-var)
+  identity-provider: local-git-config    # default IdentityProvider string-name (PROVIDER_REGISTRY)
+  approval-provider: trust-all           # default ApprovalPolicy string-name
+  storage-provider: local-filesystem     # default StorageProvider string-name
+  git-engine-provider: isomorphic-git    # default GitEngine string-name
+  remote-provider: pure-git              # default RemoteProvider string-name (or 'gh-cli' if operator opts in)
+
+  workspace-root: "~/.missioncraft"      # operator-default; CLI/env override per precedence chain
+  snapshot-root: "~/.missioncraft/snapshots"  # default snapshotRoot for state-durability
+
+  state-durability:                      # per-key override of built-in defaults
+    wip-cadence-ms: 30000
+    snapshot-cadence-ms: 300000
+    snapshot-retention:
+      min-count: 5
+      min-age-hours: 24
+    wip-branch-cleanup: delete-on-complete-retain-on-abandon
+    network-retry:
+      max-attempts: 5
+      backoff-ms: 1000
+
+  lock-timeout:
+    wait-ms: 0
+    validity-ms: 86400000
+
+provider-config:                         # per-provider config (e.g., gh-cli path)
+  gh-cli:
+    gh-cli-path: gh                      # PATH-resolved by default; operator can override to absolute path
+```
+
+**OperatorConfigSchema** (zod runtime; exported alongside MissionConfigSchema per MEDIUM-R3.1) commits the closed key-namespace; v1.x can ADD optional keys (additive-only). `configGet`/`configSet` zod-validate key-name against schema; unknown-key → `ConfigValidationError`.
+
+**`configGet` / `configSet` semantics:**
+- `configGet(key)`: dot-notation key (e.g., `defaults.identity-provider`); reads `${MSN_WORKSPACE_ROOT}/operator.yaml`; returns `string | undefined`. Hydrate-with-zod-validate on read.
+- `configSet(key, value)`: dot-notation key; mutation via atomic-write discipline (write-temp + zod-validate-roundtrip + rename); throws `ConfigValidationError` on key-namespace violation OR value-format violation.
+- Operator-config is global (one file per workspace); separate from per-mission config (one file per mission).
+
+**Precedence chain (extended; v1.7 fold per MEDIUM-R6.4):**
+
+```
+CLI flag > env-var > mission-config field > SDK constructor (MissioncraftConfig) > operator-config > built-in default
+```
+
+Operator-config sits BETWEEN SDK constructor + built-in default — operator-side persistent preferences override built-in defaults but are overridden by SDK-consumer-supplied + per-invocation overrides.
 
 **Workspace contract details:**
 
@@ -810,7 +875,7 @@ Both rooted under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`). Clean sep
   4. **`fs.rename` temp config → final config** (`<id>.yaml.tmp` → `<id>.yaml`; POSIX atomic on same-fs) — on failure → **rollback:** recreate old symlink at `<workspace>/config/.names/<foo>.yaml` pointing to `<id>.yaml`; unlink new symlink; emit `StorageAllocationError`
   Mission-lock guards concurrent-applyMission on same mission; `O_EXCL` guards concurrent create-or-rename collision on `bar`. Rollback invariant: ALL failure modes preserve operator-observable state (either old name fully intact OR new name fully active; never partial).
 - **`--purge-config` step-ordering on terminal-state transition (v1.6 fold per MEDIUM-R5.5 — Order A: locks-first, config-last):** `complete <id> --purge-config` from `started`/`in-progress` performs steps in order:
-  1. **Persist `lifecycle-state: completed` to config** via atomic-write (survives crash; recoverable if subsequent steps fail)
+  1. **Persist `lifecycle-state: completed` to config** via read-modify-write under mission-lock (mission-lock already held throughout terminal transition per MEDIUM-R4.7; concurrency-safe — no second writer + no read-while-write race); atomic-write discipline applies to the rewrite (write-temp + zod-validate-roundtrip + rename per MEDIUM-11). Single source of truth — no separate state-file. (v1.7 fold per round-6 ask 4: option (c) RMW-under-mission-lock; survives crash; recoverable if subsequent steps fail)
   2. **Release mission-lock + repo-locks** via StorageProvider
   3. **Destroy runtime workspace** at `<workspace>/missions/<id>/` (per `--retain` not set)
   4. **(if `--purge-config`)** Delete `<id>.yaml` + `.names/<slug>.yaml` symlink (atomic — single transaction; both-or-neither)
@@ -1021,8 +1086,9 @@ mission:
   name: storage-extract              # optional human-friendly slug; for `msn start storage-extract`
   hub-id: mission-77                 # optional; Hub-side mission entity id mapping (sovereignty preserved — missioncraft just stores)
   description: "Extract storage-provider to sovereign repo"
-  lifecycle-state: configured        # v1.6 fold per MEDIUM-R5.1 — single source of truth for mission state on disk; enum: 'created' | 'configured' | 'started' | 'in-progress' | 'completed' | 'abandoned'; mutated atomically on transitions per atomic-write discipline (MEDIUM-11); zod literal-string-union preserves wire-format kebab-case
+  lifecycle-state: configured        # v1.6 fold per MEDIUM-R5.1; v1.7 fold per MEDIUM-R6.1 — engine-controlled field; zod schema `.default('created')` so missing-on-input populates with default; engine ALWAYS overwrites on transitions (atomic-write per MEDIUM-11). Operator-set value via applyMission/YAML is OVERWRITTEN on first engine action — operator cannot mutate this field meaningfully (engine reads disk state on every transition; treats operator-supplied value as informational-only). enum: 'created' | 'configured' | 'started' | 'in-progress' | 'completed' | 'abandoned'; zod literal-string-union preserves wire-format kebab-case
   created-at: "2026-05-09T01:00:00Z"  # ISO-8601; auto-set at `msn create`; immutable
+  updated-at: "2026-05-09T01:30:00Z"  # ISO-8601; mutated atomically by engine on every transition + every config-mutation (v1.7 fold per MEDIUM-R6.2 — symmetric with created-at; closes MissionState.updatedAt YAML-source gap)
   tags:                              # cross-system correlation; Record<string,string>; no v1-validation
     correlation-id: "ois-2026-05-08"
 
@@ -1086,7 +1152,7 @@ auto-merge-strategy: ff               # ff | no-ff (per v0.6 §AAAAA — Isomorp
 interface RepoSpec {
   readonly url: string;             // git URL (HTTPS, SSH, file://)
   readonly name?: string;           // local-name override; auto-derived from URL last segment if omitted; MUST NOT match reserved-sub-actions list (`repo-add`, `repo-remove`, `repo-list`); MUST match DNS-style slug `[a-z0-9][a-z0-9-]{1,62}` (v1.3 fold per MEDIUM-R2.5)
-  readonly branch?: string;         // mission's working branch; default: create `mission/<missionId>` from base
+  readonly branch?: string;         // mission's working branch; default: create `mission/<missionId>` from base; v1.7 fold per MINOR-R6.6 — default DERIVED AT RUNTIME-CLONE-TIME (not parse-time): engine substitutes if RepoSpec.branch undefined when `startMission` clones; missionId is known at create-time but parse-time-substitution would persist the derived branch into the YAML config which loses the "default" semantic on v1.x branch-policy evolution
   readonly base?: string;           // base-branch to branch from; default: repo's default-branch
   readonly commitSha?: string;      // optional pin to specific commit for reproducibility (YAML: `commit-sha:`)
 }
@@ -1101,6 +1167,8 @@ interface RepoSpec {
   - YAML `state-durability.mechanism: layered` → TS `stateDurability.mechanism: 'layered'`
   - YAML `identity.provider: local-git-config` → TS `identity.provider: 'local-git-config' | 'trust-all' | 'gh-cli'`
 - **Tags Record-keys exemption (per MINOR-R2.2):** `tags: Record<string, string>` keys are operator-supplied; PRESERVED as-is (no kebab→camelCase transform). E.g., YAML `correlation-id: "ois-2026-05-08"` → TS `tags['correlation-id'] = 'ois-2026-05-08'`.
+- **Date round-trip discipline (v1.7 fold per MINOR-R6.4):** Date fields serialize as ISO-8601 strings on YAML wire (e.g., `created-at: "2026-05-09T01:00:00Z"`); zod transform `z.string().datetime().transform((s) => new Date(s))` converts to TS `Date` object on parse; engine writes back via `Date.prototype.toISOString()` for atomic-write. Round-trip preserves UTC timezone (Z suffix); local-tz inputs are accepted but normalized to UTC on first engine-write.
+- **Nested-property kebab→camelCase transform (round-6 ask 3 verification):** the kebab↔camelCase transform applies RECURSIVELY through all nested object fields. E.g., YAML `mission.created-at` → TS `mission.createdAt`; YAML `state-durability.wip-cadence-ms` → TS `stateDurability.wipCadenceMs`; YAML `snapshot-retention.min-count` → TS `snapshotRetention.minCount`. zod schema's `.transform()` operates per-level via nested object schemas; depth is unbounded but practically ≤3 levels at v1.
 - Strict-1.0 commits BOTH the TS-side type signatures + the YAML-side kebab-case wire-format. zod schema codifies which fields transform vs preserve.
 
 **Mission-config schema versioning under Strict-1.0:**
@@ -1214,6 +1282,7 @@ interface RepoSpec {
 │   │   ├── core/types.ts          ← SDK-INTERNAL constructor types (MissioncraftConfig, StateDurabilityConfig)
 │   │   ├── core/mission-types.ts  ← Mission RESOURCE types (MissionConfig, MissionState, RepoSpec, MissionStatePhase)
 │   │   ├── core/mission-config-schema.ts  ← Runtime zod schemas (MissionConfigSchema, RepoSpecSchema) — PARSE/VALIDATE primitives
+│   │   ├── core/operator-config-schema.ts ← Runtime zod schema (OperatorConfigSchema) — v1.7 fold per MEDIUM-R6.4
 │   │   ├── pluggables/            ← interface types
 │   │   ├── defaults/              ← LocalGitConfigIdentity, TrustAllPolicy, etc.
 │   │   ├── providers/             ← GitHubRemoteProvider, PureGitRemoteProvider
@@ -1571,8 +1640,9 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v1.4 PENDING-ROUND-4** | **2026-05-09** | **engineer round-3 audit fold (thread-510 round 5/20; 14 findings: 1 HIGH + 11 MEDIUM + 2 MINOR)** | **HIGH-R3.1 provider string-name registry — closed registry at v1 (option a); built-in factory map for canonical 6 string-names; 3rd-party providers via SDK INSTANCE injection only; v2.x can open via Missioncraft.registerProvider; MEDIUM-R3.1 MissionConfigSchema + RepoSpecSchema added to SDK exports; MEDIUM-R3.2 StateDurabilityConfig interface committed (10 fields); MEDIUM-R3.3 concurrent create race-resolution via POSIX O_EXCL symlink at `<workspace>/config/.names/<slug>.yaml`; MEDIUM-R3.4 case-1 partial-failure rollback PRESERVE-CONFIG model (operator's config-input not lost); name-uniqueness check FIRST (BEFORE scaffold); MEDIUM-R3.5 id-vs-name resolution symlink-fast-path (O(1) name→id; linear-scan only for `msn list`); v1 documented operator-targeting limit ~1000s missions; MEDIUM-R3.6 algorithm Rule 6 post-dispatch arg-count validation (3 error-classes: missing-verb / missing-arg / extra-positional); MEDIUM-R3.7 algorithm Rule 2 extension (3 distinct sub-action vocabularies: mission-scoped + remote-scoped + config-scoped); MEDIUM-R3.8 tsc preserve-imports invariant (paths is type-resolution-only; no rewrite of `@apnex/missioncraft` imports post-tsc; v1 build pipeline tsc-only no bundler); MEDIUM-R3.9 lockTimeout single-shared-default (applies to BOTH mission-lock + repo-lock; per-acquire override at call-site); MEDIUM-R3.10 applyMission state-dependent semantics (created/configured = full upsert; started/in-progress = additive-only; terminal = error); MEDIUM-R3.11 mission.name validation enforced at every config-load via MissionConfigSchema (uniform across createMission + applyMission + startMission({config}) + YAML hydration + adapter MCP-payload-parse); MINOR-R3.1 Global flags table (workspace-root + wip-cadence-ms + snapshot-cadence-ms + lock-wait-ms + lock-validity-ms + output); MINOR-R3.2 createMission validation responsibility annotated. Pending engineer round-4 audit on thread-510.** |
 | **v1.5 PENDING-ROUND-5** | **2026-05-09** | **engineer round-4 audit fold (thread-510 round 7/20; 14 findings: 1 HIGH cluster of 3 sub-issues + 11 MEDIUM + 2 MINOR)** | **HIGH-R4.1 PROVIDER_REGISTRY substrate-inconsistency cluster — (1) drop `'trust-all'` from identity sub-registry (TrustAllIdentity doesn't exist; was incorrect duplicate); (2) rename remote `'github'` → `'gh-cli'` for cross-section consistency with §2.5+SDK+CLI usage; (3) spec PureGitRemoteProvider as null-object at §2.1.5 (capabilities.supportsPullRequests=false; throws UnsupportedOperationError on PR/API ops); MEDIUM-R4.1 OS-support boundary v1=Linux+macOS only (POSIX symlink); Windows runtime-rejection at SDK constructor; v1.x can add lock-file alternative; MEDIUM-R4.2 `static readonly providerName: string` contract on all provider classes (engine reads instance.constructor.providerName for SDK-injection vs mission-config string-name validation); MEDIUM-R4.3 networkRetry default aligned to 5 (was inconsistent 3 in §2.3.1 vs 5 in §2.5+§2.6.3); MEDIUM-R4.4 applyMission name-rename flow under mission-lock (O_EXCL on new + unlink old + atomic-write); MEDIUM-R4.5 terminal-state symlink retention option (c) preserve both — name-namespace blocks reuse until --purge-config; create-vs-terminal-mission name-collision rejected; MEDIUM-R4.6 applyMission id-vs-config.mission.id mismatch → ConfigValidationError (option a fail-fast); MEDIUM-R4.7 applyMission mission-lock requirement uniformly across pre-start + post-start (lost-update race protection); MEDIUM-R4.8 CLI lookup id-vs-name regex prefix-detection (^msn-[a-f0-9]{8}$ → id-form; else name-form); MEDIUM-R4.9 mission-id wording-fix (id ALWAYS auto-generated; --name is ADDITIONAL alias not replacement); MEDIUM-R4.10 case-1 step-4+ explicit rollback boundary (preserve config + symlink across all step-4-7 failures); MEDIUM-R4.11 normalized arg-count grammar table at §2.3.2 (parser-implementation contract; 21 verb-paths spec'd); MINOR-R4.1 orphan-config workflow concur (msn list --status configured + abandon --purge-config sufficient at v1; no separate --cleanup-orphans); MINOR-R4.2 core/ 3-file boundary rationale (types.ts SDK-internal vs mission-types.ts resource vs mission-config-schema.ts runtime-zod). Pending engineer round-5 audit on thread-510.** |
 | **v1.6 PENDING-ROUND-6** | **2026-05-09** | **engineer round-5 audit fold (thread-510 round 9/20; 11 findings: 1 HIGH + 7 MEDIUM + 3 MINOR)** | **HIGH-R5.1 v1.0-carryover SDK surface mismatch — DROP `remoteAdd / remoteList / remoteRemove` from SDK + CLI surfaces (option a); per-mission RemoteProvider configured via SDK constructor injection OR mission-config `remote.provider` field; `remote` removed from top-level reserved-verbs + remote-scoped sub-actions vocabulary; v1 doesn't ship multi-remote support (additive-evolution path open for v1.x); MEDIUM-R5.1 mission state persistence — single source of truth via `mission.lifecycle-state` field in mission-config YAML (option a); zod literal-string-union; mutated atomically on transitions; MEDIUM-R5.2 mission resource type interfaces committed at §2.3.1 — MissionStatePhase / MissionHandle / MissionState / MissionFilter / MissionConfig (Strict-1.0 SDK return-type shapes pinned); MEDIUM-R5.3 `created` × `apply` state-transition rows added (zero-repos no-op self-loop; ≥1-repo auto-promotion to `configured`); `created` is STABLE state confirmed (NOT instantaneous); MEDIUM-R5.4 Rule 6 disjunctive arg-shape grammar — flag-presence-first algorithm + 4 walk-through traces; mutually-exclusive error class added; MEDIUM-R5.5 `--purge-config` step-ordering Order A (lifecycle-state-persist FIRST, locks-release SECOND, workspace-destroy THIRD, config-purge LAST); crash-recovery preserves config; MEDIUM-R5.6 applyMission rename failure rollback boundary — config-write-FIRST reordering for cleaner failure semantics; ALL failure modes preserve operator-observable state; MEDIUM-R5.7 `--purge-config` on auto-id-only mission gracefully no-ops symlink-unlink if absent; MINOR-R5.1 static `providerName` examples added for 3 missing default-impls (TrustAllPolicy + LocalFilesystemStorage + IsomorphicGitEngine); MINOR-R5.2 concurrent create-with-name + complete-with-purge race composability note added; MINOR-R5.3 `Missioncraft.isPlatformSupported(): boolean` static helper added to SDK class for adapter UX. Pending engineer round-6 audit on thread-510.** |
+| **v1.7 PENDING-ROUND-7** | **2026-05-09** | **engineer round-6 audit fold (thread-510 round 11/20; 10 findings: 0 HIGH + 4 MEDIUM + 6 MINOR; tail-of-decay zone)** | **MEDIUM-R6.1 lifecycleState `.default('created')` zod field; engine-controlled (operator-set value overwritten on first transition); MEDIUM-R6.2 mission.updated-at YAML field added (symmetric with created-at; mutated atomically on every transition + config-mutation); MEDIUM-R6.3 MissionState.workspacePath state-gating (populated only when workspace exists on-disk: in-progress; OR completed/abandoned with --retain); MEDIUM-R6.4 operator-config schema spec at §2.4 (file: ${MSN_WORKSPACE_ROOT}/operator.yaml; OperatorConfigSchema zod; closed key-namespace: defaults.* + provider-config.*; precedence chain extended: CLI > env > mission-config > SDK constructor > operator-config > built-in default; configGet/configSet zod-validate keys); MINOR-R6.1 MissionState symmetric pluggable-name exposure (5 fields: identityProviderName + approvalProviderName + storageProviderName + gitEngineProviderName + remoteProviderName?); MINOR-R6.2 --retain (set at start) + --purge-config (at complete/abandon) mutually-exclusive (orphan-workspace prevention); MINOR-R6.3 MissionFilter.nameLike case-insensitive plain substring (UNIX-CLI convention; not glob; not regex); MINOR-R6.4 Date round-trip discipline (ISO-8601 wire ↔ Date object TS via zod transform); nested kebab→camelCase transform recursive; MINOR-R6.5 msn create stdout (canonical id one-line; tab-delimited id+name with --name); MINOR-R6.6 RepoSpec.branch default derived AT RUNTIME-CLONE-TIME (not parse-time; preserves default-semantic on v1.x evolution); ROUND-6-ASK-4: lifecycle-state-persist via RMW-under-mission-lock (option c). Pending engineer round-7 audit on thread-510. ratify-clean predicted next round per thread-509 empirics. |
 | v1.x BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on thread-510 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 PENDING-ROUND-2 → `b27b579`; v1.3 PENDING-ROUND-3 → `5b43351`; v1.4 PENDING-ROUND-4 → `22f1778`; v1.5 PENDING-ROUND-5 → `8663f9e`; **v1.6 PENDING-ROUND-6 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 PENDING-ROUND-2 → `b27b579`; v1.3 PENDING-ROUND-3 → `5b43351`; v1.4 PENDING-ROUND-4 → `22f1778`; v1.5 PENDING-ROUND-5 → `8663f9e`; v1.6 PENDING-ROUND-6 → `dc24188`; **v1.7 PENDING-ROUND-7 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
