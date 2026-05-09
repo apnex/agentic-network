@@ -1,6 +1,18 @@
-# M-Missioncraft-V1 — Design v1.8 BILATERAL RATIFIED
+# M-Missioncraft-V1 — Design v2.0 PENDING-BILATERAL-RATIFICATION
 
-**Status:** **v1.8 BILATERAL RATIFIED** (architect-side label-flip + bilateral-commit close 2026-05-09; engineer round-8 ratify-clean on thread-510 round 15/20). 8-round substantive-reshape audit cycle: R1=24 → R2=15 → R3=14 → R4=14 → R5=11 → R6=10 → R7=5 → **R8=0 ratify-clean**. Total **93 findings folded** across 8 rounds. Pattern-decay tracks thread-509 empirics in convergence-zone tail (substantive-reshape envelope; 8-round closure within 6-9 thread-509 prediction range). Composes from **v1.7 PENDING-ROUND-7** at SHA `169b9cf` (engineer round-6 fold-pass; 10 findings dispositioned) → v1.8 PENDING-ROUND-8 at SHA `f48ee99` (engineer round-7 fold-pass; 5 findings dispositioned) → **v1.8 BILATERAL RATIFIED** (this version; engineer round-8 ratify-clean closure). Trajectory: v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch (preserved as historical artifact under former M-Branchcraft-V1 name at SHA `7fb1643` on `agent-lily/m-branchcraft-v1-survey` branch) → v1.1 PENDING-BILATERAL (Director-direct refinement reshape via 6 architectural refinements) → v1.2 → v1.3 → v1.4 → v1.5 → v1.6 → v1.7 → v1.8 → **v1.8 BILATERAL RATIFIED**. Strict-1.0 contract committed for `@apnex/missioncraft@1.0.0` — implementation-ready; Phase 5 Manifest entry triggered.
+**Status:** **v2.0 PENDING-BILATERAL-RATIFICATION** (architect-side; substantial reshape post v1.8 BILATERAL RATIFIED via 3 Director-direct architectural refinements 2026-05-09-late). Composes from **v1.8 BILATERAL RATIFIED** at SHA `226aa46` on `agent-lily/m-missioncraft-v1-design` branch (preserved as historical artifact; 8-round audit cycle close; 93 findings folded). New branch `agent-lily/m-missioncraft-v2-design`.
+
+**3 Director-direct architectural refinements (Round-2; approved 2026-05-09-late post v1.8 RATIFIED):**
+
+1. **Verb-first grammar (BREAKING):** all first positionals are reserved verbs; no implicit mission-selector at first position. Eliminates v1.8 §2.3.2 Rule 4 disambiguation algorithm complexity. Cleaner k8s-shape (matches `kubectl <verb> <resource> <name>` exactly per refinement #2 trajectory).
+
+2. **`update` verb (additive; composes with #1):** new top-level verb for field-targeted mutations. Complements `apply -f <path>` (declarative full-config-upsert) — Model 2 boundary: `apply` for full-upsert (k8s-style declarative); `update` for field-targeted programmatic mutations (k8s `kubectl edit`-shape but programmatic-with-args, NOT interactive-editor). Verb-name picked over `edit` per modern-CLI convention (kubectl reserves `edit` for interactive-editor; `update` is programmatic-mutation per `npm update` / `helm upgrade`-equivalent).
+
+3. **`scope` template (additive; new first-class resource):** reusable repo-collection that multiple missions reference via `--scope <id>`. Scope = template-shape; mission instantiates with copy-on-startMission (option (c) hybrid resolution model per k8s-ConfigMap analogy). New SDK class methods (createScope/getScope/listScopes/updateScope/deleteScope/addRepoToScope/removeRepoFromScope) + new CLI verb namespace (`msn scope <verb>`) + new schema (ScopeConfig + ScopeState + ScopeStatePhase) + new workspace path (`<workspace>/scopes/<scope-id>.yaml` + `<workspace>/scopes/.names/<slug>.yaml` symlink) + new lifecycle (no `started`/`in-progress` — scopes are templates, not active resources).
+
+**v1 trajectory preserved as historical artifact at `agent-lily/m-missioncraft-v1-design` SHA `226aa46`.** v2.0 reshape inherits all v1.8 substrate-currency contracts (5 pluggables; PROVIDER_REGISTRY closed-set; mission resource type interfaces; symlink name-mechanism; 7-step lock-acquisition order; preserve-config invariant; lifecycle-state engine-controlled; operator-config schema; precedence chain; OS-support boundary; etc.) — v2.0 deltas are CLI grammar reshape + SDK API extension + new Scope resource. Strict-1.0 contract committed for `@apnex/missioncraft@1.0.0` (SDK still ships at 1.0.0 — design-doc v2.0 indicates audit-cycle iteration; implementation hasn't started; pre-implementation cost is design-only).
+
+**Trajectory:** v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior `agent-lily/m-branchcraft-v1-survey` branch → v1.1 PENDING-BILATERAL (Round-1 of Director-direct refinements; 6 architectural refinements) → v1.2 → ... → v1.8 BILATERAL RATIFIED at SHA `226aa46` → **v2.0 PENDING-BILATERAL-RATIFICATION** (this version; Round-2 of Director-direct refinements; 3 architectural refinements pre-Phase-6) → engineer round-1 audit per comprehensive-sweep methodology → v2.0 BILATERAL RATIFIED.
 
 **v1.1 Director-direct architectural refinements 2026-05-08-evening:**
 
@@ -386,8 +398,14 @@ export type {
   RepoSpec, MissionStatePhase
 } from './core/mission-types';
 
+// Scope resource (v2.0 NEW per Refinement C — multi-mission composition primitive)
+export type {
+  ScopeConfig, ScopeState, ScopeHandle, ScopeFilter, ScopeStatePhase
+} from './core/scope-types';
+
 // Runtime zod schemas (v1.3 fold per MEDIUM-R3.1 — adapter + 3rd-party consumers need .parse() at integration boundary)
 export { MissionConfigSchema, RepoSpecSchema } from './core/mission-config-schema';
+export { ScopeConfigSchema } from './core/scope-config-schema';   // v2.0 fold per Refinement C — scope-config validation at SDK + adapter integration boundary
 export { OperatorConfigSchema } from './core/operator-config-schema';   // v1.7 fold per MEDIUM-R6.4 — operator-config validation at configGet/configSet boundary
 
 // Pluggable interfaces (types)
@@ -489,7 +507,54 @@ interface MissionFilter {
   readonly name?: string;                   // exact match (case-sensitive)
   readonly nameLike?: string;               // case-insensitive plain substring match (UNIX-CLI convention; v1.7 fold per MINOR-R6.3 — `String.prototype.toLowerCase().includes(...)` semantic; NOT glob, NOT regex)
   readonly hubId?: string;
+  readonly scopeId?: string;                // v2.0 fold per Refinement C — filter missions referencing a specific scope
   readonly tags?: Record<string, string>;   // all-must-match
+}
+
+// Scope resource type interfaces (v2.0 NEW per Refinement C — multi-mission composition primitive)
+type ScopeStatePhase =
+  | 'created'         // scaffolded scope config; mutable until deleted
+  | 'deleted';        // terminal; cascade-protection rejected non-terminal mission references at delete-time
+
+interface ScopeHandle {
+  readonly id: string;          // canonical scp-<8-char-hash>
+  readonly name?: string;       // optional human-friendly slug
+}
+
+interface ScopeState {
+  readonly id: string;
+  readonly name?: string;
+  readonly description?: string;
+  readonly tags: Record<string, string>;
+  readonly repos: readonly RepoSpec[];
+  readonly lifecycleState: ScopeStatePhase;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  // Cascade-protection support: which missions reference this scope by id?
+  // Engine maintains via reverse-index OR computed-on-getScope by scanning mission-configs.
+  // Used by `deleteScope` to enforce cascade-protection invariant.
+  readonly referencedByMissions: readonly string[];   // mission-ids
+}
+
+interface ScopeFilter {
+  readonly name?: string;                   // exact match
+  readonly nameLike?: string;               // case-insensitive plain substring (same semantic as MissionFilter.nameLike)
+  readonly tags?: Record<string, string>;
+}
+
+// ScopeConfig is the parse-result of ScopeConfigSchema (§2.5); see schema definition there.
+interface ScopeConfig {
+  readonly scopeConfigSchemaVersion: 1;
+  readonly scope: {
+    readonly id: string;
+    readonly name?: string;
+    readonly description?: string;
+    readonly lifecycleState: ScopeStatePhase;
+    readonly createdAt: Date;
+    readonly updatedAt: Date;
+    readonly tags?: Record<string, string>;
+  };
+  readonly repos: readonly RepoSpec[];
 }
 
 // MissionConfig is the parse-result of MissionConfigSchema (§2.5); see schema definition there.
@@ -578,25 +643,40 @@ class Missioncraft {
   constructor(config: MissioncraftConfig);
 
   // Mission resource ops (the primary resource — k8s-shape)
-  createMission(opts?: { name?: string }): Promise<MissionHandle>;            // scaffolds config; nothing realized; validates `name` against slug-format + reserved-verbs + msn- prefix + name-uniqueness via MissionConfigSchema; throws ConfigValidationError on violation (v1.4 fold per MINOR-R3.2)
+  createMission(opts?: { name?: string, repo?: string, scope?: string }): Promise<MissionHandle>;  // v2.0 fold per Refinement A+C — extended opts: --repo for one-liner; --scope for scope-template reference. Validates name via MissionConfigSchema (slug-format + reserved-verbs + msn- prefix + name-uniqueness; throws ConfigValidationError on violation)
   getMission(id: string): Promise<MissionState>;                              // describe (k8s describe)
   listMissions(filter?: MissionFilter): Promise<MissionState[]>;              // get (k8s get)
-  startMission(input: string | { config: MissionConfig }): Promise<MissionHandle>;  // realize the declared state
-  applyMission(input: { id: string, config: MissionConfig }): Promise<MissionState>;  // upsert (additive-only mid-mission per refinement #3); returns updated state (v1.2 fold per MINOR-4)
+  startMission(input: string | { config: MissionConfig }): Promise<MissionHandle>;  // realize the declared state; if mission references scope, engine inlines scope.repos at this point (snapshot per §2.4.2 hybrid resolution)
+  applyMission(input: { id: string, config: MissionConfig }): Promise<MissionState>;  // upsert (additive-only mid-mission per refinement #3); returns updated state
   completeMission(id: string, opts?: { purgeConfig?: boolean }): Promise<void>;       // terminal: release lock; destroy workspace
   abandonMission(id: string, opts?: { purgeConfig?: boolean }): Promise<void>;        // terminal: release lock; destroy workspace
-  // (getMissionStatus REMOVED in v1.2 fold per MINOR-3; getMission(id) returns full MissionState including runtime status; listMissions(filter) for multi-mission listing)
 
-  // Mission-config mutation (pre-start; or additive post-start)
-  addRepoToMission(id: string, repo: RepoSpec): Promise<MissionState>;
-  removeRepoFromMission(id: string, repoName: string): Promise<MissionState>;  // pre-start only
-  listMissionRepos(id: string): Promise<RepoSpec[]>;
+  // Mission-config field-targeted mutations (v2.0 NEW per Refinement B — typed update methods; CLI `msn update <id> <field>` dispatches to these)
+  addRepoToMission(id: string, repo: RepoSpec): Promise<MissionState>;        // pre-start full upsert OR post-start additive
+  removeRepoFromMission(id: string, repoName: string): Promise<MissionState>; // pre-start only
+  renameMission(id: string, newName: string): Promise<MissionState>;          // triggers symlink-rename flow per §2.4
+  setMissionDescription(id: string, description: string): Promise<MissionState>;
+  setMissionHubId(id: string, hubId: string): Promise<MissionState>;          // informational-only at v1
+  setMissionScope(id: string, scopeId: string | null): Promise<MissionState>; // pre-start only; null clears scope-reference
+  setMissionTag(id: string, key: string, value: string): Promise<MissionState>;
+  removeMissionTag(id: string, key: string): Promise<MissionState>;
+  // (listMissionRepos removed v2.0 — `getMission(id).repos` covers; `msn show <id> --repos` CLI shape)
 
-  // Per-mission git ops (delegate to GitEngine pluggable; namespaced by mission + repo)
+  // Per-mission git ops (delegate to GitEngine pluggable; namespaced by mission + repo; CLI `msn git <id> <repo> <verb>` dispatches to these)
   branchInMission(id: string, repoName: string, branchName: string, opts?: { from?: string }): Promise<void>;
   commitInMission(id: string, repoName: string, opts: CommitOptions): Promise<string>;
   pushInMission(id: string, repoName: string, opts?: PushOptions): Promise<void>;
   // ... full set of GitEngine ops scoped to mission + repo
+
+  // Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)
+  createScope(opts?: { name?: string, description?: string }): Promise<ScopeHandle>;  // scaffolds scope config at <workspace>/scopes/<id>.yaml; auto-generates scp-<8-char-hash>; validates name via ScopeConfigSchema
+  getScope(id: string): Promise<ScopeState>;                                   // describe; includes referencedByMissions field
+  listScopes(filter?: ScopeFilter): Promise<ScopeState[]>;                     // get
+  addRepoToScope(id: string, repo: RepoSpec): Promise<ScopeState>;             // mutate; propagates to NOT-YET-STARTED missions referencing scope; does NOT propagate to STARTED missions (snapshot per §2.4.2)
+  removeRepoFromScope(id: string, repoName: string): Promise<ScopeState>;
+  renameScope(id: string, newName: string): Promise<ScopeState>;               // triggers symlink-rename flow
+  setScopeDescription(id: string, description: string): Promise<ScopeState>;
+  deleteScope(id: string): Promise<void>;                                      // terminal — cascade-protection: rejects if any non-terminal mission references this scope
 
   // Non-mission resource ops (operator configuration only)
   configGet(key: string): Promise<string | undefined>;
@@ -663,25 +743,39 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 
 | Verb | Sub-verbs / Flags | SDK method | Description |
 |---|---|---|---|
-| `msn create` | `[--name <name>]` | `createMission({name})` | Scaffold mission config at `<workspace>/config/<id>.yaml`; auto-generates `msn-<8-char-hash>` id; optional `--name` for human-friendly slug. **stdout output (v1.7 fold per MINOR-R6.5):** prints canonical id one-line (`msn-a3bd610c\n`); with `--name`: prints id + name tab-delimited (`msn-a3bd610c\tstorage-extract\n`). Operator-discoverability of auto-id. |
+| `msn create` | `[--name <slug>] [--repo <url>] [--scope <id\|name>]` | `createMission({name?, repo?, scope?})` | Scaffold mission config at `<workspace>/config/<id>.yaml`; auto-generates `msn-<8-char-hash>` id. **v2.0 fold per Refinement A+C — flag-driven one-liner support:** if no `--name` provided, no name configured (auto-id only); if no `--repo` provided AND no `--scope` provided, no repos configured; if `--scope <id>` provided, mission references scope (engine inlines repos at startMission per §2.4.2 hybrid resolution); `--repo` accepts single URL for one-liner shape (multi-repo via `msn update <id> repo-add`). **stdout output:** prints canonical id one-line (`msn-a3bd610c\n`); with `--name`: prints id + name tab-delimited. |
 | `msn list` | `[--status <state>] [--output json\|yaml]` | `listMissions({status})` | Table view of all missions (k8s `get`) |
-| `msn show <id\|name>` | `[--output json\|yaml]` | `getMission(id)` | Detail view (k8s `describe`) |
-| `msn <id\|name> repo-add <file\|url>` | `[--name <local-name>] [--branch <name>] [--base <branch>]` | `addRepoToMission(id, repo)` | Add repo to mission's declared config; mutates `<workspace>/config/<id>.yaml`; auto-derives local-name from URL last segment unless `--name` override |
-| `msn <id\|name> repo-remove <repo-name>` | (no flags) | `removeRepoFromMission(id, name)` | Remove repo (pre-start only) |
-| `msn <id\|name> repo-list` | `[--output json\|yaml]` | `listMissionRepos(id)` | List repos in mission config |
-| `msn start <id\|name>` | `[--retain]` | `startMission(id)` | Realize the declared state — clones repos in parallel; allocates workspace; acquires locks |
+| `msn show <id\|name>` | `[--repos] [--output json\|yaml]` | `getMission(id)` | Detail view (k8s `describe`); v2.0 `--repos` flag shows just the repo-list (replaces v1.8 `repo-list` sub-action) |
+| `msn update <id\|name> repo-add <file\|url>` | `[--name <local-name>] [--branch <name>] [--base <branch>]` | `addRepoToMission(id, repo)` | (v2.0 fold per Refinement B) Add repo to mission's declared config; mutates `<workspace>/config/<id>.yaml`; auto-derives local-name from URL last segment unless `--name` override. Pre-start: full upsert allowed. Post-start: additive-only per refinement #3. |
+| `msn update <id\|name> repo-remove <repo-name>` | (no flags) | `removeRepoFromMission(id, name)` | Remove repo (pre-start only); post-start error per refinement #3 |
+| `msn update <id\|name> name <new-name>` | (no flags) | `renameMission(id, newName)` | Rename mission's `--name` slug; triggers symlink-rename flow per §2.4 (4-step config-write-FIRST) |
+| `msn update <id\|name> description <text>` | (no flags) | `setMissionDescription(id, text)` | Set description field |
+| `msn update <id\|name> hub-id <hub-id>` | (no flags) | `setMissionHubId(id, hubId)` | Set hub-id field (informational-only at v1) |
+| `msn update <id\|name> scope-id <scope-id\|name\|"">` | (no flags) | `setMissionScope(id, scopeId)` | Set/change scope reference (pre-start only); empty string clears scope-reference; post-start error |
+| `msn update <id\|name> tags-set <key> <value>` | (no flags) | `setMissionTag(id, key, value)` | Set single tag |
+| `msn update <id\|name> tags-remove <key>` | (no flags) | `removeMissionTag(id, key)` | Remove single tag |
+| `msn start <id\|name>` | `[--retain]` | `startMission(id)` | Realize the declared state — clones repos in parallel; allocates workspace; acquires locks. If mission references scope, engine inlines scope.repos into mission-config (snapshot per §2.4.2 hybrid resolution) |
 | `msn start -f <path>` | `[--retain]` | `startMission({config: parsedYAML})` | Start from explicit YAML path (OIS-adapter integration shape) |
-| `msn apply -f <path>` | (no flags) | `applyMission({id, config})` | Upsert (per refinement #3); additive-only mid-mission (repo-add); non-additive errors |
+| `msn apply -f <path>` | (no flags) | `applyMission({id, config})` | Upsert (per refinement #3); additive-only mid-mission (repo-add); non-additive errors. v2.0 boundary per Refinement B: `apply` for full-config-upsert; `update` for field-targeted mutations. Both paths converge in SDK. |
 | `msn complete <id\|name>` | `[--purge-config]` | `completeMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace unless mission was started with `--retain`. `--purge-config` also deletes `<workspace>/config/<id>.yaml` (default: config preserved for mission-history). **v1.7 fold per MINOR-R6.2:** if mission was started with `--retain` AND `--purge-config` is supplied at complete-time → reject with `MissionStateError("--retain (set at start) + --purge-config (at complete) would orphan workspace; choose one")`. v1.2 fold per HIGH-6. |
 | `msn abandon <id\|name>` | `[--purge-config]` | `abandonMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace; `--purge-config` deletes config (default: preserved). **v1.7 fold per MINOR-R6.2:** if mission was started with `--retain` AND `--purge-config` is supplied → reject with `MissionStateError("--retain + --purge-config would orphan workspace; choose one")`. v1.2 fold per HIGH-6. |
 | `msn status [<id\|name>]` | `[--output json\|yaml]` | `getMission(id)` if id given else `listMissions()` (v1.2 fold per MINOR-3) | Runtime status (single mission OR all if no id) — `getMission` returns full `MissionState` including runtime status; `getMissionStatus` removed |
-| **Per-mission git ops (scoped by mission + repo)** | | | |
-| `msn <id> <repo-name> branch <name>` | `[--from <branch>] [--delete] [--force]` | `branchInMission` / `deleteBranchInMission` | Branch ops within a mission's repo |
-| `msn <id> <repo-name> checkout <branch>` | (no flags) | `checkoutInMission` | Switch HEAD in a mission's repo |
-| `msn <id> <repo-name> stage <paths...\|--all>` | (no flags) | `stageInMission` | Stage paths |
-| `msn <id> <repo-name> commit` | `-m <message> [--amend] [--auto-stage]` | `commitInMission` | Commit |
-| `msn <id> <repo-name> push` | `[--branch <name>] [--remote <name>] [--force] [--tags]` | `pushInMission` | Push |
-| `msn <id> <repo-name> pull / fetch / merge / tag / log / revparse / status` | (varied flags) | (corresponding `*InMission` methods) | Wire + read ops |
+| **Per-mission git ops (v2.0 `git`-namespace per Refinement A; replaces v1.8 implicit `msn <id> <repo>` shape)** | | | |
+| `msn git <id\|name> <repo-name> branch <name>` | `[--from <branch>] [--delete] [--force]` | `branchInMission` / `deleteBranchInMission` | Branch ops within a mission's repo |
+| `msn git <id\|name> <repo-name> checkout <branch>` | (no flags) | `checkoutInMission` | Switch HEAD in a mission's repo |
+| `msn git <id\|name> <repo-name> stage <paths...\|--all>` | (no flags) | `stageInMission` | Stage paths |
+| `msn git <id\|name> <repo-name> commit` | `-m <message> [--amend] [--auto-stage]` | `commitInMission` | Commit |
+| `msn git <id\|name> <repo-name> push` | `[--branch <name>] [--remote <name>] [--force] [--tags]` | `pushInMission` | Push |
+| `msn git <id\|name> <repo-name> pull / fetch / merge / tag / log / revparse / status` | (varied flags) | (corresponding `*InMission` methods) | Wire + read ops |
+| **Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)** | | | |
+| `msn scope create` | `[--name <slug>] [--description <text>]` | `createScope({name?, description?})` | Scaffold scope config at `<workspace>/scopes/<scope-id>.yaml`; auto-generates `scp-<8-char-hash>` id; optional `--name` for human-friendly slug. **stdout:** prints canonical id one-line (`scp-a3bd610c\n`); with `--name`: tab-delimited |
+| `msn scope show <id\|name>` | `[--output json\|yaml]` | `getScope(id)` | Detail view; includes `referencedByMissions` field showing which missions use this scope |
+| `msn scope list` | `[--output json\|yaml]` | `listScopes()` | Table view of all scopes |
+| `msn scope update <id\|name> repo-add <file\|url>` | `[--name <local-name>] [--branch <name>] [--base <branch>]` | `addRepoToScope(id, repo)` | Add repo to scope; mutates `<workspace>/scopes/<id>.yaml`. Propagates to NOT-YET-STARTED missions referencing this scope; does NOT propagate to STARTED missions (snapshot inlined per §2.4.2 hybrid resolution) |
+| `msn scope update <id\|name> repo-remove <repo-name>` | (no flags) | `removeRepoFromScope(id, name)` | Remove repo from scope; same propagation discipline |
+| `msn scope update <id\|name> name <new-name>` | (no flags) | `renameScope(id, newName)` | Rename scope's `--name` slug; triggers symlink-rename flow per §2.4 |
+| `msn scope update <id\|name> description <text>` | (no flags) | `setScopeDescription(id, text)` | Set scope description |
+| `msn scope delete <id\|name>` | (no flags) | `deleteScope(id)` | Terminal — removes scope config + symlink. **Cascade-protection:** rejects with `MissionStateError("scope referenced by N non-terminal missions; update mission scope-ids OR delete missions first")` if any mission state ∈ `created/configured/started/in-progress` references this scope. Terminal missions (`completed`/`abandoned`) don't block (they've inlined snapshot). |
 | **Non-mission resource ops (explicit resource prefix)** | | | |
 | ~~`msn remote add` / `list` / `remove`~~ | (REMOVED v1.6 fold per HIGH-R5.1) | — | RemoteProvider configured per-mission via SDK constructor injection OR mission-config `remote.provider` field; no separate CLI surface for multi-remote management at v1 |
 | `msn config get <key>` / `msn config set <key> <value>` | (no flags) | `configGet` / `configSet` | Operator config |
@@ -695,7 +789,7 @@ Per-verb required/optional positional + flag spec for Rule 6 post-dispatch arg-c
 
 | Verb path | Required positional | Optional positional | Allowed flags (verb-specific) |
 |---|---|---|---|
-| `msn create` | 0 | 0 | `--name <slug>` + global |
+| `msn create` | 0 | 0 | `--name <slug>`, `--repo <url>`, `--scope <id\|name>` + global (v2.0 flag-driven one-liner support per Refinement A+C) |
 | `msn list` | 0 | 0 | `--status <state>`, `--output json\|yaml` + global |
 | `msn show` | 1 (`<id\|name>`) | 0 | `--output json\|yaml` + global |
 | `msn start` | 0 (with `-f <path>`) OR 1 (`<id\|name>`) | 0 | `-f <path>`, `--retain` + global |
@@ -703,14 +797,31 @@ Per-verb required/optional positional + flag spec for Rule 6 post-dispatch arg-c
 | `msn complete` | 1 (`<id\|name>`) | 0 | `--purge-config` + global |
 | `msn abandon` | 1 (`<id\|name>`) | 0 | `--purge-config` + global |
 | `msn status` | 0 | 1 (`<id\|name>`) | `--output json\|yaml` + global |
-| `msn <id\|name> repo-add` | 1 (`<file\|url>`) | 0 | `--name <slug>` + global |
-| `msn <id\|name> repo-remove` | 1 (`<repo-name>`) | 0 | global |
-| `msn <id\|name> repo-list` | 0 | 0 | `--output json\|yaml` + global |
-| `msn <id\|name> <repo-name> branch` | 1 (`<branch-name>`) | 0 | `--from <branch>`, `--delete`, `--force` + global |
-| `msn <id\|name> <repo-name> checkout` | 1 (`<branch>`) | 0 | global |
-| `msn <id\|name> <repo-name> commit` | 0 | 0 | `-m <msg>` (required) + global |
-| `msn <id\|name> <repo-name> push` | 0 | 0 | `--force-with-lease` + global |
-| `msn <id\|name> <repo-name> <other-git-verb>` | (per git-verb signature) | (per git-verb signature) | (per git-verb signature) + global |
+| **`update` namespace (v2.0 NEW per Refinement B)** | | | |
+| `msn update <id\|name> repo-add` | 2 (`<id> <file\|url>`) | 0 | `--name <slug>`, `--branch <name>`, `--base <branch>` + global |
+| `msn update <id\|name> repo-remove` | 2 (`<id> <repo-name>`) | 0 | global |
+| `msn update <id\|name> name` | 2 (`<id> <new-name>`) | 0 | global |
+| `msn update <id\|name> description` | 2 (`<id> <text>`) | 0 | global |
+| `msn update <id\|name> hub-id` | 2 (`<id> <hub-id>`) | 0 | global |
+| `msn update <id\|name> scope-id` | 2 (`<id> <scope-id\|name\|"">`) | 0 | global |
+| `msn update <id\|name> tags-set` | 3 (`<id> <key> <value>`) | 0 | global |
+| `msn update <id\|name> tags-remove` | 2 (`<id> <key>`) | 0 | global |
+| **`git` namespace (v2.0 NEW per Refinement A)** | | | |
+| `msn git <id\|name> <repo-name> branch` | 3 (`<id> <repo> <branch-name>`) | 0 | `--from <branch>`, `--delete`, `--force` + global |
+| `msn git <id\|name> <repo-name> checkout` | 3 (`<id> <repo> <branch>`) | 0 | global |
+| `msn git <id\|name> <repo-name> stage` | 2 (`<id> <repo>`) | many (paths) | `--all` + global |
+| `msn git <id\|name> <repo-name> commit` | 2 (`<id> <repo>`) | 0 | `-m <msg>` (required), `--amend`, `--auto-stage` + global |
+| `msn git <id\|name> <repo-name> push` | 2 (`<id> <repo>`) | 0 | `--branch <name>`, `--remote <name>`, `--force`, `--tags`, `--force-with-lease` + global |
+| `msn git <id\|name> <repo-name> <other-git-verb>` | (per git-verb signature) | (per git-verb signature) | (per git-verb signature) + global |
+| **`scope` namespace (v2.0 NEW per Refinement C)** | | | |
+| `msn scope create` | 0 | 0 | `--name <slug>`, `--description <text>` + global |
+| `msn scope show` | 1 (`<id\|name>`) | 0 | `--output json\|yaml` + global |
+| `msn scope list` | 0 | 0 | `--output json\|yaml` + global |
+| `msn scope update <id\|name> repo-add` | 2 (`<id> <file\|url>`) | 0 | `--name <slug>`, `--branch <name>`, `--base <branch>` + global |
+| `msn scope update <id\|name> repo-remove` | 2 (`<id> <repo-name>`) | 0 | global |
+| `msn scope update <id\|name> name` | 2 (`<id> <new-name>`) | 0 | global |
+| `msn scope update <id\|name> description` | 2 (`<id> <text>`) | 0 | global |
+| `msn scope delete` | 1 (`<id\|name>`) | 0 | global |
 | ~~`msn remote add` / `list` / `remove`~~ | — | — | (REMOVED v1.6 fold per HIGH-R5.1) |
 | `msn config get` | 1 (`<key>`) | 0 | `--output json\|yaml` + global |
 | `msn config set` | 2 (`<key> <value>`) | 0 | global |
@@ -734,24 +845,43 @@ Global flags apply UNIFORMLY across all verbs; per-verb flags shown in CLI table
 
 CLI grammar tokenization rules (parser-disambiguation):
 
-1. **Reserved-verbs list (top-level):** `create / list / show / start / apply / complete / abandon / status / config / --help / --version` (v1.6 fold per HIGH-R5.1: `remote` removed). First positional matching this list = top-level verb dispatch. First positional NOT matching = mission-selector.
+1. **Reserved-verbs list (top-level; v2.0 fold per Refinement A — verb-first grammar):** `create / list / show / start / apply / update / complete / abandon / status / git / scope / config / --help / --version` (13 reserved verbs). **First positional MUST match this list** — there is NO implicit-mission-selector shape at v2.0. First-positional-not-matching → error `"unknown verb '<positional>'; use 'msn --help' for verb list"`. Strict-1.0 commits this list; v2.x can ADD verbs (additive-only); REMOVING verbs requires v3.x.
 
-2. **Reserved sub-actions (3 scoped vocabularies; v1.4 fold per MEDIUM-R3.7 — distinct vocabularies per scope):**
-   - **Mission-scoped sub-actions** (after mission-selector positional): `repo-add / repo-remove / repo-list` (only these; per Rule 3 git-op shape covers free-form repo-name)
-   - **`config`-scoped sub-actions** (after `msn config` top-level verb): `get / set`
-   - (`remote`-scoped sub-actions REMOVED v1.6 fold per HIGH-R5.1)
-   - **(v1.3 fold per HIGH-R2.1: singular `repo` REMOVED from mission-scoped reserved-sub-actions list; per-mission git-op grammar picks Shape (b) — 4-positional `msn <mission-selector> <repo-name> <git-verb>` without literal `repo` keyword)**
+   **v2.0 additions** (vs v1.8): `update` (Refinement B; field-targeted mutations); `git` (Refinement A; per-mission per-repo git-op namespace replacing v1.8's implicit `msn <id> <repo> <git-verb>` shape); `scope` (Refinement C; scope-template namespace).
 
-3. **Per-mission git op selector (Shape (b) per HIGH-R2.1 v1.3 fold):** `msn <mission-selector> <repo-name> <git-verb> [args]` (4-positional pattern) where `<git-verb>` ∈ `{branch / branch delete / checkout / fetch / commit / stage / push / pull / merge / tag / log / revparse / status}`. Second positional (repo-name) is free-form (not in any reserved list); third positional is the git-verb. NO `repo` keyword as 2nd positional — k8s-shape resource-name-then-verb pattern (e.g., `kubectl logs <pod>` not `kubectl pod <pod> logs`).
+   **v1.8 → v2.0 grammar shift cascade:**
+   - v1.8 `msn <id> repo-add <url>` → v2.0 `msn update <id> repo-add <url>`
+   - v1.8 `msn <id> repo-remove <name>` → v2.0 `msn update <id> repo-remove <name>`
+   - v1.8 `msn <id> repo-list` → v2.0 `msn show <id> --repos` (read-shape; not update)
+   - v1.8 `msn <id> <repo> <git-verb>` → v2.0 `msn git <id> <repo> <git-verb>`
 
-4. **Disambiguation algorithm:**
-   - 1 positional: error ("missing verb or mission-selector")
-   - 2 positionals: if `[0]` ∈ top-level verbs → top-level dispatch; else → `mission=<sel>, action=<verb>` BUT ONLY if `[1]` ∈ mission-scoped reserved sub-actions; else error
-   - 3+ positionals: if `[0]` ∈ top-level verbs (e.g., `remote add github`) → top-level + sub-action dispatch; else `[0]` is mission-selector; `[1]` is reserved-sub-action OR repo-name (resolved by membership in mission-scoped reserved list per Rule 2; if `[1]` ∈ reserved-sub-actions then mission-scoped action shape; else `<repo-name>` per Rule 3 git-op shape); `[2..]` is verb + args
-   - Slug-format restriction: mission `--name <slug>` MUST match `[a-z0-9][a-z0-9-]{1,62}` (DNS-style) AND NOT match any reserved verb/sub-action AND NOT start with `msn-` prefix (auto-id namespace); reject at `msn create` time
-   - Repo-name auto-derivation (`msn <id> repo-add <url>` derives repo-name from URL last-segment): MUST reject if derived name matches reserved-sub-actions list (`repo-add / repo-remove / repo-list`); operator must use `--name <override>` for collision cases (v1.3 fold per MEDIUM-R2.5)
+2. **Reserved sub-actions (verb-scoped vocabularies; v2.0 fold per Refinements A+B+C — verb-first grammar reshape):**
+   - **`update`-scoped sub-actions** (after `msn update <mission-id|name>`; v2.0 NEW per Refinement B): `repo-add / repo-remove / name / description / hub-id / scope-id / tags-set / tags-remove`. Field-targeted mutations + sub-action mutations under the `update` umbrella.
+   - **`scope`-scoped sub-actions** (after `msn scope`; v2.0 NEW per Refinement C): `create / show / list / update / delete`.
+   - **`scope update`-scoped sub-actions** (after `msn scope update <scope-id|name>`; v2.0 NEW per Refinement C): `repo-add / repo-remove / name / description / tags-set / tags-remove`.
+   - **`config`-scoped sub-actions** (after `msn config`): `get / set`.
+   - **`git`-scoped per-mission per-repo positionals** (after `msn git <mission-id|name>`; v2.0 NEW per Refinement A): free-form `<repo-name>` then `<git-verb>` ∈ `{branch / branch delete / checkout / fetch / commit / stage / push / pull / merge / tag / log / revparse / status}`. 5-positional pattern: `msn git <mission> <repo> <git-verb> [args]`. Replaces v1.8's implicit `msn <id> <repo> <git-verb>` shape.
+   - (v1.6 fold HIGH-R5.1: `remote`-scoped sub-actions REMOVED — RemoteProvider is per-mission singleton via SDK constructor injection OR mission-config field.)
+   - (v2.0 fold per Refinement A: `mission-scoped sub-actions` REMOVED entirely — v1.8's implicit `msn <id> repo-add` shape replaced by `msn update <id> repo-add` under the `update` umbrella.)
 
-5. **Reserved-words protection:** operator cannot create mission with name matching reserved-verb (e.g., `msn create --name list` → error "reserved verb"); cannot create mission with `--name msn-<anything>` (auto-id namespace; v1.3 fold per MEDIUM-R2.6); prevents future ambiguity if verb is added in v2.
+3. **Verb-first grammar (v2.0 fold per Refinement A):** all top-level dispatches start with a reserved-verb. Subsequent positional shape depends on the verb:
+   - **0-arg verbs:** `msn list` / `msn --help` / `msn --version`
+   - **1-positional verbs:** `msn create` (with flags); `msn show <id|name>`; `msn start <id|name>`; `msn complete <id|name>`; `msn abandon <id|name>`; `msn status [<id|name>]`; `msn apply` (with `-f <path>` required-flag)
+   - **2-positional + sub-action verbs:** `msn update <id|name> <sub-action> [args]`
+   - **`scope` namespace** (verb-then-sub-verb pattern): `msn scope <sub-verb> [<id|name>] [args]`
+   - **`git` namespace** (5-positional pattern): `msn git <mission-id|name> <repo-name> <git-verb> [args]`
+   - **`config` namespace:** `msn config <get|set> <key> [<value>]`
+
+4. **Disambiguation algorithm (v2.0 fold per Refinement A — simplified vs v1.8 since first positional is always verb):**
+   - **0 positionals:** error ("no command specified; use `msn --help`")
+   - **`[0]` ∉ top-level reserved-verbs list:** error ("unknown verb '<positional>'; use `msn --help` for verb list")
+   - **`[0]` ∈ top-level reserved-verbs list:** dispatch to verb-handler; verb-handler validates remaining positionals + flags per per-verb spec (normalized arg-count table at §2.3.2)
+   - **Verb-handler dispatch:** verbs with sub-action vocabularies (`update`, `scope`, `config`) MUST validate `[1]` (or `[2]` for scope) against their reserved-sub-actions list per Rule 2; non-matching → error
+   - **Slug-format restriction:** mission/scope `--name <slug>` MUST match `[a-z0-9][a-z0-9-]{1,62}` (DNS-style) AND NOT match any reserved-verb/sub-action AND NOT start with `msn-` OR `scp-` prefix (auto-id namespaces); reject at `create` time
+   - **Repo-name auto-derivation** (`msn update <id> repo-add <url>` derives repo-name from URL last-segment; same for `msn scope update <id> repo-add <url>`): MUST reject if derived name matches `update`-scoped reserved sub-actions list (`repo-add / repo-remove / name / description / hub-id / scope-id / tags-set / tags-remove`); operator must use `--name <override>` for collision cases.
+   - **Resource-selector resolution:** verb-handler resolves `<id|name>` positional via §2.4 symlink-fast-path mechanism (regex `^msn-[a-f0-9]{8}$` → mission id-form; `^scp-[a-f0-9]{8}$` → scope id-form; else → name-form via symlink target). Each verb-handler dispatches to mission-namespace OR scope-namespace based on its own verb.
+
+5. **Reserved-words protection (v2.0 extended):** operator cannot create mission/scope with name matching reserved-verb (e.g., `msn create --name list` → error "reserved verb"); cannot create mission with `--name msn-<anything>` OR `--name scp-<anything>` (auto-id namespaces; v2.0 fold per Refinement C extends to scope namespace); prevents future ambiguity if verb is added in v2.x.
 
 6. **Post-dispatch arg-count validation (v1.4 fold per MEDIUM-R3.6; v1.6 fold per MEDIUM-R5.4 — disjunctive arg-shape):** after Rules 1-3 land a dispatch (top-level verb / mission-scoped action / scope-sub-action / git-op), validate per-CLI-table arg-count + flag signatures. Four error-classes:
    - **missing-verb**: 0 positionals → "no command specified; use `msn --help`"
@@ -772,16 +902,24 @@ CLI grammar tokenization rules (parser-disambiguation):
      - `msn status` → 0 positional acceptable (lists all missions); valid
      - `msn status storage-extract extra-arg` → extra-positional error
 
-**Algorithm walk-through on edge cases (v1.3 fold per round-2 ask 2; v1.4 fold extended per round-3 ask 4):**
-- `msn list show` → `[0]=list ∈ top-level verbs` → top-level `list` dispatch with extra positional `show`. **Rule 6:** `msn list` is flag-only signature → error "unexpected positional `show` for `list`; use `--status <state>` / `--output ...`"
-- `msn create show` → `[0]=create ∈ top-level` → top-level `create` with extra positional `show`. **Rule 6:** `msn create` is flag-only signature → error "unexpected positional `show` for `create`; use `--name <slug>`"
+**Algorithm walk-through on edge cases (v2.0 fold per Refinements A+B+C — verb-first grammar):**
+- `msn list show` → `[0]=list ∈ top-level verbs` → `list` dispatch with extra positional `show`. **Rule 6:** `msn list` is flag-only signature → error "unexpected positional `show` for `list`; use `--status <state>` / `--output ...`"
+- `msn create show` → `[0]=create` → `create` dispatch with extra positional `show`. **Rule 6:** `msn create` is flag-only signature → error "unexpected positional `show` for `create`; use `--name <slug>` / `--repo <url>` / `--scope <id>`"
 - `msn show` → 1 positional. **Rule 6:** `msn show <id|name>` requires selector → error "missing required arg `<id|name>` for `show`"
-- `msn storage-extract storage-provider branch feature/foo` → `[0]=storage-extract` NOT in top-level verbs → mission-selector. `[1]=storage-provider` NOT in reserved-sub-actions → Rule 3 git-op shape; verb=`branch`; arg=`feature/foo`. Resolved (4-positional git-op valid).
-- `msn storage-extract repo-add https://...` → `[0]=storage-extract` NOT in top-level → mission-selector. `[1]=repo-add` ∈ mission-scoped reserved-sub-actions → mission-scoped action; arg=`https://...`. Resolved.
-- `msn storage-extract repo-add` → 2 positional. `[0]` mission-selector; `[1]=repo-add` reserved sub-action. **Rule 6:** `repo-add` requires `<file|url>` arg → error "missing required arg `<file|url>` for `repo-add`"
-- `msn complete msn-a3bd610c` → 2 positional. `[0]=complete ∈ top-level` → top-level dispatch; arg=`msn-a3bd610c` matches `<id|name>` selector signature. Resolved (auto-id form passes through; uniform with name-form).
-- `msn create` → 1 positional → top-level verb `create` (no mission-name; `--name` flag separate or auto-id assigned). Resolved.
-- `msn config get identity.provider` → 3 positional. `[0]=config ∈ top-level` → `config` scope. `[1]=get ∈ config-scoped sub-actions` → `config get` dispatch; arg=`identity.provider`. Resolved.
+- `msn storage-extract storage-provider branch feature/foo` → `[0]=storage-extract` NOT in reserved-verbs → error "unknown verb 'storage-extract'; use 'msn --help'". (v1.8 implicit-mission-selector shape rejected at v2.0; operator must use `msn git storage-extract storage-provider branch feature/foo` or `msn update storage-extract ...`.)
+- `msn git storage-extract storage-provider branch feature/foo` → 5 positional. `[0]=git ∈ top-level` → `git` namespace. Per Rule 2 5-positional pattern: `[1]=storage-extract` mission-selector (resolved via §2.4 symlink); `[2]=storage-provider` repo-name; `[3]=branch` git-verb; `[4]=feature/foo` arg. Resolved.
+- `msn update storage-extract repo-add https://...` → 4 positional. `[0]=update ∈ top-level` → `update` namespace. Per Rule 2: `[1]=storage-extract` mission-selector; `[2]=repo-add ∈ update-scoped sub-actions`; arg=`https://...`. Resolved.
+- `msn update storage-extract name new-name` → 4 positional. Field-targeted update; sub-action=`name`; arg=`new-name`. Triggers symlink-rename flow per §2.4 (4-step config-write-FIRST mechanism).
+- `msn update storage-extract repo-add` → 3 positional. `[1]=storage-extract` mission-selector; `[2]=repo-add` reserved sub-action. **Rule 6:** `update repo-add` requires `<file|url>` arg → error "missing required arg `<file|url>` for `update repo-add`"
+- `msn complete msn-a3bd610c` → 2 positional. `[0]=complete ∈ top-level` → `complete` dispatch; arg=`msn-a3bd610c` matches `<id|name>` selector (regex match → id-form). Resolved.
+- `msn create --name new-feature --repo https://github.com/example.git` → flag-driven one-liner per Director example. Mission scaffolded with single repo declaratively. Resolved.
+- `msn create --scope scp-a3bd610c --name new-feature` → flag-driven; mission references scope-id; engine inlines scope.repos at `startMission` time (hybrid resolution per §2.4.2).
+- `msn create` → 1 positional → `create` dispatch (no mission-name; auto-id assigned; no repos configured; no scope). Returns canonical id one-line. Resolved.
+- `msn scope create --name claude-plugin` → 2 positional + flag. `[0]=scope ∈ top-level` → `scope` namespace. `[1]=create ∈ scope-scoped sub-actions` → `scope create` dispatch with `--name <slug>` flag. Resolved.
+- `msn scope update claude-plugin repo-add https://...` → 5 positional. `[0]=scope` ∈ top-level. `[1]=update ∈ scope-scoped sub-actions` → `scope update` namespace. `[2]=claude-plugin` scope-selector; `[3]=repo-add ∈ scope update-scoped sub-actions`; arg=`https://...`. Resolved.
+- `msn scope list` → 2 positional. `[0]=scope` + `[1]=list ∈ scope-scoped sub-actions` → `scope list` dispatch. Resolved.
+- `msn scope delete claude-plugin` → 3 positional. `[0]=scope` + `[1]=delete ∈ scope-scoped sub-actions` → `scope delete` dispatch with `<id|name>` arg. Resolved (engine validates no non-terminal missions reference scope before delete; per §2.4.2 cascade-protection).
+- `msn config get identity.provider` → 3 positional. `[0]=config ∈ top-level` → `config` namespace. `[1]=get ∈ config-scoped sub-actions` → `config get` dispatch; arg=`identity.provider`. Resolved.
 
 This is the PARSER-LEVEL contract; v1.0 commits this disambiguation. Future v2 verb additions must avoid colliding with existing mission-name slugs (Strict-1.0 cross-version compat).
 
@@ -795,6 +933,9 @@ This is the PARSER-LEVEL contract; v1.0 commits this disambiguation. Future v2 v
 
 - `<workspace>/config/<id>.yaml` — declarative mission resource manifests (k8s-equivalent: `manifest.yaml`)
 - `<workspace>/missions/<id>/<repo-name>/` — runtime workspaces (active mission state)
+- `<workspace>/scopes/<scope-id>.yaml` — scope template manifests (v2.0 NEW per Refinement C; parallel structure to mission-config)
+- `<workspace>/scopes/.names/<slug>.yaml` — scope name-symlinks (parallel to mission name-symlinks at `<workspace>/config/.names/`)
+- `<workspace>/locks/scopes/<scope-id>.lock` — scope-locks (concurrent-update protection; mirrors mission-lock pattern at `<workspace>/locks/missions/`)
 - `<workspace>/operator.yaml` — global operator-config (v1.7 fold per MEDIUM-R6.4)
 
 Both rooted under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`). Clean separation of declarative config vs runtime state.
@@ -1096,6 +1237,67 @@ State transitions table extension:
 - Birthday-collision threshold ~65k missions; cap-3-retries gives ~10^-30 effective collision probability at sane mission-counts
 - Operator-supplied `--name <slug>` is independent — slug-format `[a-z0-9][a-z0-9-]{1,62}` (DNS-style); slug must NOT match any reserved verb (see §2.3.2 reserved-words list)
 
+### §2.4.2 Scope state machine + lifecycle (NEW v2.0 — multi-mission composition primitive per Refinement C)
+
+Scope is a NEW first-class resource at v2.0 — a reusable repo-collection template that multiple missions reference via `--scope <id>`. Scope's lifecycle is simpler than Mission's (scopes are templates, not active resources; no `started`/`in-progress` state).
+
+**Scope state machine (2 states; NOT 6 like Mission):**
+
+```
+created ──[update-events ...]──> created (self-loop on update)
+   │
+   └─[delete (cascade-protected)]─> deleted (terminal; config + symlink removed unless --retain-config flag)
+```
+
+**State transitions:**
+
+| From | Event | To | Notes |
+|---|---|---|---|
+| (none) | `msn scope create` | `created` | Config scaffold at `<workspace>/scopes/<scope-id>.yaml`; auto-generates `scp-<8-char-hash>` |
+| `created` | `msn scope update <id> repo-add` | `created` | Self-loop; mutates scope.repos; updates updated-at timestamp; propagates to NOT-YET-STARTED missions per hybrid resolution |
+| `created` | `msn scope update <id> repo-remove` | `created` | Self-loop |
+| `created` | `msn scope update <id> name <new-name>` | `created` | Self-loop; symlink-rename flow per §2.4 |
+| `created` | `msn scope update <id> description <text>` | `created` | Self-loop |
+| `created` | `msn scope delete <id>` | `deleted` | Terminal; cascade-protected (rejects if any non-terminal mission references this scope) |
+
+**Scope is mutable until deleted** — unlike missions which transition through immutable lifecycle states, scopes accept update-events as long as they exist. No `started` state because scopes don't have runtime workspaces.
+
+**Scope-id derivation:** `scp-<8-char-hash>` via `crypto.randomBytes(4).toString('hex')` (parallel to msn-id mechanism per §2.4 MEDIUM-1). Collision-detection regenerate-with-retry-cap-3.
+
+**Scope-name uniqueness invariant** (parallel to mission-name): `msn scope create --name <slug>` MUST reject if existing scope-config has same name. Race-resolution via POSIX `O_EXCL` symlink at `<workspace>/scopes/.names/<slug>.yaml` (mirrors §2.4 mission-name mechanism). Concurrent races between scope-create + mission-create with same slug DO NOT collide — separate namespaces (`<workspace>/config/.names/` for missions vs `<workspace>/scopes/.names/` for scopes).
+
+**Hybrid resolution model (option (c) per Director-approved 2026-05-09-late):**
+
+When mission references scope via `mission.scope-id: <scope-id>`:
+
+- **Pre-start (mission state ∈ {`created`, `configured`}):** scope-reference is LIVE. `getMission(id)` returns repos from current scope state. Updates to scope (`addRepoToScope` / `removeRepoFromScope` / etc.) propagate immediately to mission.repos view.
+- **At `startMission` (transition `configured → started`):** engine **INLINES** scope.repos into mission-config snapshot — copies current scope.repos into mission-config.repos (atomic-write per MEDIUM-11 within mission-lock per §2.4.1 7-step). Subsequent scope updates DO NOT propagate to this started mission.
+- **Post-start (mission state ∈ {`started`, `in-progress`, `completed`, `abandoned`}):** mission.repos is the inlined snapshot; scope-id field stays as informational reference.
+
+K8s-ConfigMap analog: ConfigMap mounted into Pod is snapshot-on-Pod-creation; subsequent ConfigMap updates only propagate on Pod-recreate. Same semantic for missioncraft scope.
+
+**Cascade-protection invariant (scope-delete):**
+
+`deleteScope(id)` rejects with `MissionStateError("scope referenced by N non-terminal missions; update mission scope-ids OR delete missions first")` if any mission state ∈ {`created`, `configured`, `started`, `in-progress`} has `mission.scope-id === <id>`. Terminal missions (`completed`/`abandoned`) DON'T block — they've inlined scope.repos as snapshot; the scope-id field is informational-only post-start.
+
+Engine maintains `referencedByMissions` view via reverse-index OR computed-on-getScope by scanning mission-configs.
+
+**Scope-config schema versioning under Strict-1.0:**
+
+`scope-config-schema-version: 1` REQUIRED at top of YAML; zod type `z.literal(1)` (number); v1.x can ADD optional fields (additive-only); REMOVING/RENAMING requires v2 + new schema-version. Engine rejects unknown schema-version with `ConfigValidationError`. Same discipline as mission-config schema versioning per MEDIUM-14.
+
+**Scope-rename flow** mirrors mission-rename per §2.4 MEDIUM-R5.6 — under scope-lock; 4-step config-write-FIRST. Renamed scope's name-symlink updates atomically; missions referencing scope BY NAME (not by canonical scp-id) become orphan-references — operator-responsibility. Recommended pattern: missions reference scopes by canonical id, not name.
+
+**Orphan-config workflow for scope** mirrors mission-orphan workflow (MINOR-R4.1): `msn scope list` shows all scopes; `msn scope delete <id>` releases name + config (terminal action). No separate `--cleanup-orphans` workflow.
+
+**Scope-lock acquisition order on mutate:**
+
+1. Acquire scope-lock via `acquireScopeLock(scopeId, { waitMs: 0 })`; on failure → `LockTimeoutError`
+2. Read-modify-write scope-config (atomic-write per MEDIUM-11)
+3. Release scope-lock
+
+Concurrent scope-update operators serialize via scope-lock. Concurrent `addRepoToScope` from two operators → second waits per `waitMs` (default 0 fail-fast).
+
 ### §2.5 Mission-config schema (v1.1 reshape — extends with `repos: [...]` per refinement #3)
 
 YAML format (TypeScript-validated via zod at load-time). v1.1 extends v1.0 schema with declarative `repos: [...]` field — operator declares mission INTENT once; engine realizes runtime state.
@@ -1108,6 +1310,7 @@ mission:
   id: msn-a3bd610c                  # auto-generated by `msn create`; or operator-supplied
   name: storage-extract              # optional human-friendly slug; for `msn start storage-extract`
   hub-id: mission-77                 # optional; Hub-side mission entity id mapping (sovereignty preserved — missioncraft just stores)
+  scope-id: scp-7a9b2e1c             # v2.0 fold per Refinement C — optional; references scope template; engine inlines scope.repos at startMission per §2.4.2 hybrid resolution; pre-start updates to scope propagate live; post-start scope-id is informational-only
   description: "Extract storage-provider to sovereign repo"
   lifecycle-state: configured        # v1.6 fold per MEDIUM-R5.1; v1.7 fold per MEDIUM-R6.1 — engine-controlled field; zod schema `.default('created')` so missing-on-input populates with default; engine ALWAYS overwrites on transitions (atomic-write per MEDIUM-11). Operator-set value via applyMission/YAML is OVERWRITTEN on first engine action — operator cannot mutate this field meaningfully (engine reads disk state on every transition; treats operator-supplied value as informational-only). enum: 'created' | 'configured' | 'started' | 'in-progress' | 'completed' | 'abandoned'; zod literal-string-union preserves wire-format kebab-case
   created-at: "2026-05-09T01:00:00Z"  # ISO-8601; auto-set at `msn create`; immutable
@@ -1206,7 +1409,53 @@ interface RepoSpec {
   - YAML hydration (CLI reads existing `<workspace>/config/<id>.yaml`)
   - Adapter `MissionConfigSchema.parse(event.payload.missionConfig)` (Hub-delivered payload)
 - Single canonical schema; no validation-bypass surface even for manually-edited YAML or Hub-delivered configs.
-- **Atomic-write discipline for CLI mid-mission config mutations (v1.2 fold per MEDIUM-11):** every CLI mutation (`msn create`, `msn <id> repo-add`, `msn apply`) writes via `fs.writeFile(path + '.tmp')` + zod-validate-roundtrip the temp file (parse the temp; if parse fails, abort + emit `ConfigValidationError`) + `fs.rename(path + '.tmp', path)` (POSIX atomic on same-fs); never leaves partial-config visible. Prevents corruption if CLI crashes mid-mutation.
+- **Atomic-write discipline for CLI mid-mission config mutations (v1.2 fold per MEDIUM-11):** every CLI mutation (`msn create`, `msn update <id> repo-add`, `msn apply`) writes via `fs.writeFile(path + '.tmp')` + zod-validate-roundtrip the temp file (parse the temp; if parse fails, abort + emit `ConfigValidationError`) + `fs.rename(path + '.tmp', path)` (POSIX atomic on same-fs); never leaves partial-config visible. Prevents corruption if CLI crashes mid-mutation. v2.0: same discipline applies to scope-config mutations.
+
+### §2.5.1 Scope-config schema (v2.0 NEW per Refinement C — multi-mission composition primitive)
+
+YAML format (TypeScript-validated via `ScopeConfigSchema` zod at load-time). Parallel structure to mission-config schema; simpler (no pluggable overrides; no state-durability config; no lock-timeout fields — scopes are templates, not active resources).
+
+```yaml
+scope-config-schema-version: 1   # additive-only schema model under Strict-1.0; v1.x ADDs optional fields; renames/removals require v2 + new schema-version
+
+scope:
+  id: scp-7a9b2e1c                  # auto-generated by `msn scope create`
+  name: claude-plugin                # optional human-friendly slug
+  description: "Claude Code plugin adapter component-set"
+  lifecycle-state: created           # 'created' | 'deleted' (v2.0 fold per Refinement C — engine-controlled; .default('created'))
+  created-at: "2026-05-09T01:00:00Z" # ISO-8601; immutable
+  updated-at: "2026-05-09T01:30:00Z" # ISO-8601; mutated atomically on every scope-update event
+  tags:                              # cross-system correlation; Record<string,string>; keys preserved as-is
+    correlation-id: "ois-2026-05-09"
+
+# Declarative repo list (parallel to mission-config repos:[])
+repos:
+  - url: https://github.com/example-org/adapter-core.git
+    name: adapter-core               # optional; auto-derived from URL last segment
+    branch: main
+    base: main
+  - url: https://github.com/example-org/adapter-extension.git
+    name: adapter-extension
+    branch: main
+    base: main
+```
+
+**ScopeConfigSchema validates:**
+
+- `scope-config-schema-version` zod literal-1 (number; same discipline as mission per MINOR-R2.1)
+- `scope.name` slug-format `[a-z0-9][a-z0-9-]{1,62}` + reserved-verbs check + `scp-` prefix rejection (parallel to mission's `msn-` prefix rejection per MEDIUM-R2.6)
+- `scope.lifecycle-state` zod literal-string-union (engine-controlled; `.default('created')`; operator-set value OVERWRITTEN on first engine action — same discipline as mission per MEDIUM-R6.1)
+- `scope.created-at` immutable; `scope.updated-at` initialized = `created-at` at create-time (parallel to mission per MINOR-R7.1)
+- `repos` array of `RepoSpec` (reuses mission's RepoSpec interface; same naming-convention contract)
+
+**Validation enforced at every scope-config-load via `ScopeConfigSchema`** (parallel to mission per MEDIUM-R3.11):
+- `createScope({name?, description?})` SDK call
+- CLI `msn scope create [--name <slug>]`
+- `addRepoToScope` / `removeRepoFromScope` / `renameScope` / `setScopeDescription` (mutation-write through ScopeConfigSchema validation)
+- YAML hydration (CLI reads existing `<workspace>/scopes/<id>.yaml`)
+- Adapter `ScopeConfigSchema.parse(event.payload.scopeConfig)` (Hub-delivered payload; if Hub ships scope-templates over MCP)
+
+Single canonical schema; no validation-bypass surface.
 
 ### §2.6 Periodic state durability mechanism (load-bearing per Q1=d + F1 CRITICAL)
 
@@ -1305,6 +1554,8 @@ interface RepoSpec {
 │   │   ├── core/types.ts          ← SDK-INTERNAL constructor types (MissioncraftConfig, StateDurabilityConfig)
 │   │   ├── core/mission-types.ts  ← Mission RESOURCE types (MissionConfig, MissionState, RepoSpec, MissionStatePhase)
 │   │   ├── core/mission-config-schema.ts  ← Runtime zod schemas (MissionConfigSchema, RepoSpecSchema) — PARSE/VALIDATE primitives
+│   │   ├── core/scope-types.ts    ← Scope RESOURCE types (ScopeConfig, ScopeState, ScopeHandle, ScopeFilter, ScopeStatePhase) — v2.0 NEW per Refinement C
+│   │   ├── core/scope-config-schema.ts    ← Runtime zod schema (ScopeConfigSchema) — v2.0 NEW per Refinement C
 │   │   ├── core/operator-config-schema.ts ← Runtime zod schema (OperatorConfigSchema) — v1.7 fold per MEDIUM-R6.4
 │   │   ├── pluggables/            ← interface types
 │   │   ├── defaults/              ← LocalGitConfigIdentity, TrustAllPolicy, etc.
@@ -1360,12 +1611,14 @@ interface RepoSpec {
      The TypeScript resolver honors `tsconfig.paths`, mapping `@apnex/missioncraft` → `./src/missioncraft-sdk/index.ts` at lint-time.
   3. **Path-string match invariant:** the `except` entry path-string in `no-restricted-paths` MUST equal the resolver's output path (`./src/missioncraft-sdk/index.ts`; not `@apnex/missioncraft`; not `./src/missioncraft-sdk/`). If resolver output drifts, `except` no longer matches → linter blocks the legitimate SDK index.ts import.
 - CLI is an SDK consumer, same shape as a 3rd-party consumer would be; ensures CLI doesn't accidentally couple to SDK internals.
-- **`core/` 4-file boundary rationale (v1.5 fold per MINOR-R4.2; v1.8 fold per MINOR-R7.3 — extended for operator-config-schema):** four files split by concern:
-  - `types.ts` — SDK-INTERNAL constructor types (MissioncraftConfig, StateDurabilityConfig); not mission-resource
+- **`core/` 6-file boundary rationale (v1.5 fold per MINOR-R4.2; v1.8 fold per MINOR-R7.3 + v2.0 fold per Refinement C — extended for scope-types + scope-config-schema):** six files split by concern:
+  - `types.ts` — SDK-INTERNAL constructor types (MissioncraftConfig, StateDurabilityConfig); not resource-types
   - `mission-types.ts` — mission RESOURCE types (the primary k8s-shape resource: MissionState, MissionHandle, MissionFilter, MissionStatePhase, MissionConfig)
+  - `scope-types.ts` — scope RESOURCE types (v2.0 per Refinement C — ScopeState, ScopeHandle, ScopeFilter, ScopeStatePhase, ScopeConfig); separate file from mission-types per parallel-resource-shape discipline
   - `mission-config-schema.ts` — RUNTIME zod schemas for mission-config + RepoSpec (parse/validate primitives at YAML+JSON boundary)
+  - `scope-config-schema.ts` — RUNTIME zod schema for scope-config (v2.0 per Refinement C — parse/validate at `<workspace>/scopes/<id>.yaml` boundary; SDK + adapter integration)
   - `operator-config-schema.ts` — RUNTIME zod schema for operator-config (parse/validate at `${MSN_WORKSPACE_ROOT}/operator.yaml` boundary; configGet/configSet validation)
-  Separation prevents future-implementer drift toward consolidating runtime + types in one file (zod imports drag runtime into type-only modules; clean separation enables type-only imports for consumers who don't need parse). Two zod-schema files split by concern (mission-resource vs operator-global) prevents cross-coupling. v1.x can move both schema files to `core/schemas/` directory if a 5th schema is added (consolidate by parallel-structure); v1 keeps flat layout.
+  Separation prevents future-implementer drift toward consolidating runtime + types in one file (zod imports drag runtime into type-only modules; clean separation enables type-only imports for consumers who don't need parse). Three zod-schema files split by concern (mission-resource vs scope-resource vs operator-global) prevents cross-coupling. **v2.0 evolution path:** with 6 files in `core/`, consolidation candidate emerges — if v2.x adds a 7th schema (e.g., for v2.x manifest-template or runtime-policy), MOVE all schema files to `core/schemas/` directory (parallel-structure consolidation); MOVE all type-only files to `core/types/` directory. v2.0 keeps flat layout to avoid mid-cycle reshape; v2.x can adopt directory-consolidation as additive (additive doesn't break Strict-1.0 since it's source-internal).
 
 **Multi-module TypeScript build (v1.2 fold per MEDIUM-8):**
 
@@ -1670,8 +1923,12 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v1.6 PENDING-ROUND-6** | **2026-05-09** | **engineer round-5 audit fold (thread-510 round 9/20; 11 findings: 1 HIGH + 7 MEDIUM + 3 MINOR)** | **HIGH-R5.1 v1.0-carryover SDK surface mismatch — DROP `remoteAdd / remoteList / remoteRemove` from SDK + CLI surfaces (option a); per-mission RemoteProvider configured via SDK constructor injection OR mission-config `remote.provider` field; `remote` removed from top-level reserved-verbs + remote-scoped sub-actions vocabulary; v1 doesn't ship multi-remote support (additive-evolution path open for v1.x); MEDIUM-R5.1 mission state persistence — single source of truth via `mission.lifecycle-state` field in mission-config YAML (option a); zod literal-string-union; mutated atomically on transitions; MEDIUM-R5.2 mission resource type interfaces committed at §2.3.1 — MissionStatePhase / MissionHandle / MissionState / MissionFilter / MissionConfig (Strict-1.0 SDK return-type shapes pinned); MEDIUM-R5.3 `created` × `apply` state-transition rows added (zero-repos no-op self-loop; ≥1-repo auto-promotion to `configured`); `created` is STABLE state confirmed (NOT instantaneous); MEDIUM-R5.4 Rule 6 disjunctive arg-shape grammar — flag-presence-first algorithm + 4 walk-through traces; mutually-exclusive error class added; MEDIUM-R5.5 `--purge-config` step-ordering Order A (lifecycle-state-persist FIRST, locks-release SECOND, workspace-destroy THIRD, config-purge LAST); crash-recovery preserves config; MEDIUM-R5.6 applyMission rename failure rollback boundary — config-write-FIRST reordering for cleaner failure semantics; ALL failure modes preserve operator-observable state; MEDIUM-R5.7 `--purge-config` on auto-id-only mission gracefully no-ops symlink-unlink if absent; MINOR-R5.1 static `providerName` examples added for 3 missing default-impls (TrustAllPolicy + LocalFilesystemStorage + IsomorphicGitEngine); MINOR-R5.2 concurrent create-with-name + complete-with-purge race composability note added; MINOR-R5.3 `Missioncraft.isPlatformSupported(): boolean` static helper added to SDK class for adapter UX. Pending engineer round-6 audit on thread-510.** |
 | **v1.7 PENDING-ROUND-7** | **2026-05-09** | **engineer round-6 audit fold (thread-510 round 11/20; 10 findings: 0 HIGH + 4 MEDIUM + 6 MINOR; tail-of-decay zone)** | **MEDIUM-R6.1 lifecycleState `.default('created')` zod field; engine-controlled (operator-set value overwritten on first transition); MEDIUM-R6.2 mission.updated-at YAML field added (symmetric with created-at; mutated atomically on every transition + config-mutation); MEDIUM-R6.3 MissionState.workspacePath state-gating (populated only when workspace exists on-disk: in-progress; OR completed/abandoned with --retain); MEDIUM-R6.4 operator-config schema spec at §2.4 (file: ${MSN_WORKSPACE_ROOT}/operator.yaml; OperatorConfigSchema zod; closed key-namespace: defaults.* + provider-config.*; precedence chain extended: CLI > env > mission-config > SDK constructor > operator-config > built-in default; configGet/configSet zod-validate keys); MINOR-R6.1 MissionState symmetric pluggable-name exposure (5 fields: identityProviderName + approvalProviderName + storageProviderName + gitEngineProviderName + remoteProviderName?); MINOR-R6.2 --retain (set at start) + --purge-config (at complete/abandon) mutually-exclusive (orphan-workspace prevention); MINOR-R6.3 MissionFilter.nameLike case-insensitive plain substring (UNIX-CLI convention; not glob; not regex); MINOR-R6.4 Date round-trip discipline (ISO-8601 wire ↔ Date object TS via zod transform); nested kebab→camelCase transform recursive; MINOR-R6.5 msn create stdout (canonical id one-line; tab-delimited id+name with --name); MINOR-R6.6 RepoSpec.branch default derived AT RUNTIME-CLONE-TIME (not parse-time; preserves default-semantic on v1.x evolution); ROUND-6-ASK-4: lifecycle-state-persist via RMW-under-mission-lock (option c). Pending engineer round-7 audit on thread-510. ratify-clean predicted next round per thread-509 empirics. |
 | **v1.8 PENDING-ROUND-8** | **2026-05-09** | **engineer round-7 audit fold (thread-510 round 13/20; 5 findings: 0 HIGH + 2 MEDIUM + 3 MINOR; convergence zone R7=5; ratify-clean predicted)** | **MEDIUM-R7.1 operator-config consultation boundary spec — CLI-internal Missioncraft construction consults operator-config for required pluggables; SDK-direct consumers DO NOT (sovereignty discipline; explicit-injection-only); optional fields uniform across both via precedence chain; MEDIUM-R7.2 env-var mapping closed list — 6 env-vars aligned 1:1 with §2.3.2 global flags (MSN_WORKSPACE_ROOT + MSN_WIP_CADENCE_MS + MSN_SNAPSHOT_CADENCE_MS + MSN_LOCK_WAIT_MS + MSN_LOCK_VALIDITY_MS + MSN_OUTPUT); other operator-config keys are operator-config-only at v1; MINOR-R7.1 updated-at initial value at create-time = same as created-at (created-at immutable); MINOR-R7.2 provider-config naming cleanup — `gh-cli.path` (provider-context-implicit); MINOR-R7.3 core/ 4-file boundary rationale extended (operator-config-schema.ts added). Pending engineer round-8 audit on thread-510. Ratify-clean predicted per thread-509 empirics convergence-zone behavior.** |
-| **v1.8 BILATERAL RATIFIED** | **2026-05-09** | **engineer round-8 ratify-clean on thread-510 (round 15/20) + architect label-flip + bilateral-commit close** | **0 findings round-8; 8-round audit cycle close (R1=24 → R2=15 → R3=14 → R4=14 → R5=11 → R6=10 → R7=5 → R8=0); 93 findings folded; substantive-reshape envelope landed within thread-509 6-9 round prediction range. Strict-1.0 contract committed for `@apnex/missioncraft@1.0.0`. Implementation-ready; Phase 5 Manifest entry triggered. Architect-side commit pin: THIS COMMIT.** |
+| **v1.8 BILATERAL RATIFIED** | **2026-05-09** | **engineer round-8 ratify-clean on thread-510 (round 15/20) + architect label-flip + bilateral-commit close** | **0 findings round-8; 8-round audit cycle close (R1=24 → R2=15 → R3=14 → R4=14 → R5=11 → R6=10 → R7=5 → R8=0); 93 findings folded; substantive-reshape envelope landed within thread-509 6-9 round prediction range. Strict-1.0 contract committed for `@apnex/missioncraft@1.0.0`. Implementation-ready; Phase 5 Manifest entry triggered. Architect-side commit pin: SHA `226aa46`.** |
+| **v2.0 PENDING-BILATERAL-RATIFICATION** | **2026-05-09-late** | **3 Director-direct architectural refinements (Round-2; post v1.8 RATIFIED; pre-Phase-6)** | **this version; substantial reshape covering: (A) verb-first grammar (BREAKING — all first positionals are reserved verbs; eliminates v1.8 implicit-mission-selector shape); (B) `update` verb (additive — field-targeted mutations complementing `apply -f`; new typed SDK methods: renameMission/setMissionDescription/setMissionHubId/setMissionScope/setMissionTag/removeMissionTag); (C) `scope` template (additive — new first-class resource for multi-mission composition; hybrid resolution model option (c) snapshot-on-startMission per k8s-ConfigMap analogy; new SDK class methods + new CLI verb namespace + new schema + new state-machine + new workspace path). New branch `agent-lily/m-missioncraft-v2-design` off v1.8 RATIFIED at SHA `226aa46`. NEW §2.4.2 Scope state machine; NEW §2.5.1 Scope-config schema; rewritten §2.3.2 grammar (verb-first; 13 reserved-verbs; 5 sub-action vocabularies); extended §2.3.1 SDK class (renameMission/setMissionDescription/etc.; createScope/getScope/listScopes/updateScope/deleteScope/etc.; ScopeHandle/ScopeState/ScopeFilter/ScopeConfig/ScopeStatePhase interfaces); new core/scope-types.ts + core/scope-config-schema.ts source files. Pending engineer round-1 audit on new thread (TBD; thread-511 candidate; maxRounds=20).** |
+| v2.0 BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on TBD thread + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger (re-trigger on v2.0 close; v1.8 trigger superseded) |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 PENDING-ROUND-2 → `b27b579`; v1.3 PENDING-ROUND-3 → `5b43351`; v1.4 PENDING-ROUND-4 → `22f1778`; v1.5 PENDING-ROUND-5 → `8663f9e`; v1.6 PENDING-ROUND-6 → `dc24188`; v1.7 PENDING-ROUND-7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; **v1.8 BILATERAL RATIFIED → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch; bilateral-commit close per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); **v2.0 PENDING-BILATERAL → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v2-design` branch; v1.8 RATIFIED preserved at `agent-lily/m-missioncraft-v1-design` SHA `226aa46`). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+
+**Phase 4 dispatch destination (v2.0 cycle):** greg / engineer; new thread (TBD; thread-511 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 4-7 rounds close per thread-509 + thread-510 pattern empirics for substantive reshapes (smaller envelope than v1.1 reshape since v1.8 substrate is mature; 3 refinements vs 6).
