@@ -1,8 +1,8 @@
 # M-Missioncraft-V1 — Design v3.0 PENDING-BILATERAL-RATIFICATION
 
-**Status:** **v3.0 PENDING-BILATERAL-RATIFICATION** (architect-side; substantial reshape post v2.5 BILATERAL RATIFIED via 6 Director-direct architectural refinements 2026-05-09-late; **Round-3 of Director-direct refinements**). Composes from **v2.5 BILATERAL RATIFIED** at SHA `5984334` on `agent-lily/m-missioncraft-v2-design` branch (preserved as historical artifact; 6-round audit cycle close; 39 findings folded). New branch `agent-lily/m-missioncraft-v3-design`.
+**Status:** **v3.0 PENDING-BILATERAL-RATIFICATION** (architect-side; substantial reshape post v2.5 BILATERAL RATIFIED via 7 Director-direct architectural refinements 2026-05-09-late; **Round-3 of Director-direct refinements**). Composes from **v2.5 BILATERAL RATIFIED** at SHA `5984334` on `agent-lily/m-missioncraft-v2-design` branch (preserved as historical artifact; 6-round audit cycle close; 39 findings folded). New branch `agent-lily/m-missioncraft-v3-design`.
 
-**6 Director-direct architectural refinements (Round-3; approved 2026-05-09-late post v2.5 RATIFIED):**
+**7 Director-direct architectural refinements (Round-3; approved 2026-05-09-late post v2.5 RATIFIED):**
 
 The cumulative refinement is **engineer-git-less code workspace hypervisor framing** — Engineer interacts with code via filesystem only; missioncraft handles all git operations (commits, branches, pushes, PRs, cleanup) invisibly. Engineer's CLI surface collapses to 4-6 verbs total.
 
@@ -16,12 +16,22 @@ The cumulative refinement is **engineer-git-less code workspace hypervisor frami
 
 5. **CHANGE cadence-tick model to filesystem-watch (substrate model shift):** §2.6.1 + §2.6.2 + §2.6.5 substantively re-spec'd. Engine spawns per-mission daemon-watcher process at `start`; watcher uses Node `fs.watch` API + debounce-window (default 30s) to fire `commitToRef` on filesystem-modify events. Watcher dies on `complete`/`abandon`. Per-mission daemon-mode at v1 (no global daemon).
 
-6. **ADD `msn workspace <id|name> [<repo-name>]` verb (path resolution):** replaces `msn git`'s implicit workspace discovery. Engineer obtains absolute path: `cd $(msn workspace <id> <repo>)`. Composable with shell. Engine-side: SDK exposes `getMissionWorkspacePath(id, repoName?): Promise<string>`.
+6. **ADD `msn workspace <id|name> [<repo-name>]` verb (path resolution):** replaces `msn git`'s implicit workspace discovery. Engineer obtains absolute path: `cd $(msn workspace <id> <repo>)`. Composable with shell. Engine-side: SDK exposes via `workspace(id, repoName?): Promise<string>`.
+
+7. **SDK API consolidation — verb-polymorphism over resource-type (k8s-shape at SDK level; resource-uniformity tele):** SDK class shifts from per-resource-typed methods (`createMission`/`createScope`/`getMission`/`getScope`/etc.) to **universal generic verbs parameterized by ResourceType**: `create<T>(type, opts)` / `get<T>(type, id, opts?)` / `list<T>(type, filter?, opts?)` / `update<T>(type, id, mutation: MutationOf<T>)` / `delete<T>(type, id)`. Mission-specific verbs (`start`/`apply`/`complete`/`abandon`/`tick`/`workspace`) retained at top-level for genuine functional differences. Per-resource last-mile logic stays internal (private dispatchers). MissionMutation + ScopeMutation are discriminated-unions per-resource. **Method count: 30 → 14 (~53% reduction).** Adding new resource-type at v3.x (e.g., `release`, `task`) just extends ResourceMap interface; no new method-exposure required.
 
 **Cumulative shift in CLI surface:**
 - Reserved-verbs count: 14 (v2.5) → 13 (v3.0) [drop `status` + `git`; add `workspace`]
 - Sub-action vocabularies: 5 (v2.5) → 4 (v3.0) [drop `git`-scoped; retain `update` + `scope` + `scope update` + `config`]
 - Engineer's typical CLI vocabulary: 4-6 verbs (`scope create`, `create`, `start`, `complete`, `abandon`, `workspace`)
+
+**Cumulative shift in SDK surface:**
+- Method count: 30 (v2.5) → 14 (v3.0) [universal verbs collapse 15 typed-update + 6 typed-CRUD; mission-specific verbs preserved]
+- 5 universal verbs (`create` / `get` / `list` / `update` / `delete`) parameterized by ResourceType
+- 6 mission-specific verbs (`start` / `apply` / `complete` / `abandon` / `tick` / `workspace`)
+- 2 operator-config (`configGet` / `configSet`)
+- 1 static (`isPlatformSupported`)
+- New types: `ResourceType`, `ResourceMap`, `MissionMutation`, `ScopeMutation` (discriminated-unions)
 
 **Cumulative shift in mission tele:** explicit ENGINEER COGNITIVE-LOAD MINIMIZATION as primary value-prop. Missioncraft is invisible substrate; engineer focuses purely on code changes; every git operation, branch, PR, push, cleanup is engine-handled. Architect-engineer separation of concerns: architect drives mission via brief; engineer executes; missioncraft is the substrate that bridges.
 
@@ -666,103 +676,181 @@ SDK constructor sets DEFAULTS for missions instantiated through this SDK; missio
 **SDK API shape (k8s-resource-shape applied to TypeScript):**
 
 ```typescript
+// v3.0 fold per Round-3 Refinement #7 — verb-polymorphism over resource-type (k8s-shape at SDK level).
+// Universal verbs (create / get / list / update / delete) parameterized by ResourceType.
+// Per-resource last-mile logic stays internal (private dispatchers); public surface uniform.
+// Method count: 14 (down from 30 at v2.5; ~53% reduction).
+
+type ResourceType = 'mission' | 'scope';
+
+interface ResourceMap {
+  mission: {
+    handle: MissionHandle;
+    state: MissionState;
+    config: MissionConfig;
+    filter: MissionFilter;
+    createOpts: { name?: string; repo?: string | string[]; scope?: string };
+    getOpts: never;
+    listOpts: never;
+    deleteOpts: never;       // mission-side termination is complete/abandon (mission-specific verbs); not generic delete
+    mutation: MissionMutation;
+  };
+  scope: {
+    handle: ScopeHandle;
+    state: ScopeState;
+    config: ScopeConfig;
+    filter: ScopeFilter;
+    createOpts: { name?: string; description?: string; repo?: string | string[] };
+    getOpts: { includeReferences?: boolean };
+    listOpts: { includeReferences?: boolean };
+    deleteOpts: never;       // cascade-protected at last-mile dispatcher
+    mutation: ScopeMutation;
+  };
+}
+
 class Missioncraft {
   constructor(config: MissioncraftConfig);
 
-  // Mission resource ops (the primary resource — k8s-shape)
-  createMission(opts?: { name?: string, repo?: string, scope?: string }): Promise<MissionHandle>;  // v2.0 fold per Refinement A+C — extended opts: --repo for one-liner; --scope for scope-template reference. Validates name via MissionConfigSchema (slug-format + reserved-verbs + msn- prefix + name-uniqueness; throws ConfigValidationError on violation)
-  getMission(id: string): Promise<MissionState>;                              // describe (k8s describe)
-  listMissions(filter?: MissionFilter): Promise<MissionState[]>;              // get (k8s get)
-  startMission(input: string | { config: MissionConfig }): Promise<MissionHandle>;  // realize declared state; engine spawns daemon-watcher (per §2.6.5 v3.0); inlines scope.repos if mission references scope (snapshot per §2.4.2 hybrid resolution)
-  applyMission(input: { id: string, config: MissionConfig }): Promise<MissionState>;  // upsert (additive-only mid-mission per refinement #3); returns updated state
-  completeMission(id: string, message: string, opts?: { purgeConfig?: boolean }): Promise<MissionState>;  // **v3.0 NEW per Round-3 Refinement #4** — atomic PR-set publish-flow: per-repo squash + push + openPullRequest; mission becomes `completed`. Returns final state including PR URLs (in returned MissionState.publishedPRs[] field). `message` REQUIRED (audit-record + PR-title + commit-message). Partial-failure → mission stays `in-progress` for idempotent retry.
-  abandonMission(id: string, message: string, opts?: { purgeConfig?: boolean }): Promise<MissionState>;  // **v3.0 NEW per Round-3 Refinement #4** — cleanup-only (NO PR creation); per-repo cleanup local mission-branch (no push); mission becomes `abandoned`. `message` REQUIRED (audit-record reason).
+  // ─── Universal resource verbs (k8s-shape; v3.0 fold per Round-3 Refinement #7) ─────────
+  // Each verb dispatches to per-resource last-mile (private methods) based on type-param.
 
-  // Mission-config field-targeted mutations (v2.0 NEW per Refinement B — typed update methods; CLI `msn update <id> <field>` dispatches to these)
-  addRepoToMission(id: string, repo: RepoSpec): Promise<MissionState>;        // pre-start full upsert OR post-start additive
-  removeRepoFromMission(id: string, repoName: string): Promise<MissionState>; // pre-start only
-  renameMission(id: string, newName: string): Promise<MissionState>;          // triggers symlink-rename flow per §2.4
-  setMissionDescription(id: string, description: string): Promise<MissionState>;
-  setMissionHubId(id: string, hubId: string): Promise<MissionState>;          // informational-only at v1
-  setMissionScope(id: string, scopeId: string | null): Promise<MissionState>; // pre-start only; null clears scope-reference
-  setMissionTag(id: string, key: string, value: string): Promise<MissionState>;
-  removeMissionTag(id: string, key: string): Promise<MissionState>;
-  // (listMissionRepos REMOVED v2.0 per Refinement A grammar-shift — `getMission(id).repos` covers SDK; `msn show <id> --repos` CLI shape replaces v1.8 `msn <id> repo-list`. v2.1 fold per MINOR-R1.3 — annotation tracked at §8 status v2.0 row.)
+  create<T extends ResourceType>(
+    type: T,
+    opts?: ResourceMap[T]['createOpts']
+  ): Promise<ResourceMap[T]['handle']>;
+  // Scaffolds resource. mission: {name?, repo?, scope?} → MissionHandle. scope: {name?, description?, repo?} → ScopeHandle.
 
-  // (v3.0: per-mission git-ops `*InMission` SDK methods REMOVED per Round-3 Refinement #1 — engineer-git-less framing; engine performs git operations internally via GitEngine pluggable invoked from completeMission/startMission/cadence-watcher; not exposed at SDK API surface)
+  get<T extends ResourceType>(
+    type: T,
+    id: string,
+    opts?: ResourceMap[T]['getOpts']
+  ): Promise<ResourceMap[T]['state']>;
+  // Detail view (k8s `describe`). scope opts: { includeReferences? } for cascade-protection-relevant query.
 
-  // Workspace path resolution (v3.0 NEW per Round-3 Refinement #6 — engineer-friendly path discovery)
-  getMissionWorkspacePath(id: string, repoName?: string): Promise<string>;  // returns absolute path to mission workspace (root if repoName undefined; specific repo subdir otherwise). Composes with shell: `cd $(msn workspace <id> <repo>)` resolves via this method. Errors on pre-`started` (no workspace yet) OR terminal-with-no-`--retain` (workspace destroyed).
+  list<T extends ResourceType>(
+    type: T,
+    filter?: ResourceMap[T]['filter'],
+    opts?: ResourceMap[T]['listOpts']
+  ): Promise<ResourceMap[T]['state'][]>;
+  // Tabular view (k8s `get`). Filter shape is per-resource (MissionFilter vs ScopeFilter).
 
-  // Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)
-  createScope(opts?: { name?: string, description?: string }): Promise<ScopeHandle>;  // scaffolds scope config at <workspace>/scopes/<id>.yaml; auto-generates scp-<8-char-hash>; validates name via ScopeConfigSchema
-  getScope(id: string, opts?: { includeReferences?: boolean }): Promise<ScopeState>;  // v2.2 fold per MEDIUM-R2.3 — opt-in references; default `includeReferences: false` returns ScopeState with `referencedByMissions: []` (empty for type-safety; not omitted); explicit `{includeReferences: true}` triggers O(N) scan of mission-configs. `deleteScope` ALWAYS computes references (cascade-protection requirement; not opt-in).
-  listScopes(filter?: ScopeFilter, opts?: { includeReferences?: boolean }): Promise<ScopeState[]>;  // v2.2 fold per MEDIUM-R2.3 — same opt-in pattern
-  addRepoToScope(id: string, repo: RepoSpec): Promise<ScopeState>;             // mutate; propagates to NOT-YET-STARTED missions referencing scope; does NOT propagate to STARTED missions (snapshot per §2.4.2)
-  removeRepoFromScope(id: string, repoName: string): Promise<ScopeState>;
-  renameScope(id: string, newName: string): Promise<ScopeState>;               // triggers symlink-rename flow
-  setScopeDescription(id: string, description: string): Promise<ScopeState>;
-  setScopeTag(id: string, key: string, value: string): Promise<ScopeState>;    // v2.1 fold per MEDIUM-R1.1 — symmetric with setMissionTag
-  removeScopeTag(id: string, key: string): Promise<ScopeState>;                // v2.1 fold per MEDIUM-R1.1 — symmetric with removeMissionTag
-  deleteScope(id: string): Promise<void>;                                      // terminal — cascade-protection: rejects if any non-terminal mission references this scope
+  update<T extends ResourceType>(
+    type: T,
+    id: string,
+    mutation: ResourceMap[T]['mutation']
+  ): Promise<ResourceMap[T]['state']>;
+  // Field-targeted mutation via discriminated-union mutation-type (last-mile per-resource validation).
+  // Replaces v2.5's 15 typed-update methods (8 mission + 7 scope).
 
-  // Non-mission resource ops (operator configuration only)
+  delete<T extends ResourceType>(type: T, id: string): Promise<void>;
+  // Removes resource. v3 supports `delete('scope', id)` only (cascade-protected); mission uses complete/abandon (mission-specific verbs below).
+
+  // ─── Mission-specific verbs (genuine functional differences; no scope analog) ─────────
+
+  start(input: string | { config: MissionConfig }): Promise<MissionHandle>;
+  // Realize declared state; engine spawns daemon-watcher (per §2.6.5 v3.0); inlines scope.repos if mission references scope (snapshot per §2.4.2 hybrid resolution).
+
+  apply(config: MissionConfig): Promise<MissionState>;
+  // Mission full-config-upsert (additive-only mid-mission per refinement #3); returns updated state.
+  // (Scope-apply deferred to v3.x as additive evolution if demand emerges.)
+
+  complete(id: string, message: string, opts?: { purgeConfig?: boolean }): Promise<MissionState>;
+  // **v3.0 atomic PR-set publish-flow (per Round-3 Refinement #4):** per-repo squash → push → openPullRequest; mission becomes `completed`. Returns final state with `publishedPRs[]`. `message` REQUIRED. Partial-failure → mission stays `in-progress` for idempotent retry.
+
+  abandon(id: string, message: string, opts?: { purgeConfig?: boolean }): Promise<MissionState>;
+  // **v3.0 cleanup-only (per Round-3 Refinement #4):** NO PR creation; per-repo cleanup local mission-branch (no push); mission becomes `abandoned`. `message` REQUIRED.
+
+  tick(id: string): Promise<{ wipCommitSha?: string; snapshotPath?: string }>;
+  // Explicit operator-trigger of cadence-tick (overrides debounce-window; forces fire). Composes with §2.6.5 filesystem-watch model — daemon fires automatically; this is operator-explicit override.
+  // Three return-shapes: pre-`started` missions → both undefined (graceful no-op per MINOR-R3.2); started/in-progress + cadence-fired → either/both populated; cadence-not-due → both undefined (nothing-to-do).
+  // Partial-success: wip-tick succeeds + snapshot-tick fails → `{wipCommitSha: <sha>, snapshotPath: undefined}` + logs warning (per MINOR-R4.4). ERRORs on terminal-state missions.
+
+  workspace(id: string, repoName?: string): Promise<string>;
+  // **v3.0 NEW (per Round-3 Refinement #6):** absolute path to mission workspace (root if repoName undefined; specific repo subdir otherwise). Composes with shell: `cd $(msn workspace <id> <repo>)`. Errors on pre-`started` (no workspace yet) OR terminal-with-no-`--retain` (workspace destroyed).
+
+  // ─── Operator-config (key-value namespace; not resource-shaped) ─────────
+
   configGet(key: string): Promise<string | undefined>;
   configSet(key: string, value: string): Promise<void>;
+  // Operator-config validation per OperatorConfigSchema (zod); unknown-key → ConfigValidationError.
 
-  // (v1.6 fold per HIGH-R5.1: remoteAdd / remoteList / remoteRemove REMOVED — v1.0 carryover not reconciled with v1.1+ PROVIDER_REGISTRY model;
-  //  RemoteProvider is now singleton-per-mission via SDK constructor injection OR mission-config remote.provider field; engine instantiates from PROVIDER_REGISTRY.
-  //  v1 doesn't ship multi-remote support; v1.x can add named-multi-remote model if demand emerges via additive registerProvider expansion.)
+  // ─── Static helpers ─────────
 
-  // Cadence-tick (v2.3 fold per HIGH-R3.1 — explicit operator-trigger of cooperative-tick per §2.6.5)
-  tickMission(id: string): Promise<{ wipCommitSha?: string, snapshotPath?: string }>;  // fires wip-tick + snapshot-tick on demand. Composes with §2.6.5 cooperative-tick model. **Return-type `?:` semantics (v2.4 fold per MINOR-R4.1):** fields are TS-idiomatic `string | undefined` (NOT `string | null`); when not fired (no-op OR cadence-not-exceeded), field is `undefined` (omitted in JSON serialization). Three return-shapes: pre-`started` missions → both undefined (no-op gracefully per MINOR-R3.2); started/in-progress + cadence-exceeded → either or both populated with hash/path; started/in-progress + cadence-not-exceeded → both undefined (nothing-to-do). **Partial-success (v2.4 fold per MINOR-R4.4):** if wip-tick succeeds but snapshot-tick fails (e.g., snapshotRoot disk full), returns `{wipCommitSha: <sha>, snapshotPath: undefined}` + logs warning (NOT throwing); operator can retry snapshot-tick later via `msn tick <id>`. wip-commit is durable per §2.6.1; snapshot is best-effort per §2.6.2 layered durability. ERRORs on terminal-state missions (`completed` / `abandoned`) with MissionStateError per terminal-immutability invariant.
-
-  // Platform-support pre-check (v1.6 fold per MINOR-R5.3 — adapter UX helper)
-  static isPlatformSupported(): boolean;     // returns false on Windows; adapter implementer can use at MCP-tool-list-time
+  static isPlatformSupported(): boolean;
+  // Returns false on Windows; adapter implementer uses at MCP-tool-list-time (v1.6 fold per MINOR-R5.3).
 }
+
+// ─── Mutation discriminated-unions (per-resource last-mile typed) ─────────
+
+type MissionMutation =
+  | { kind: 'add-repo'; repo: RepoSpec }                                   // pre-start full upsert OR post-start additive (per refinement #3)
+  | { kind: 'remove-repo'; repoName: string }                              // pre-start only
+  | { kind: 'rename'; newName: string }                                    // triggers symlink-rename flow per §2.4
+  | { kind: 'set-description'; description: string }
+  | { kind: 'set-hub-id'; hubId: string }                                  // informational-only at v1
+  | { kind: 'set-scope'; scopeId: string | null }                          // pre-start only; null clears scope-reference
+  | { kind: 'set-tag'; key: string; value: string }
+  | { kind: 'remove-tag'; key: string };
+
+type ScopeMutation =
+  | { kind: 'add-repo'; repo: RepoSpec }                                   // propagates to NOT-YET-STARTED missions referencing scope (per §2.4.2 hybrid resolution)
+  | { kind: 'remove-repo'; repoName: string }
+  | { kind: 'rename'; newName: string }                                    // triggers symlink-rename flow
+  | { kind: 'set-description'; description: string }
+  | { kind: 'set-tag'; key: string; value: string }
+  | { kind: 'remove-tag'; key: string };
 ```
 
-**API stability commitment (Q2=a):** every method signature here is committed v1.0.0 contract. Post-v1 breaking changes require major-version-bump (`v1.x` → `v2.x`). Strict-1.0 from day-1; no `v0.x` ramp-up phase.
-
-**Programmatic usage example (declarative-mission per refinement #3):**
+**Programmatic usage example (v3.0 generic-verb shape; engineer-git-less hypervisor model):**
 
 ```typescript
-import { Missioncraft, LocalGitConfigIdentity } from '@apnex/missioncraft';
+import { Missioncraft, LocalGitConfigIdentity, TrustAllPolicy, LocalFilesystemStorage, IsomorphicGitEngine, GitHubRemoteProvider } from '@apnex/missioncraft';
 
-const mc = new Missioncraft({ /* defaults */ });
-
-// Declarative mission (k8s-resource-shape)
-const handle = await mc.createMission({ name: 'storage-extract' });
-await mc.addRepoToMission(handle.id, {
-  url: 'file:///mnt/agentic-network',
-  branch: 'extract-storage-provider-source',
-  base: 'main',
-});
-await mc.addRepoToMission(handle.id, {
-  url: 'https://github.com/apnex-org/storage-provider',
-  branch: 'initial-extraction',
-});
-await mc.startMission(handle.id);
-
-// Or single-shot from config
-const handle2 = await mc.startMission({
-  config: parsedYAML,  // mission-config object; e.g., from Hub-delivered manifest
+const mc = new Missioncraft({
+  identity: new LocalGitConfigIdentity(),
+  approval: new TrustAllPolicy(),
+  storage: new LocalFilesystemStorage(),
+  gitEngine: new IsomorphicGitEngine(),
+  remote: new GitHubRemoteProvider({ ghCliPath: 'gh' }),
 });
 
-// Per-mission ops
-await mc.branchInMission(handle.id, 'storage-provider', 'feature/refactor');
-await mc.commitInMission(handle.id, 'storage-provider', { message: 'Initial extraction' });
-await mc.pushInMission(handle.id, 'storage-provider');
-
-// Additive apply mid-mission (per refinement #3)
-await mc.applyMission({
-  id: handle.id,
-  config: { ...originalConfig, repos: [...originalConfig.repos, additionalRepo] },
+// ─── Architect setup: scope template + mission scaffold (one-shot) ─────────
+const scopeHandle = await mc.create('scope', {
+  name: 'claude-plugin',
+  description: 'Adapter component-set',
+  repo: ['https://github.com/example/adapter-kernel', 'https://github.com/example/claude-plugin-shim'],
 });
 
-// Terminal
-await mc.completeMission(handle.id);
+const missionHandle = await mc.create('mission', {
+  name: 'update-adapter-code',
+  scope: scopeHandle.id,
+});
+
+// ─── Engineer flow: start → cd to workspace → edit → complete ─────────
+await mc.start(missionHandle.id);                                  // engine spawns daemon-watcher; clones repos; allocates workspace
+const workspacePath = await mc.workspace(missionHandle.id);        // path to mission root: <workspace>/missions/<id>/
+// engineer cd's into workspacePath/<repo-name>; edits files via filesystem-tools (no git knowledge)
+// ... time passes; daemon-watcher fires wip-commits + bundle-snapshots transparently ...
+
+// Atomic PR-set publish-flow on completion
+const completed = await mc.complete(missionHandle.id, 'Refactor adapter kernel for v2.0');
+// completed.publishedPRs[] contains { repoName, prUrl } per repo with changes
+
+// ─── Field-targeted updates (k8s-shape generic verb; per-resource discriminated mutation) ─────────
+await mc.update('mission', id, { kind: 'rename', newName: 'updated-feature-name' });
+await mc.update('scope', scopeHandle.id, { kind: 'add-repo', repo: { url: 'https://...', name: 'extra' } });
+await mc.update('mission', id, { kind: 'set-tag', key: 'correlation-id', value: 'ois-2026-05-09' });
+
+// ─── Read ops (universal verbs) ─────────
+const list = await mc.list('mission', { status: 'started' });
+const detail = await mc.get('mission', id);
+const scopeWithRefs = await mc.get('scope', scopeHandle.id, { includeReferences: true });
+
+// ─── Single-shot from Hub-delivered config (OIS adapter integration) ─────────
+const handle = await mc.start({ config: parsedYAML });             // mission auto-created if id-not-present + started
 ```
+
+**API stability commitment (Q2=a):** every method signature + mutation-type-shape committed v1.0.0 contract. Post-v1 breaking changes require major-version-bump (`v1.x` → `v2.x`). Strict-1.0 from day-1; no `v0.x` ramp-up phase. **v3.0 SDK shape**: 14 methods on Missioncraft class (5 universal verbs + 6 mission-specific verbs + 2 operator-config + 1 static); ~53% reduction from v2.5's 30-method surface.
 
 #### §2.3.2 Standalone-CLI persona — sovereign-module SDK consumer
 
@@ -774,9 +862,9 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 
 | Verb | Sub-verbs / Flags | SDK method | Description |
 |---|---|---|---|
-| `msn create` | `[--name <slug>] [--repo <url>] [--scope <id\|name>]` | `createMission({name?, repo?, scope?})` | Scaffold mission config at `<workspace>/config/<id>.yaml`; auto-generates `msn-<8-char-hash>` id. **v2.0 fold per Refinement A+C — flag-driven one-liner support:** if no `--name` provided, no name configured (auto-id only); if no `--repo` provided AND no `--scope` provided, no repos configured; if `--scope <id>` provided, mission references scope (engine inlines repos at startMission per §2.4.2 hybrid resolution); `--repo` accepts single URL for one-liner shape (multi-repo via `msn update <id> repo-add`). **stdout output:** prints canonical id one-line (`msn-a3bd610c\n`); with `--name`: prints id + name tab-delimited. |
-| `msn list` | `[--status <state>] [--output json\|yaml]` | `listMissions({status})` | Table view of all missions (k8s `get`) |
-| `msn show <id\|name>` | `[--repos] [--output json\|yaml]` | `getMission(id)` | Detail view (k8s `describe`); v2.0 `--repos` flag shows just the repo-list (replaces v1.8 `repo-list` sub-action) |
+| `msn create` | `[--name <slug>] [--repo <url>...] [--scope <id\|name>]` | `create('mission', {name?, repo?, scope?})` (v3.0 generic verb) | Scaffold mission config at `<workspace>/config/<id>.yaml`; auto-generates `msn-<8-char-hash>` id. Flag-driven one-liner support: if no `--name`, auto-id only; `--repo` repeatable for multi-repo at create-time; `--scope <id>` references scope (engine inlines repos at startMission per §2.4.2 hybrid resolution). For additional repos post-create use `msn update <id> repo-add`. **stdout:** prints canonical id one-line; with `--name`: id + name tab-delimited. |
+| `msn list` | `[--status <state>] [--output json\|yaml]` | `list('mission', {status?})` (v3.0 generic verb) | Table view of all missions (k8s `get`) |
+| `msn show <id\|name>` | `[--repos] [--output json\|yaml]` | `get('mission', id)` (v3.0 generic verb) | Detail view (k8s `describe`); `--repos` flag shows just the repo-list |
 | `msn update <id\|name> repo-add <file\|url>` | `[--name <local-name>] [--branch <name>] [--base <branch>]` | `addRepoToMission(id, repo)` | (v2.0 fold per Refinement B) Add repo to mission's declared config; mutates `<workspace>/config/<id>.yaml`; auto-derives local-name from URL last segment unless `--name` override. Pre-start: full upsert allowed. Post-start: additive-only per refinement #3. |
 | `msn update <id\|name> repo-remove <repo-name>` | (no flags) | `removeRepoFromMission(id, name)` | Remove repo (pre-start only); post-start error per refinement #3 |
 | `msn update <id\|name> name <new-name>` | (no flags) | `renameMission(id, newName)` | Rename mission's `--name` slug; triggers symlink-rename flow per §2.4 (4-step config-write-FIRST) |
@@ -794,9 +882,9 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 | `msn workspace <id\|name> [<repo-name>]` | (no flags) | `getMissionWorkspacePath(id, repoName?)` | **(v3.0 NEW per Round-3 Refinement #6)** Returns absolute path to mission workspace (mission-root if no repo-name; specific repo subdir if repo-name supplied). Composable: `cd $(msn workspace msn-deadbeef adapter-kernel)`. Replaces v2.5 implicit workspace-discovery via `msn git` namespace. Path-only; engineer uses native filesystem tools inside. |
 | **(v3.0: per-mission git-ops `msn git` namespace REMOVED — engineer-git-less workspace-hypervisor framing per Round-3 Refinement #1; engine handles git internally; engineer uses native filesystem-tools inside the workspace path returned by `msn workspace`)** | | | |
 | **Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)** | | | |
-| `msn scope create` | `[--name <slug>] [--description <text>]` | `createScope({name?, description?})` | Scaffold scope config at `<workspace>/scopes/<scope-id>.yaml`; auto-generates `scp-<8-char-hash>` id; optional `--name` for human-friendly slug. **stdout:** prints canonical id one-line (`scp-a3bd610c\n`); with `--name`: tab-delimited |
-| `msn scope show <id\|name>` | `[--include-references] [--output json\|yaml]` | `getScope(id, {includeReferences})` | Detail view; default omits `referencedByMissions` scan (O(1) lookup); `--include-references` flag triggers O(N) scan of mission-configs (v2.2 fold per MEDIUM-R2.3) |
-| `msn scope list` | `[--include-references] [--output json\|yaml]` | `listScopes(filter?, {includeReferences})` | Table view of all scopes; default omits per-scope `referencedByMissions` scans; `--include-references` triggers O(N+M) (v2.2 fold per MEDIUM-R2.3) |
+| `msn scope create` | `[--name <slug>] [--description <text>] [--repo <url>...]` | `create('scope', {name?, description?, repo?})` (v3.0 generic verb) | Scaffold scope config at `<workspace>/scopes/<scope-id>.yaml`; auto-generates `scp-<8-char-hash>`; `--repo` repeatable for multi-repo at create-time. **stdout:** prints canonical id one-line; with `--name`: tab-delimited |
+| `msn scope show <id\|name>` | `[--include-references] [--output json\|yaml]` | `get('scope', id, {includeReferences})` (v3.0) | Detail view; default omits `referencedByMissions` scan (O(1)); `--include-references` triggers O(N) scan |
+| `msn scope list` | `[--include-references] [--output json\|yaml]` | `list('scope', filter?, {includeReferences})` (v3.0) | Table view of all scopes |
 | `msn scope update <id\|name> repo-add <file\|url>` | `[--name <local-name>] [--branch <name>] [--base <branch>]` | `addRepoToScope(id, repo)` | Add repo to scope; mutates `<workspace>/scopes/<id>.yaml`. Propagates to NOT-YET-STARTED missions referencing this scope; does NOT propagate to STARTED missions (snapshot inlined per §2.4.2 hybrid resolution) |
 | `msn scope update <id\|name> repo-remove <repo-name>` | (no flags) | `removeRepoFromScope(id, name)` | Remove repo from scope; same propagation discipline |
 | `msn scope update <id\|name> name <new-name>` | (no flags) | `renameScope(id, newName)` | Rename scope's `--name` slug; triggers symlink-rename flow per §2.4 |
@@ -2244,12 +2332,12 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v2.4 PENDING-ROUND-5** | **2026-05-09-late** | **engineer round-4 audit fold (thread-511 round 7/20; 5 findings: 0 HIGH + 1 MEDIUM + 4 MINOR; pattern-decay R1=15 → R2=10 → R3=7 → R4=5 convergence-zone tail; ratify-clean predicted)** | **MEDIUM-R4.1 cross-validation lock-discipline asymmetric — addRepoToMission/setMissionScope STRICT (acquires mission-lock + scope-lock per cross-resource ordering); addRepoToScope OPTIMISTIC (scope-lock only; race-resolution at startMission Step 2 inline); MINOR-R4.1 tickMission return-type `?:` idiomatic (string | undefined; not null); MINOR-R4.2 cadence-tick trigger list extended (msn git tag + msn complete + msn abandon); MINOR-R4.3 cadence-tick lock-acquisition under existing mission-lock (single-cycle; closes race-window); MINOR-R4.4 tickMission partial-success semantics (wip-tick succeeds + snapshot-tick fails → return partial; no rollback; operator-retry via msn tick). Pending engineer round-5 audit on thread-511. Ratify-clean predicted per pattern empirics. |
 | **v2.5 PENDING-ROUND-6** | **2026-05-09-late** | **engineer round-5 audit fold (thread-511 round 9/20; 2 micro findings: 0 HIGH + 0 MEDIUM + 2 MINOR; pattern-decay R5=2 convergence-zone tail; ratify-clean imminent)** | **MINOR-R5.1 effective-repos dedup-by-name precedence — mission-side wins (operator-explicit authoritative over scope-template-defaults; v1.x evolution path noted for opt-in scope-precedence); MINOR-R5.2 cadence-tick step-0 in terminal step-sequence (NEW pre-step-0 BEFORE lifecycle-state-persist; under existing mission-lock per MINOR-R4.3 single-cycle invariant; same step-0 for msn complete + msn abandon). Pending engineer round-6 audit on thread-511. Ratify-clean imminent per pattern empirics. |
 | **v2.5 BILATERAL RATIFIED** | **2026-05-09-late** | **engineer round-6 ratify-clean on thread-511 (round 11/20) + architect label-flip + bilateral-commit close** | **0 findings round-6; 6-round audit cycle close (R1=15 → R2=10 → R3=7 → R4=5 → R5=2 → R6=0); 39 findings folded; substantive-reshape envelope landed within architect's predicted "Realistic 4-7 rounds close" range; smaller than thread-510's 8-round v1.x envelope per smaller refinement-count (3 vs 6) + mature v1.8 substrate carry-forward. v2.x SUPERSEDES v1.8 as implementation-target Strict-1.0 contract for `@apnex/missioncraft@1.0.0`. Implementation-ready; Phase 5 Manifest entry RE-TRIGGERED. Architect-side commit pin: SHA `5984334`.** |
-| **v3.0 PENDING-BILATERAL-RATIFICATION** | **2026-05-09-late** | **6 Director-direct architectural refinements (Round-3; post v2.5 RATIFIED; pre-Phase-6)** | **this version; substantial reshape covering: (1) DROP `msn git` namespace + `*InMission` SDK methods (engineer-git-less workspace-hypervisor framing); (2) DROP `msn status` verb (collapse to list+show); (3) DROP cooperative-tick on operator-CLI-op-activity (engineer never invokes ops); (4) ADD `msn complete <id> <message>` 2-positional + atomic PR-set publish-flow (per-repo squash + push + openPullRequest; partial-failure recovery); (5) CHANGE cadence-tick to filesystem-watch model with per-mission daemon-watcher process; (6) ADD `msn workspace <id> [<repo>]` verb for path resolution. Cumulative refinement: engineer-git-less code workspace hypervisor framing — Engineer interacts with code via filesystem only; missioncraft handles all git operations invisibly. Reserved-verbs: 14 → 13 (drop status + git; add workspace). Sub-action vocabularies: 5 → 4. Engineer's typical CLI: 4-6 verbs. New branch `agent-lily/m-missioncraft-v3-design`. NEW §2.6.5 substantive rewrite (filesystem-watch + per-mission daemon); §2.4.1 NEW complete-step-sequence (8-step publish-flow); §2.3.1 SDK class trim (~13 *InMission methods removed; `getMissionWorkspacePath` added); §2.3.2 CLI table trim (~6 git-rows removed; status row removed; workspace row added); algorithm walk-through reshape. Pending engineer round-1 audit on new thread (TBD; thread-512 candidate; maxRounds=20). Realistic 5-8 rounds close per pattern empirics for substantive-substrate-shift envelopes.** |
+| **v3.0 PENDING-BILATERAL-RATIFICATION** | **2026-05-09-late** | **7 Director-direct architectural refinements (Round-3; post v2.5 RATIFIED; pre-Phase-6)** | **this version; substantial reshape covering: (1) DROP `msn git` namespace + `*InMission` SDK methods (engineer-git-less workspace-hypervisor framing); (2) DROP `msn status` verb; (3) DROP cooperative-tick on operator-CLI-op-activity; (4) ADD `msn complete <id> <message>` 2-positional + atomic PR-set publish-flow; (5) CHANGE cadence-tick to filesystem-watch + per-mission daemon-watcher; (6) ADD `msn workspace <id> [<repo>]` verb; **(7) SDK API consolidation — verb-polymorphism over resource-type per k8s-shape (resource-uniformity tele); 14 SDK methods (down from 30; ~53% reduction); MissionMutation + ScopeMutation discriminated-unions; ResourceMap interface for type-parameterized verb dispatch.** Cumulative refinement: engineer-git-less code workspace hypervisor framing + k8s-shape resource-uniformity at SDK level. Reserved-verbs: 14 → 13. Sub-action vocabularies: 5 → 4. SDK methods: 30 → 14. Engineer's typical CLI: 4-6 verbs. New branch `agent-lily/m-missioncraft-v3-design`. NEW §2.6.5 substantive rewrite (filesystem-watch + per-mission daemon); §2.4.1 NEW complete-step-sequence (8-step publish-flow); §2.3.1 SDK class consolidation (universal generic verbs `create<T>`/`get<T>`/`list<T>`/`update<T>`/`delete<T>` + mission-specific verbs at top-level); §2.3.2 CLI table updated (SDK method column references generic-verb dispatch); algorithm walk-through reshape. Pending engineer round-1 audit on new thread (TBD; thread-512 candidate; maxRounds=20). Realistic 5-8 rounds close per pattern empirics for substantive-substrate-shift envelopes.** |
 | v3.0 BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on TBD thread + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger (re-trigger on v3.x close; v2.5 trigger superseded) |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; v2.5 BILATERAL RATIFIED → `5984334` (preserved as historical artifact); **v3.0 PENDING-BILATERAL → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v3-design` branch; v2.5 RATIFIED preserved at `agent-lily/m-missioncraft-v2-design` SHA `5984334`). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; v2.5 BILATERAL RATIFIED → `5984334` (preserved as historical artifact); v3.0 PENDING-BILATERAL initial draft → `d534f4e` (6 Round-3 refinements); **v3.0 PENDING-BILATERAL THIS COMMIT** (extended with Refinement #7 SDK API consolidation per Director-direct ratify 2026-05-09-late; on `agent-lily/m-missioncraft-v3-design` branch; v2.5 RATIFIED preserved at SHA `5984334`). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
 **Phase 4 dispatch destination (v3.0 cycle):** greg / engineer; new thread (TBD; thread-512 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 5-8 rounds close per pattern empirics — **substantive substrate-shift envelope** (filesystem-watch model + complete-as-publish-flow are NEW substrate; comparable to v1.1 reshape's substrate-introduction surface; expect higher round-1 catch-rate ~15-20). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
