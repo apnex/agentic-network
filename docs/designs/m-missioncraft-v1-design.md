@@ -1,6 +1,6 @@
-# M-Missioncraft-V1 — Design v1.1 PENDING-BILATERAL-RATIFICATION
+# M-Missioncraft-V1 — Design v1.2 PENDING-ROUND-2
 
-**Status:** **v1.1 PENDING-BILATERAL-RATIFICATION** (architect-side; substantial reshape post v1.0 BILATERAL RATIFIED via 6 Director-direct architectural refinements 2026-05-08-evening). Composes from **v1.0 BILATERAL RATIFIED** (thread-509 round-7 engineer ratify-clean + round-19 architect label-flip + bilateral-commit close at SHA `7fb1643` on `agent-lily/m-branchcraft-v1-survey` branch — preserved as historical artifact). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED (6 substrate-currency-driven folds; pattern empirical baseline n=6 across library-API + runtime-platform dimensions; comprehensive-sweep methodology validated; round-budget 19/20) → **v1.1 PENDING-BILATERAL** (this version; Director-direct architectural-refinement reshape pre-Phase-6) → engineer round-1 audit per comprehensive-sweep methodology → v1.1 BILATERAL RATIFIED.
+**Status:** **v1.2 PENDING-ROUND-2** (architect-side; engineer round-1 audit fold on thread-510 — 24 findings: 6 HIGH + 14 MEDIUM + 4 MINOR — all dispositioned). Composes from **v1.1 PENDING-BILATERAL** at SHA `aa35be2` (Director-direct architectural-refinement reshape via 6 refinements). v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior branch → v1.1 PENDING-BILATERAL (Director-direct refinement reshape) → **v1.2 PENDING-ROUND-2** (this version; engineer round-1 fold-pass) → engineer round-2 audit on thread-510 → v1.2 BILATERAL RATIFIED.
 
 **v1.1 Director-direct architectural refinements 2026-05-08-evening:**
 
@@ -146,7 +146,12 @@ export interface StorageProvider {
 }
 ```
 
-**Default v1 implementation:** `LocalFilesystemStorage` — workspaces under `${BRC_WORKSPACE_ROOT}/<missionId>/<repo-name>/` (default `~/.missioncraft/missions`); locks via `${BRC_WORKSPACE_ROOT}/<missionId>/.lock` + `${BRC_WORKSPACE_ROOT}/<repo-name>/.repo-lock` files (atomic create-via-`O_EXCL`); stale-lock recovery via `expiresAt` check + `releaseLock` on expired (per §H.2 v0.2 fold).
+**Default v1 implementation:** `LocalFilesystemStorage` — under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`):
+- Mission configs at `${MSN_WORKSPACE_ROOT}/config/<missionId>.yaml` (declarative manifests; preserved across `complete` unless `--purge-config`)
+- Mission runtime workspaces at `${MSN_WORKSPACE_ROOT}/missions/<missionId>/<repo-name>/` (ephemeral; destroyed at `complete` unless `--retain`)
+- Mission-locks at `${MSN_WORKSPACE_ROOT}/locks/missions/<missionId>.lock` (single-writer-per-mission; per-mission scope)
+- **Repo-locks (cross-mission scope; v1.2 fold per HIGH-5):** at `${MSN_WORKSPACE_ROOT}/locks/repos/<sha256(repoUrl)>.lock` (one-active-mission-per-repo invariant; cross-mission resource — does NOT live under any specific mission's workspace because it's globally-scoped). Lockfile contents reference the active mission-id for diagnostics.
+- Atomic create via `O_EXCL`; stale-lock recovery via `expiresAt` check + `releaseLock` on expired (per §H.2 v0.2 fold).
 
 #### §2.1.4 `GitEngine` (v0.2 fold per §C.1 — comprehensive API)
 
@@ -396,10 +401,10 @@ class Missioncraft {
   getMission(id: string): Promise<MissionState>;                              // describe (k8s describe)
   listMissions(filter?: MissionFilter): Promise<MissionState[]>;              // get (k8s get)
   startMission(input: string | { config: MissionConfig }): Promise<MissionHandle>;  // realize the declared state
-  applyMission(input: { id: string, config: MissionConfig }): Promise<MissionHandle>; // upsert (additive-only mid-mission per refinement #3)
-  completeMission(id: string): Promise<void>;                                  // terminal: release lock; destroy workspace
-  abandonMission(id: string): Promise<void>;                                   // terminal: release lock; destroy workspace
-  getMissionStatus(id?: string): Promise<MissionState | MissionState[]>;       // runtime state
+  applyMission(input: { id: string, config: MissionConfig }): Promise<MissionState>;  // upsert (additive-only mid-mission per refinement #3); returns updated state (v1.2 fold per MINOR-4)
+  completeMission(id: string, opts?: { purgeConfig?: boolean }): Promise<void>;       // terminal: release lock; destroy workspace
+  abandonMission(id: string, opts?: { purgeConfig?: boolean }): Promise<void>;        // terminal: release lock; destroy workspace
+  // (getMissionStatus REMOVED in v1.2 fold per MINOR-3; getMission(id) returns full MissionState including runtime status; listMissions(filter) for multi-mission listing)
 
   // Mission-config mutation (pre-start; or additive post-start)
   addRepoToMission(id: string, repo: RepoSpec): Promise<MissionState>;
@@ -482,9 +487,9 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 | `msn start <id\|name>` | `[--retain]` | `startMission(id)` | Realize the declared state — clones repos in parallel; allocates workspace; acquires locks |
 | `msn start -f <path>` | `[--retain]` | `startMission({config: parsedYAML})` | Start from explicit YAML path (OIS-adapter integration shape) |
 | `msn apply -f <path>` | (no flags) | `applyMission({id, config})` | Upsert (per refinement #3); additive-only mid-mission (repo-add); non-additive errors |
-| `msn complete <id\|name>` | (no flags) | `completeMission(id)` | Terminal — release locks; destroy workspace unless mission was started with `--retain` |
-| `msn abandon <id\|name>` | (no flags) | `abandonMission(id)` | Terminal — release locks; destroy workspace |
-| `msn status [<id\|name>]` | `[--output json\|yaml]` | `getMissionStatus(id?)` | Runtime status (single mission OR all if no id) |
+| `msn complete <id\|name>` | `[--purge-config]` | `completeMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace unless mission was started with `--retain`. `--purge-config` also deletes `<workspace>/config/<id>.yaml` (default: config preserved for mission-history). v1.2 fold per HIGH-6. |
+| `msn abandon <id\|name>` | `[--purge-config]` | `abandonMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace; `--purge-config` deletes config (default: preserved). v1.2 fold per HIGH-6. |
+| `msn status [<id\|name>]` | `[--output json\|yaml]` | `getMission(id)` if id given else `listMissions()` (v1.2 fold per MINOR-3) | Runtime status (single mission OR all if no id) — `getMission` returns full `MissionState` including runtime status; `getMissionStatus` removed |
 | **Per-mission git ops (scoped by mission + repo)** | | | |
 | `msn <id> <repo-name> branch <name>` | `[--from <branch>] [--delete] [--force]` | `branchInMission` / `deleteBranchInMission` | Branch ops within a mission's repo |
 | `msn <id> <repo-name> checkout <branch>` | (no flags) | `checkoutInMission` | Switch HEAD in a mission's repo |
@@ -500,7 +505,25 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 | `msn --help` / `<verb> --help` | (per-verb help) | — | Documentation |
 | `msn --version` | (no flags) | — | Version output |
 
-**Mission resource selector pattern:** positional argument after `msn` is always the resource selector (id OR name); next positional is the action; flags follow. For mission-scoped repo ops, the pattern is `msn <mission-selector> <repo-name> <verb>` (3-positional). Unambiguous: `msn` always interprets the first positional as mission-selector when followed by an action verb.
+**Mission resource selector + parser disambiguation rules (v1.2 fold per MEDIUM-2):**
+
+CLI grammar tokenization rules (parser-disambiguation):
+
+1. **Reserved-verbs list (top-level):** `create / list / show / start / apply / complete / abandon / status / remote / config / --help / --version`. First positional matching this list = top-level verb dispatch. First positional NOT matching = mission-selector.
+
+2. **Reserved sub-actions (mission-scoped):** `repo-add / repo-remove / repo-list / repo`. Second positional matching this list (after a mission-selector) = mission-scoped action; remaining positionals are action arguments.
+
+3. **Per-mission git op selector:** `msn <mission-selector> <repo-name> <git-verb>` (4-positional pattern) where `<git-verb>` ∈ `{branch / branch delete / checkout / fetch / commit / stage / push / pull / merge / tag / log / revparse / status}`. Second positional (repo-name) is free-form (not in any reserved list); third positional is the git-verb.
+
+4. **Disambiguation algorithm:**
+   - 1 positional: error ("missing verb or mission-selector")
+   - 2 positionals: if `[0]` ∈ top-level verbs → top-level dispatch; else → `mission=<sel>, action=<verb>` BUT ONLY if `[1]` ∈ mission-scoped reserved sub-actions; else error
+   - 3+ positionals: if `[0]` ∈ top-level verbs (e.g., `remote add github`) → top-level + sub-action dispatch; else `[0]` is mission-selector; `[1]` is reserved-sub-action OR repo-name (resolved by membership in mission-scoped reserved list); `[2..]` is verb + args
+   - Slug-format restriction: mission `--name <slug>` MUST match `[a-z0-9][a-z0-9-]{1,62}` (DNS-style) AND NOT match any reserved verb/sub-action; reject at `msn create` time
+
+5. **Reserved-words protection:** operator cannot create mission with name matching reserved-verb (e.g., `msn create --name list` → error "reserved verb"); prevents future ambiguity if verb is added in v2.
+
+This is the PARSER-LEVEL contract; v1.0 commits this disambiguation. Future v2 verb additions must avoid colliding with existing mission-name slugs (Strict-1.0 cross-version compat).
 
 **Strict-1.0 commitment:** every verb + flag here is committed contract; post-v1 verb additions require major-bump.
 
@@ -519,9 +542,32 @@ Both rooted under `${MSN_WORKSPACE_ROOT}` (default `~/.missioncraft`). Clean sep
 
 - **Mission ID format (per refinement #1+#2):** `msn-<8-char-hash>` auto-generated by `msn create`; operator-overridable via `--name <slug>` for human-friendly aliases. Composes with idea-251 agent-id format (`agent-XXXXXXXX`); sovereign-component-internal-id namespace.
 - **Hub-side mission ID mapping:** Hub-delivered mission-config carries Hub's `mission-77`-style id as a field (`mission.hub-id: "mission-77"`); missioncraft keeps its own `msn-<hash>` internal id. Mapping recorded in mission-config metadata. Sovereignty preserved (missioncraft doesn't know what Hub IDs mean; just stores the mapping).
+- **Hub-id integrity boundary (v1.2 fold per MEDIUM-12):** `hub-id` is INFORMATIONAL ONLY at v1; missioncraft never queries by hub-id (only by `msn-<hash>` internal id). Hub-id rename (Hub-side mission rename) is operator's responsibility to fold via `applyMission` with updated config; missioncraft does NOT bidirectionally sync. Hub doesn't observe missioncraft's `msn-<hash>` either — Hub→missioncraft is one-way config-delivery; missioncraft→Hub is operator-invocation (e.g., `gh pr create` if RemoteProvider is gh-cli, but that's GitHub-side, not Hub-side).
+- **OIS adapter integration shape (v1.2 fold per MEDIUM-13):** OIS adapter integrates via SDK-DIRECT method calls, NOT CLI shell-out. Canonical contract:
+  ```typescript
+  // Inside the OIS adapter (claude-plugin / opencode-plugin):
+  import { Missioncraft } from '@apnex/missioncraft';
+  const mc = new Missioncraft({ /* operator-config */ });
+
+  // Hub delivers mission-config as object (via MCP tool result; JSON-encoded; adapter parses + validates)
+  hub.on('mission_dispatched', async (event) => {
+    const missionConfig = event.payload.missionConfig;  // already-parsed object (Hub serializer + adapter zod-validate)
+    try {
+      await mc.startMission({ config: missionConfig });
+    } catch (err) {
+      if (err instanceof MissionStateError) {
+        // Mission may already exist; try applyMission for additive changes
+        await mc.applyMission({ id: missionConfig.mission.id, config: missionConfig });
+      } else {
+        throw err;
+      }
+    }
+  });
+  ```
+  Adapter handles transport (Hub→adapter via MCP); missioncraft is transport-agnostic. NO `msn` CLI shell-out from adapter (per refinement #4 SDK-primary). The CLI binary `msn` is for OPERATOR use; the adapter is a separate SDK consumer.
 - **Configuration precedence (v0.2 carry-forward):** **CLI flag > env-var > mission-config field > default**. So `--workspace-root /custom` (CLI) wins over `MSN_WORKSPACE_ROOT=/env-path` (env) wins over `workspace-root: /config-path` (mission-config) wins over `~/.missioncraft` (default). Same precedence model applies to ALL configurable fields.
-- **Single-writer-per-mission lock:** acquired via `StorageProvider.acquireMissionLock(missionId, { waitMs?, validityMs? })` at mission start; lockfile at `<workspace>/missions/<missionId>/.lock`; `validityMs` default 24h per F14
-- **One-active-mission-per-repo lock:** acquired via `StorageProvider.acquireRepoLock(repoUrl, missionId, { waitMs?, validityMs? })`; lockfile at `<workspace>/missions/<repo-name>/.repo-lock`; prevents two missions checking out conflicting branches
+- **Single-writer-per-mission lock:** acquired via `StorageProvider.acquireMissionLock(missionId, { waitMs?, validityMs? })` at mission start; lockfile at `<workspace>/locks/missions/<missionId>.lock` (per-mission scope); `validityMs` default 24h per F14
+- **One-active-mission-per-repo lock:** acquired via `StorageProvider.acquireRepoLock(repoUrl, missionId, { waitMs?, validityMs? })`; lockfile at `<workspace>/locks/repos/<sha256(repoUrl)>.lock` (cross-mission scope; v1.2 fold per HIGH-5 — repo-locks are globally-scoped resources, NOT per-mission, so live in their own directory); lockfile contents reference active mission-id for diagnostics; prevents two missions checking out conflicting branches
 - **Lock-timeout recovery (v0.2 carry-forward):** stale-`expiresAt` auto-release; mission-state derivable from wip-branch + snapshotRoot per §2.6
 - **Ephemeral by default:** mission runtime workspaces destroyed at `msn complete <id>` (operator opt-in to retain via `--retain` flag at start-time); long-lived workspaces only for ops-repos (operator-explicit). **Mission CONFIG (`<workspace>/config/<id>.yaml`) is NOT destroyed by default at complete** — preserves mission-history for operator inspection; operator opt-in deletion via `msn complete <id> --purge-config`.
 - **Auto-merge configurability:** CLI flag for ad-hoc; mission-config-driven for governance-scope; auto-merge ≠ auto-deploy
@@ -569,9 +615,37 @@ created ─[repo-add]─> configured ─[start]─> started ──[work...]─�
 
 **Atomicity for additive `apply` mid-mission** (per refinement #3):
 - Engine attempts to clone the new repo into the mission workspace
-- On success: mission state extends; lock acquired on new repo; durability snapshot tick
+- On success: mission state extends; lock acquired on new repo; durability snapshot tick (composes with §2.6 cold-start invariant)
 - On failure: rollback partial workspace state; mission continues with original repo set; error returned to caller
 - No partial-state-mid-mission
+- **Concurrent `apply` serialization (v1.2 fold per MEDIUM-3):** `applyMission` MUST hold `acquireMissionLock(missionId)` for the FULL apply duration (read-config → clone-new-repo → write-extended-config → release-lock). Two operators concurrent-apply on same mission → second waits per `waitMs` (default 0 fail-fast → second errors with `LockTimeoutError`). Mission-lock is the serialization primitive.
+
+**Atomicity for `startMission` (v1.2 fold per MEDIUM-4 — partial-success semantics)**:
+- Engine clones N declared repos in parallel
+- All-or-nothing semantic: if ANY clone fails, rollback ALL partial workspaces; release any acquired locks; mission stays in `configured` state; error returned to caller
+- No partial-success at v1 (operator's `msn start` either succeeds atomically OR mission stays declared-but-unrealized)
+- Failed-repo retry: operator can re-run `msn start <id>` after fixing the cause (network restored / auth fixed / etc.)
+
+**Cold-start bundle ordering (v1.2 fold per MEDIUM-7)**:
+- The `configured → started` transition is atomic — engine performs (in order, all under mission-lock): clone-all-repos-in-parallel → wait-all-success-or-rollback → acquire repo-locks → create wip-branch → **write first bundle to snapshotRoot** → release transition-lock → state = `started`
+- Bundle-write is INSIDE the transition; if bundle-write fails, transition fails + rollback (mission stays `configured`)
+- Closes window-of-vulnerability where disk-failure between `started`-entered and first-bundle-written has nothing to restore
+
+**Idempotency contract for `startMission` (v1.2 fold per MEDIUM-5)**:
+- `startMission(id)` on already-`started` mission → `MissionStateError` ("mission already started; use `applyMission` for additive changes; or `complete` then re-create for non-additive")
+- NOT idempotent at v1 (operator-intent ambiguous on repeat-start; safer to make explicit)
+- `applyMission(id, config)` is the idempotent re-shape primitive
+
+**`applyMission` on non-existent id (v1.2 fold per MEDIUM-6)**:
+- `applyMission({id, config})` where mission doesn't exist → `MissionStateError` ("mission not found; use `createMission` first")
+- Composes with refinement #3 boundary: `apply` is for ADD-to-existing (or upsert against existing-id); `create` is for SCAFFOLD-NEW
+- For Hub→adapter integration: adapter checks via `getMission(id)` first OR catches `MissionStateError` + falls back to `createMission` + `applyMission`
+
+**Mission-id derivation (v1.2 fold per MEDIUM-1)**:
+- `msn-<8-char-hash>` where hash is `crypto.randomBytes(4).toString('hex')` (Node primitive; pure-random; 16^8 ≈ 4.3B space)
+- On collision (existing-id check): regenerate-with-retry (cap 3 attempts; cap-exceeded → `StorageAllocationError` "id-generation collision")
+- Birthday-collision threshold ~65k missions; cap-3-retries gives ~10^-30 effective collision probability at sane mission-counts
+- Operator-supplied `--name <slug>` is independent — slug-format `[a-z0-9][a-z0-9-]{1,62}` (DNS-style); slug must NOT match any reserved verb (see §2.3.2 reserved-words list)
 
 ### §2.5 Mission-config schema (v1.1 reshape — extends with `repos: [...]` per refinement #3)
 
@@ -643,7 +717,7 @@ auto-merge: false
 auto-merge-strategy: ff               # ff | no-ff (per v0.6 §AAAAA — IsomorphicGit only supports ff/no-ff)
 ```
 
-**RepoSpec type:**
+**RepoSpec type (TypeScript camelCase; YAML serialization uses kebab-case via zod transform — v1.2 fold per HIGH-4):**
 
 ```typescript
 interface RepoSpec {
@@ -651,72 +725,17 @@ interface RepoSpec {
   readonly name?: string;           // local-name override; auto-derived from URL last segment if omitted
   readonly branch?: string;         // mission's working branch; default: create `mission/<missionId>` from base
   readonly base?: string;           // base-branch to branch from; default: repo's default-branch
-  readonly commit-sha?: string;     // optional pin to specific commit for reproducibility
+  readonly commitSha?: string;      // optional pin to specific commit for reproducibility (YAML: `commit-sha:`)
 }
 ```
+
+**Naming-convention contract (v1.2 fold per HIGH-4):** TypeScript types use camelCase property names; YAML schema uses kebab-case. zod schema transforms at parse-time. Same pattern applies throughout: `mission-config-schema-version` (YAML) ↔ `missionConfigSchemaVersion` (TS); `wip-cadence-ms` (YAML) ↔ `wipCadenceMs` (TS); etc. Strict-1.0 commits BOTH the TS-side type signatures + the YAML-side kebab-case wire-format.
 
 **Mission-config schema versioning under Strict-1.0:**
 - `mission-config-schema-version: 1` is REQUIRED at top of YAML (parser-side version-dispatch)
 - v1.x can ADD optional fields (additive-only); REMOVING or RENAMING fields requires v2 + new schema-version
-- Engine rejects YAML with unknown `mission-config-schema-version` (forward-compat reject)
-
-### §2.5 Mission-config schema (v0.2 fold per §E — 7 fields added)
-
-YAML format (TypeScript-validated via zod at load-time). Per F6 Survey-flag + §E engineer round-1 audit:
-
-```yaml
-# missioncraft mission config
-mission-config-schema-version: 1     # v0.3 fold per §FF + F20 — top-level field; additive-only schema model under Strict-1.0; v1.x ADDs optional fields; renames/removals require v2 + new schema-version
-mission:
-  id: mission-77
-  description: "Extract storage-provider to sovereign repo"
-  tags:                              # v0.2 fold per §E — mission-level metadata for cross-system correlation; Record<string,string> with no v1-validation (operator self-discipline)
-    correlation-id: "ois-2026-05-08"
-    ois.io/mission-id: "mission-77"
-
-# Workspace
-workspace-root: ~/.missioncraft/missions  # optional override
-default-branch: main                 # v0.2 fold per §E — clone target default (main | master | trunk)
-
-# Lock behavior
-lock-timeout-ms: 86400000            # 24h default
-
-# Pluggable overrides (all optional; defaults from Missioncraft constructor)
-identity:
-  provider: local-git-config         # OR custom resolver path
-approval:
-  provider: trust-all                # OR rule-based with rules array
-  # rules: [...]                     # for rule-based provider
-storage:
-  provider: local-filesystem
-git-engine:
-  provider: isomorphic-git
-remote:
-  provider: gh-cli                   # OR null for pure-git mode
-  # gh-cli-path: gh
-
-# State durability config (per Q1=d comprehensive coverage; v0.2 fold per §B + §E)
-state-durability:
-  mechanism: layered                 # layered (default) | per-repo-git-commits | snapshot-store | fs-adapter-journal
-  wip-cadence-ms: 30000              # 30s default — §2.6.1 wip-branch commit cadence
-  snapshot-cadence-ms: 300000        # v0.2 fold per §E — 5min default — §2.6.2 bundle cadence
-  snapshot-root: /var/missioncraft/snapshots  # v0.2 fold per §E — different fs from workspace-root for disk-failure recovery
-  snapshot-retention:                # v0.2 fold per §E + F15 — keep last N OR last X-hours whichever larger
-    min-count: 5
-    min-age-hours: 24
-  wip-branch-cleanup: delete-on-complete-retain-on-abandon  # v0.2 fold per §E + F16 — delete-on-complete-retain-on-abandon | always-delete | always-retain
-  process-crash-recovery: true       # per Q1=d
-  disk-failure-recovery: true        # per Q1=d
-  network-partition-resilience: true # per Q1=d
-  # Network-partition retry config (v0.2 fold per §E + §2.6.3)
-  network-retry:
-    max-attempts: 5                  # default
-    backoff-ms: 1000                 # initial backoff; exponential
-
-# Auto-merge (per parent §2.2.4)
-auto-merge: false
-auto-merge-strategy: ff              # ff | no-ff (v0.6 fold per §GGGGG.1 + §AAAAA — dropped squash + rebase compositionally; matches MergeStrategy enum at §2.1.4)
-```
+- Engine rejects YAML with unknown `mission-config-schema-version` via `ConfigValidationError` (v1.2 fold per MEDIUM-14 — explicit error class for forward-compat reject)
+- **Atomic-write discipline for CLI mid-mission config mutations (v1.2 fold per MEDIUM-11):** every CLI mutation (`msn create`, `msn <id> repo-add`, `msn apply`) writes via `fs.writeFile(path + '.tmp')` + zod-validate-roundtrip the temp file (parse the temp; if parse fails, abort + emit `ConfigValidationError`) + `fs.rename(path + '.tmp', path)` (POSIX atomic on same-fs); never leaves partial-config visible. Prevents corruption if CLI crashes mid-mutation.
 
 ### §2.6 Periodic state durability mechanism (load-bearing per Q1=d + F1 CRITICAL)
 
@@ -834,10 +853,25 @@ auto-merge-strategy: ff              # ff | no-ff (v0.6 fold per §GGGGG.1 + §A
 └── package.json
 ```
 
-**Sovereign-module discipline:**
-- `src/missioncraft-cli/` imports SDK via `@apnex/missioncraft` (or relative path treating SDK as external) — NOT via internal-source-private cross-imports
-- Linter rule enforces: no imports from `src/missioncraft-cli/` to internal SDK source paths; only via the SDK's published export surface
-- CLI is a SDK consumer, same shape as a 3rd-party consumer would be; ensures CLI doesn't accidentally couple to SDK internals
+**Sovereign-module discipline (v1.2 fold per MEDIUM-9 + MEDIUM-10):**
+
+- **CLI imports SDK via package self-reference** (Node 12.16+ feature; satisfied by `engines.node>=22`): `import { Missioncraft } from '@apnex/missioncraft'` works inside the same package because Node resolves the package's own `exports.".":` entry. Cleanest sovereign-module discipline; CLI sees SDK as if it were external. **NOT relative path** (relative would bypass `exports` gate + see internal SDK source paths).
+- **Linter rule enforces zone-restriction** via `eslint-plugin-import` `no-restricted-paths`:
+  ```json
+  "import/no-restricted-paths": ["error", {
+    "zones": [{
+      "target": "./src/missioncraft-cli",
+      "from": "./src/missioncraft-sdk",
+      "except": ["./src/missioncraft-sdk/index.ts"]
+    }]
+  }]
+  ```
+  Add `eslint-plugin-import` to devDependencies. typescript-eslint alone doesn't have an equivalent rule.
+- CLI is an SDK consumer, same shape as a 3rd-party consumer would be; ensures CLI doesn't accidentally couple to SDK internals.
+
+**Multi-module TypeScript build (v1.2 fold per MEDIUM-8):**
+
+Single `tsconfig.json` with `rootDir: ./src` + `outDir: ./dist`. TypeScript naturally preserves directory structure — `src/missioncraft-sdk/` compiles to `dist/missioncraft-sdk/`; same for `-cli`. Single `tsc` invocation. Both modules use identical compiler options (ES2022 / ESM / strict). Project references (`composite: true`) NOT used at v1 — over-engineered for single-package; both modules share build settings. v1.x can adopt project references if SDK + CLI need divergent compiler options (e.g., CLI targets a different ES version).
 
 **`package.json`:**
 
@@ -962,26 +996,42 @@ Sovereign git+workspace orchestration for multi-agent code coordination.
 npm install @apnex/missioncraft
 \`\`\`
 
-## CLI quick start
+## CLI quick start (k8s-resource-shape per v1.1 refinement #2)
 
 \`\`\`
-msn init
-msn clone https://github.com/example/repo.git
-msn mission start mission-1
-msn branch feature/example
-# ... edit files ...
-msn commit -m "Initial work"
-msn push
-msn mission complete
+# Create + configure a mission
+msn create --name storage-extract
+msn storage-extract repo-add https://github.com/example/repo.git
+
+# Start the mission (engine clones; allocates workspace; acquires locks)
+msn start storage-extract
+
+# Per-mission git ops (mission-selector → repo-name → verb)
+msn storage-extract repo branch feature/example
+# ... edit files in the workspace ...
+msn storage-extract repo commit -m "Initial work"
+msn storage-extract repo push
+
+# Complete the mission (release locks; destroy workspace; preserve config)
+msn complete storage-extract
 \`\`\`
 
-## Library quick start
+## Declarative quick start (single-call from manifest)
+
+\`\`\`
+msn start -f mission-77.yaml      # full manifest: declares + starts in one call
+\`\`\`
+
+## Library quick start (SDK-primary per v1.1 refinement #4)
 
 \`\`\`typescript
 import { Missioncraft } from '@apnex/missioncraft';
 const mc = new Missioncraft({ /* defaults */ });
-const mission = await mc.startMission('mission-1');
-// ...
+const handle = await mc.createMission({ name: 'storage-extract' });
+await mc.addRepoToMission(handle.id, { url: 'https://github.com/example/repo.git' });
+await mc.startMission(handle.id);
+// ... per-mission git ops ...
+await mc.completeMission(handle.id);
 \`\`\`
 
 ## Architecture
@@ -1001,6 +1051,8 @@ Apache 2.0
 
 12 architect-flags from Survey §6 carried forward. Engineer round-1 audit per mission-67/mission-68 audit-rubric precedent.
 
+**v1.2 fold note (per MINOR-1):** §3 reflects Phase-3-Survey + Phase-4-round-1 architect-flag enumeration. Refinement #1-#6 (cosmetic-rename + k8s-resource-shape + apply-additive + SDK-primary + Shape B + suffix-convention) ratified by Director outside the architect-flag mechanism (Phase-4-pre-design Director-direct). Future-version protocol: §3 architect-flags should re-audit on each major-version Survey-cycle (e.g., v2.0 Survey cycle would re-enumerate §3 flags from scratch). v1.x point-releases would surface ADDITIVE flags (Fnn+1) without disturbing prior dispositions.
+
 | # | Flag | Class | Architect-recommendation |
 |---|---|---|---|
 | F1 | Q1=d ↔ Q5=b validation-strategy gap — comprehensive durability promise without chaos-test | **CRITICAL** | Layered approach per §2.6: theoretical coverage proof in v0.1 + targeted-integration-tests (3 per-failure-mode tests within Q5=b "integration" tier) + chaos deferred to v1.x |
@@ -1009,7 +1061,7 @@ Apache 2.0
 | F4 | Single-package install footprint mitigation — Q3=a ships all 5 pluggables; tree-shake-friendly export shape | MEDIUM | §2.3.2 export structure uses named exports (no barrel-index re-exports of side-effect-laden modules); side-effect-free module-level code. Engineer round-1 verifies tree-shake test on synthetic consumer. |
 | F5 | CLI verb taxonomy completeness | MEDIUM | §2.3.1 enumerates 19+ verbs; engineer round-1 verifies completeness against use-case scenarios |
 | F6 | Mission-config schema | MEDIUM | §2.5 specifies full schema with workspace-root + lock-timeout-ms + pluggable overrides + state-durability-config + auto-merge fields. Engineer round-1 may surface additional fields. |
-| F7 | Workspace path configurability | MEDIUM | §2.4 spec: `BRC_WORKSPACE_ROOT` env-var OR `--workspace-root` CLI flag OR `workspace-root` mission-config field; default `~/.missioncraft/missions`. Engineer round-1 verifies precedence rules |
+| F7 | Workspace path configurability | MEDIUM | §2.4 spec: `MSN_WORKSPACE_ROOT` env-var OR `--workspace-root` CLI flag OR `workspace-root` mission-config field; default `~/.missioncraft` (root; sub-paths `config/` + `missions/<id>/`). Engineer round-1 verifies precedence rules |
 | F8 | Versioning ramp pre-v1 | MINOR | §2.9.1 ships direct `v1.0.0` first-publish per Q2=a strict-1.0; no `v0.x` published to npm |
 | F9 | Operator install path at v1 | PROBE | §2.9.1 npm-only via `npm install @apnex/missioncraft` + `npx msn`; standalone binary distribution deferred to v1.x or v2 |
 | F10 | Test infrastructure choice | MINOR | §2.7.3 vitest per OIS-substrate consistency |
@@ -1106,8 +1158,9 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | v0.7 DRAFT | 2026-05-08 | engineer round-6 audit folds (thread-509 round 11/20) | §AAAAAA CRITICAL Node EOL bump; §BBBBBB merge-row mapping; §CCCCCC gh CLI minimum-version; pushed at SHA `8bcc789` |
 | v1.0 BILATERAL RATIFIED | 2026-05-08 | engineer round-7 ratify-clean (thread-509 round 15/20) + architect round-19 label-flip + bilateral-commit close | trivial doc-micro fold per §EEEEEE engineer round-7; pattern empirical-baseline LOCKED at n=6 with 7-round closure; pushed at SHA `7fb1643` on `agent-lily/m-branchcraft-v1-survey` branch (preserved as historical artifact under former M-Branchcraft-V1 name) |
 | **v1.1 PENDING-BILATERAL-RATIFICATION** | **2026-05-08-evening** | **6 Director-direct architectural refinements (post v1.0 RATIFIED; pre-Phase-6)** | **this version; substantial reshape covering: (1) rename branchcraft→missioncraft + brc→msn; (2) drop "mission" verb prefix (k8s-resource-shape); (3) `apply` mid-mission additive-only; (4) SDK-primary contract surface (CLI demoted to consumer; OIS-orchestrated persona collapsed); (5) Shape B hybrid single-package + internal sovereign-module separation (Q3 refinement); (6) `-sdk`/`-cli`/`-api` suffix convention. New branch `agent-lily/m-missioncraft-v1-design`. New §2.4.1 mission state machine; new §2.5 declarative `repos: [...]` schema field; rewritten §2.3 personas + §2.3.2 CLI verb taxonomy in k8s-resource-shape; §2.9 package.json restructured for sovereign-module directory layout. Pending engineer round-1 audit on new thread (TBD; thread-510 candidate; maxRounds=20)** |
-| v1.1 BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on TBD thread + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger |
+| **v1.2 PENDING-ROUND-2** | **2026-05-09** | **engineer round-1 audit fold (thread-510 round 1/20; 24 findings: 6 HIGH + 14 MEDIUM + 4 MINOR)** | **HIGH-1 duplicate §2.5 carryover deleted; HIGH-2 BRC_WORKSPACE_ROOT→MSN_WORKSPACE_ROOT remaining 3 touch-points; HIGH-3 README skeleton k8s-shape rewrite; HIGH-4 RepoSpec camelCase + naming-convention contract; HIGH-5 cross-mission repo-lock path; HIGH-6 --purge-config flag; MEDIUM-1 mission-id derivation (crypto.randomBytes); MEDIUM-2 parser disambiguation 5-rule grammar; MEDIUM-3 concurrent apply mission-lock; MEDIUM-4 startMission rollback; MEDIUM-5 startMission idempotency; MEDIUM-6 applyMission on non-existent id; MEDIUM-7 cold-start bundle ordering; MEDIUM-8 single tsconfig + rootDir build; MEDIUM-9 eslint-plugin-import zone-restrict; MEDIUM-10 package self-reference for CLI→SDK; MEDIUM-11 atomic-write discipline; MEDIUM-12 hub-id integrity boundary informational-only; MEDIUM-13 OIS adapter SDK-direct canonical; MEDIUM-14 ConfigValidationError class; MINOR-1 §3 architect-flags annotation; MINOR-3 getMissionStatus removed (getMission + listMissions cover); MINOR-4 applyMission returns MissionState. Pending engineer round-2 audit on thread-510.** |
+| v1.1 BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on thread-510 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); **v1.1 PENDING-BILATERAL → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); **v1.2 PENDING-ROUND-2 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v1-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
