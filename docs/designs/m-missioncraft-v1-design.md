@@ -1,6 +1,6 @@
-# M-Missioncraft-V1 — Design v2.1 PENDING-ROUND-2
+# M-Missioncraft-V1 — Design v2.2 PENDING-ROUND-3
 
-**Status:** **v2.1 PENDING-ROUND-2** (architect-side; engineer round-1 audit fold on thread-511 — 15 findings: 5 HIGH + 7 MEDIUM + 3 MINOR — all dispositioned). Composes from **v2.0 PENDING-BILATERAL** at SHA `7edd81a` (round-2 of Director-direct refinements; 3 architectural refinements applied). v1.8 BILATERAL RATIFIED preserved at SHA `226aa46` on `agent-lily/m-missioncraft-v1-design` branch (historical artifact; 8-round audit cycle close; 93 findings folded).
+**Status:** **v2.2 PENDING-ROUND-3** (architect-side; engineer round-2 audit fold on thread-511 — 10 findings: 2 HIGH + 5 MEDIUM + 3 MINOR — all dispositioned; pattern-decay R1=15 → R2=10 tracking thread-510 envelope). Composes from **v2.1 PENDING-ROUND-2** at SHA `94644bc` (engineer round-1 fold-pass; 15 findings dispositioned). v1.8 BILATERAL RATIFIED preserved at SHA `226aa46` on `agent-lily/m-missioncraft-v1-design` branch (historical artifact; 8-round audit cycle close; 93 findings folded).
 
 **3 Director-direct architectural refinements (Round-2; approved 2026-05-09-late post v1.8 RATIFIED):**
 
@@ -670,8 +670,8 @@ class Missioncraft {
 
   // Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)
   createScope(opts?: { name?: string, description?: string }): Promise<ScopeHandle>;  // scaffolds scope config at <workspace>/scopes/<id>.yaml; auto-generates scp-<8-char-hash>; validates name via ScopeConfigSchema
-  getScope(id: string): Promise<ScopeState>;                                   // describe; includes referencedByMissions field
-  listScopes(filter?: ScopeFilter): Promise<ScopeState[]>;                     // get
+  getScope(id: string, opts?: { includeReferences?: boolean }): Promise<ScopeState>;  // v2.2 fold per MEDIUM-R2.3 — opt-in references; default `includeReferences: false` returns ScopeState with `referencedByMissions: []` (empty for type-safety; not omitted); explicit `{includeReferences: true}` triggers O(N) scan of mission-configs. `deleteScope` ALWAYS computes references (cascade-protection requirement; not opt-in).
+  listScopes(filter?: ScopeFilter, opts?: { includeReferences?: boolean }): Promise<ScopeState[]>;  // v2.2 fold per MEDIUM-R2.3 — same opt-in pattern
   addRepoToScope(id: string, repo: RepoSpec): Promise<ScopeState>;             // mutate; propagates to NOT-YET-STARTED missions referencing scope; does NOT propagate to STARTED missions (snapshot per §2.4.2)
   removeRepoFromScope(id: string, repoName: string): Promise<ScopeState>;
   renameScope(id: string, newName: string): Promise<ScopeState>;               // triggers symlink-rename flow
@@ -771,8 +771,8 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 | `msn git <id\|name> <repo-name> pull / fetch / merge / tag / log / revparse / status` | (varied flags) | (corresponding `*InMission` methods) | Wire + read ops |
 | **Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)** | | | |
 | `msn scope create` | `[--name <slug>] [--description <text>]` | `createScope({name?, description?})` | Scaffold scope config at `<workspace>/scopes/<scope-id>.yaml`; auto-generates `scp-<8-char-hash>` id; optional `--name` for human-friendly slug. **stdout:** prints canonical id one-line (`scp-a3bd610c\n`); with `--name`: tab-delimited |
-| `msn scope show <id\|name>` | `[--output json\|yaml]` | `getScope(id)` | Detail view; includes `referencedByMissions` field showing which missions use this scope |
-| `msn scope list` | `[--output json\|yaml]` | `listScopes()` | Table view of all scopes |
+| `msn scope show <id\|name>` | `[--include-references] [--output json\|yaml]` | `getScope(id, {includeReferences})` | Detail view; default omits `referencedByMissions` scan (O(1) lookup); `--include-references` flag triggers O(N) scan of mission-configs (v2.2 fold per MEDIUM-R2.3) |
+| `msn scope list` | `[--include-references] [--output json\|yaml]` | `listScopes(filter?, {includeReferences})` | Table view of all scopes; default omits per-scope `referencedByMissions` scans; `--include-references` triggers O(N+M) (v2.2 fold per MEDIUM-R2.3) |
 | `msn scope update <id\|name> repo-add <file\|url>` | `[--name <local-name>] [--branch <name>] [--base <branch>]` | `addRepoToScope(id, repo)` | Add repo to scope; mutates `<workspace>/scopes/<id>.yaml`. Propagates to NOT-YET-STARTED missions referencing this scope; does NOT propagate to STARTED missions (snapshot inlined per §2.4.2 hybrid resolution) |
 | `msn scope update <id\|name> repo-remove <repo-name>` | (no flags) | `removeRepoFromScope(id, name)` | Remove repo from scope; same propagation discipline |
 | `msn scope update <id\|name> name <new-name>` | (no flags) | `renameScope(id, newName)` | Rename scope's `--name` slug; triggers symlink-rename flow per §2.4 |
@@ -851,7 +851,7 @@ Global flags apply UNIFORMLY across all verbs; per-verb flags shown in CLI table
 
 CLI grammar tokenization rules (parser-disambiguation):
 
-1. **Reserved-verbs list (top-level; v2.0 fold per Refinement A — verb-first grammar):** `create / list / show / start / apply / update / complete / abandon / status / git / scope / config / --help / --version` (13 reserved verbs). **First positional MUST match this list** — there is NO implicit-mission-selector shape at v2.0. First-positional-not-matching → error `"unknown verb '<positional>'; use 'msn --help' for verb list"`. Strict-1.0 commits this list; v2.x can ADD verbs (additive-only); REMOVING verbs requires v3.x.
+1. **Reserved-verbs list (top-level; v2.0 fold per Refinement A — verb-first grammar; v2.2 fold per HIGH-R2.1 added `tick`):** `create / list / show / start / apply / update / complete / abandon / status / tick / git / scope / config / --help / --version` (14 reserved verbs). **First positional MUST match this list** — there is NO implicit-mission-selector shape at v2.0. First-positional-not-matching → error `"unknown verb '<positional>'; use 'msn --help' for verb list"`. Strict-1.0 commits this list; v2.x can ADD verbs (additive-only); REMOVING verbs requires v3.x.
 
    **v2.0 additions** (vs v1.8): `update` (Refinement B; field-targeted mutations); `git` (Refinement A; per-mission per-repo git-op namespace replacing v1.8's implicit `msn <id> <repo> <git-verb>` shape); `scope` (Refinement C; scope-template namespace).
 
@@ -952,11 +952,14 @@ When acquiring multiple locks in a single operation, ALWAYS acquire in this orde
 mission-lock → scope-lock → repo-locks
 ```
 
-Release in REVERSE order:
+**Acquisition order is STRICT** (must be respected when acquiring multiple locks). **Release order semantic depends on holding-pattern (v2.2 fold per MINOR-R2.3 clarification):**
 
-```
-repo-locks → scope-lock → mission-lock
-```
+- **Sequentially-held locks (lock acquired, used, released BEFORE next lock acquired):** release order is unrestricted. Example: Step 2 of 8-step transition acquires scope-lock briefly + releases BEFORE Step 3 repo-locks acquired — this is sequential; no deadlock-cycle risk.
+- **Simultaneously-held locks (multiple locks held concurrently):** release in REVERSE order:
+  ```
+  repo-locks → scope-lock → mission-lock
+  ```
+  Reverse-release prevents ordering-cycle deadlock under cross-operation contention (e.g., operator-A holds mission-lock+scope-lock; operator-B holds scope-lock+repo-locks; deadlock-cycle risk if release order is non-monotonic).
 
 **Rationale:** prevents circular-wait deadlock between concurrent operators. Single-resource lock acquisition (only mission-lock OR only scope-lock OR only repo-locks) is unrestricted. Multi-resource scenarios:
 
@@ -1107,6 +1110,19 @@ Per-precedence-chain: env-var > mission-config > SDK constructor > operator-conf
   hub.on('mission_dispatched', async (event) => {
     // Adapter zod-parses (kebab→camelCase transform applied at parse-time)
     const missionConfig = MissionConfigSchema.parse(event.payload.missionConfig);
+
+    // v2.2 fold per MEDIUM-R2.4 — validate scope-id reference if present (Hub may reference operator-pre-configured scope)
+    if (missionConfig.mission.scopeId) {
+      try {
+        await mc.getScope(missionConfig.mission.scopeId);  // verify exists; default {includeReferences: false}
+      } catch (err) {
+        throw new MissionStateError(
+          `Hub-delivered mission references uncreated scope ${missionConfig.mission.scopeId}; ` +
+          `operator must pre-configure scope first via 'msn scope create'`
+        );
+      }
+    }
+
     try {
       await mc.startMission({ config: missionConfig });
     } catch (err) {
@@ -1120,6 +1136,8 @@ Per-precedence-chain: env-var > mission-config > SDK constructor > operator-conf
   });
   ```
   Adapter handles transport (Hub→adapter via MCP); missioncraft is transport-agnostic. NO `msn` CLI shell-out from adapter (per refinement #4 SDK-primary). The CLI binary `msn` is for OPERATOR use; the adapter is a separate SDK consumer.
+
+  **Scope is missioncraft-internal-only at v1 (v2.2 fold per MEDIUM-R2.4 — option (a) sovereignty boundary):** Hub does NOT deliver scope-configs. Operator pre-configures scopes via CLI/SDK direct (`msn scope create` + `msn scope update <id> repo-add ...`). Hub-delivered mission-configs may REFERENCE pre-configured scope-ids via `mission.scope-id` field; adapter validates scope-existence at mission_dispatched time (per code above). If Hub references uncreated scope → adapter rejects + emits actionable error. v1.x can extend if Hub-side scope-delivery demand emerges (additive — Hub starts shipping ScopeConfig payloads; adapter adds parse-and-create-scope handler; ScopeConfigSchema runtime export already supports this).
 - **Configuration precedence (v0.2 carry-forward):** **CLI flag > env-var > mission-config field > default**. So `--workspace-root /custom` (CLI) wins over `MSN_WORKSPACE_ROOT=/env-path` (env) wins over `workspace-root: /config-path` (mission-config) wins over `~/.missioncraft` (default). Same precedence model applies to ALL configurable fields.
 - **Single-writer-per-mission lock:** acquired via `StorageProvider.acquireMissionLock(missionId, { waitMs?, validityMs? })` at mission start; lockfile at `<workspace>/locks/missions/<missionId>.lock` (per-mission scope); `validityMs` default 24h per F14
 - **One-active-mission-per-repo lock:** acquired via `StorageProvider.acquireRepoLock(repoUrl, missionId, { waitMs?, validityMs? })`; lockfile at `<workspace>/locks/repos/<sha256(repoUrl)>.lock` (cross-mission scope; v1.2 fold per HIGH-5 — repo-locks are globally-scoped resources, NOT per-mission, so live in their own directory); lockfile contents reference active mission-id for diagnostics; prevents two missions checking out conflicting branches
@@ -1160,11 +1178,12 @@ created ─[repo-add]─> configured ─[start]─> started ──[work...]─�
 | (none) | `msn create --repo <url>` | `configured` | v2.1 fold per HIGH-1 — combined create + first-repo-add atomic; persists initial config with single repo; final state = `configured` since config has ≥1 repo |
 | (none) | `msn create --scope <id\|name>` | `configured` IF scope.repos has ≥1 repo at create-time (live hybrid resolution per §2.4.2 pre-start); ELSE `created` | v2.1 fold per HIGH-1 — combined create + scope-reference atomic; mission references scope; pre-start hybrid resolution means mission.repos view is live from scope; if scope is empty at create-time, mission stays `created` until scope gets a repo OR mission gets a directly-added repo |
 | (none) | `msn create --name <slug> --repo <url>` | `configured` | One-liner shape per Director example; equivalent to `msn create --repo <url>` + name |
+| (none) | `msn create --repo <url> --scope <id\|name>` | `configured` | v2.2 fold per MEDIUM-R2.1 — `--repo` + `--scope` are COMPATIBLE (option b). Mission's effective repos = mission.repos[] (containing --repo url) UNION scope.repos[] (inlined at startMission). Conflict-resolution: if mission.repos[] and scope.repos[] both contain repo with same name but different url/branch → error `MissionStateError("repo name conflict between mission and scope: <name>")` at applyMission/startMission validation; operator must rename one. Pre-start: `getMission(id).repos` returns the merged set (deduplicated by name). |
 | `created` | `msn update <id> repo-add` | `configured` | First repo added; config has at least 1 repo |
 | `created` | `msn apply -f <path>` (config has 0 repos) | `created` | No-op effectively; full upsert preserves zero-repos state (v1.6 fold per MEDIUM-R5.3) |
 | `created` | `msn apply -f <path>` (config has ≥1 repos) | `configured` | Full upsert + auto-state-promotion via repo-presence (v1.6 fold per MEDIUM-R5.3) |
-| `configured` | `msn <id> repo-add` | `configured` (self) | Additional repos added; mutates config |
-| `configured` | `msn <id> repo-remove` | `configured` (or `created` if last) | Pre-start mutation; allowed |
+| `configured` | `msn update <id> repo-add` | `configured` (self) | Additional repos added; mutates config (v2.2 fold per HIGH-R2.2 — verb-first grammar applied) |
+| `configured` | `msn update <id> repo-remove` | `configured` (or `created` if last) | Pre-start mutation; allowed |
 | `configured` | `msn start <id>` | `started` | Engine realizes declared state — clones repos in parallel; allocates workspace; acquires locks; cold-start bundle written; mission ready for work |
 | `started` | (operator does work) | `in-progress` | Work-time state; per-mission git ops happen here |
 | `started` / `in-progress` | `msn apply -f <path>` (additive: new repo in config) | `started` (self-loop) | Per refinement #3 — additive-only; engine clones-or-fails; rollback to original repos on clone failure; mission continues uninterrupted |
@@ -1194,20 +1213,30 @@ created ─[repo-add]─> configured ─[start]─> started ──[work...]─�
 **Cold-start bundle ordering (v1.2 fold per MEDIUM-7)**:
 - The `configured → started` transition is atomic — engine performs (in order, all under mission-lock): clone-all-repos-in-parallel → wait-all-success-or-rollback → acquire repo-locks → create wip-branch → **write first bundle to snapshotRoot** → release transition-lock → state = `started`
 
-**Explicit mission-lock acquisition order in `configured → started` transition (v1.3 fold per MEDIUM-R2.8; v2.1 fold per HIGH-3 — Step 1.5 scope-inline insertion):**
+**Mission-lock acquisition order in `configured → started` transition (8-step; v1.3 fold per MEDIUM-R2.8; v2.1 fold per HIGH-3 — Step 2 scope-inline insertion; v2.2 fold per MINOR-R2.2 — renumbered to clean 8-step):**
 1. **Acquire mission-lock** via `acquireMissionLock(missionId, { waitMs: 0 })`; on failure → `LockTimeoutError`; mission stays `configured`
-1.5. **(NEW v2.1; if mission references scope per `mission.scope-id` field):** Acquire scope-lock via `acquireScopeLock(scopeId, { waitMs: 0 })` AFTER mission-lock (cross-resource lock-ordering rule per MEDIUM-R1.4); read scope.repos; INLINE into mission-config (atomic-write per MEDIUM-11) under both scope-lock + mission-lock; release scope-lock immediately (do NOT retain through subsequent steps). Mission-config now has snapshot of scope.repos at this moment; subsequent scope updates do NOT propagate (k8s-ConfigMap analog per §2.4.2 hybrid resolution). On scope-lock-acquire failure → `LockTimeoutError`; release mission-lock; mission stays `configured`. On scope-not-found (e.g., concurrent deleteScope per HIGH-2 race) → `MissionStateError("scope-id <X> deleted concurrently; startMission failed")`; release mission-lock; mission stays `configured`.
-2. **Per declared repo (parallel; using mission-config.repos which now includes inlined scope.repos):** acquire repo-lock + clone via GitEngine; if ANY clone OR repo-lock-acquire fails → release ALL repo-locks acquired so far; release mission-lock; mission stays `configured` (per MEDIUM-4 rollback-all)
-3. **Create wip-branch** in each cloned repo via `gitEngine.branch(wipBranchName)` + `gitEngine.checkout(wipBranchName)`
-4. **Write first bundle** to snapshotRoot per §2.6.2; on failure → release everything (repo-locks + mission-lock); mission stays `configured`
-5. **Persist mission-state YAML** as `started` (atomic-write per MEDIUM-11)
-6. **Release transition-pseudolock** (mission-lock RETAINED for the active mission for its full lifecycle until `complete`/`abandon`)
-7. State = `started`
+2. **Scope-inline (v2.2 NEW; conditional — if mission references scope per `mission.scope-id` field; ELSE skip to Step 3):** Acquire scope-lock via `acquireScopeLock(scopeId, { waitMs: 0 })` AFTER mission-lock (cross-resource lock-ordering rule per MEDIUM-R1.4); read scope.repos; merge with mission.repos[] per MEDIUM-R2.1 effective-repos union (deduplicated by name; conflict-resolution rejects on same-name-different-url-or-branch with `MissionStateError("repo name conflict between mission and scope: <name>")`); INLINE merged set into mission-config.repos[] (atomic-write per MEDIUM-11) under both scope-lock + mission-lock; release scope-lock immediately (do NOT retain through subsequent steps). Mission-config now has snapshot of effective-repos at this moment; subsequent scope updates do NOT propagate (k8s-ConfigMap analog per §2.4.2 hybrid resolution). On scope-lock-acquire failure → `LockTimeoutError`; release mission-lock; mission stays `configured`. On scope-not-found (e.g., concurrent deleteScope per HIGH-2 race) → `MissionStateError("scope-id <X> deleted concurrently; startMission failed")`; release mission-lock; mission stays `configured`.
+3. **Per declared repo (parallel; using mission-config.repos[] which now includes inlined scope.repos if applicable):** acquire repo-lock + clone via GitEngine; if ANY clone OR repo-lock-acquire fails → release ALL repo-locks acquired so far; release mission-lock; mission stays `configured` (per MEDIUM-4 rollback-all)
+4. **Create wip-branch** in each cloned repo via `gitEngine.branch(wipBranchName)` + `gitEngine.checkout(wipBranchName)`
+5. **Write first bundle** to snapshotRoot per §2.6.2; on failure → release everything (repo-locks + mission-lock); mission stays `configured`
+6. **Persist mission-state YAML** as `started` (atomic-write per MEDIUM-11)
+7. **Release transition-pseudolock** (mission-lock RETAINED for the active mission for its full lifecycle until `complete`/`abandon`)
+8. State = `started`
 
 Lock-acquisition is the FIRST step; all rollback paths know whether the mission-lock has been acquired (always yes after step 1).
 - Bundle-write is INSIDE the transition; if bundle-write fails, transition fails + rollback (mission stays `configured`)
 - Closes window-of-vulnerability where disk-failure between `started`-entered and first-bundle-written has nothing to restore
 - Scope-inline is BEFORE clone (Step 1.5 < Step 2); ensures snapshot is committed under mission-lock atomicity guarantee
+
+**`startMission` entry-condition (v2.2 fold per MEDIUM-R2.5 — effective-repos gate; relaxed state-string requirement):**
+
+`startMission(id)` accepts mission in `created` OR `configured` state IF effective-repos has ≥1 entry. **Effective-repos** = mission.repos[] UNION scope.repos[] (resolved live pre-start; deduplicated by name; conflict-resolution rejects on same-name-different-url-or-branch).
+
+Rationale: state-string is mission-config-event-driven (transitions on explicit mission.repos mutations). When mission references EMPTY scope at create-time → state stays `created`. Operator later does `msn scope update <scope-id> repo-add Y` → scope.repos = [Y]; mission's effective-repos via hybrid resolution becomes [Y]. Mission state stays `created` (no mission-config event fired) but effective-repos is non-empty.
+
+`startMission` checks effective-repos (truth-source) NOT state-string. Eliminates UX-friction of forcing operator to fire a mission-config event just to bump state for entry-gate satisfaction.
+
+If effective-repos is empty (no mission.repos AND no scope OR empty-scope) → reject with `MissionStateError("startMission requires ≥1 effective repo; mission has 0 mission.repos AND 0 scope.repos. Add a repo via 'msn update <id> repo-add' OR add to referenced scope via 'msn scope update <scope-id> repo-add'")`.
 
 **Idempotency contract for `startMission` (v1.2 fold per MEDIUM-5; v1.3 fold per MEDIUM-R2.2 extended for `{config}` form)**:
 - `startMission(id)` on already-`started` mission → `MissionStateError` ("mission already started; use `applyMission` for additive changes; or `complete` then re-create for non-additive")
@@ -1259,6 +1288,19 @@ Rollback model: **(a) preserve-config** (operator's config-input not lost; case-
 - **`completed` / `abandoned` (terminal):** **ERROR** — `MissionStateError("apply on terminal mission")`.
 
 **`applyMission` mission-lock requirement (v1.5 fold per MEDIUM-R4.7):** `applyMission` MUST acquire mission-lock for the FULL apply duration in ALL states (pre-start + post-start). Pre-start lock guards against lost-update race (concurrent applyMission on `configured` mission where both operators read pre-mutation config + write conflicting mutations). Post-start lock guards against concurrent additive-apply (per MEDIUM-3 fold). Single concurrency-discipline applies uniformly across applyMission state-dependent semantics.
+
+**`applyMission` scope-id mutation lock-acquisition (v2.2 fold per MEDIUM-R2.2 — asymmetric model option (c)):**
+
+When `applyMission`'s new config has different `mission.scope-id` than current config:
+1. Acquire mission-lock unconditionally (per existing rule)
+2. **If scope-id mutated to non-null value:** acquire scope-lock (cross-resource lock-ordering: mission → scope per §2.4 rule)
+3. Resolve scope-id (id-form vs name-form per MEDIUM-R1.7 prefix-detection)
+4. Verify `<workspace>/scopes/<resolved-id>.yaml` exists via fs.access; if missing → `MissionStateError("scope-id <X> does not exist; create scope first")`; release locks
+5. Persist canonical scp-<hash> (not name) in mission-config (per HIGH-4 canonical-id-persistence)
+6. Release scope-lock
+7. Atomic-write mission-config; release mission-lock
+
+Asymmetric vs `setMissionScope`: `applyMission` is full-config-upsert (multi-field; expensive operation; worth scope-lock cost for stronger consistency); `setMissionScope` is field-targeted (cheap; optimistic-concurrency via fs.access suffices per MEDIUM-R1.5). Spec'd asymmetry intentional — different operation-cost tiers warrant different concurrency-discipline tiers.
 
 **`applyMission` id-vs-`config.mission.id` mismatch (v1.5 fold per MEDIUM-R4.6):** SDK signature accepts both an `id` parameter AND `config` (which embeds its own `mission.id`). Mismatch → `ConfigValidationError("id parameter does not match config.mission.id")` (option (a) error; fail-fast on operator-input-error; safer than silently picking one over the other). Validated at SDK entry-point alongside zod-validate-at-entry (per MEDIUM-R2.3).
 
@@ -1409,6 +1451,14 @@ CLI lookup pattern (parallel to mission-id-lookup at §2.4):
 3. Release scope-lock
 
 Concurrent scope-update operators serialize via scope-lock. Concurrent `addRepoToScope` from two operators → second waits per `waitMs` (default 0 fail-fast).
+
+**Scope-mutation SDK methods explicit list (v2.2 fold per MINOR-R2.1):** All scope-mutation SDK methods acquire scope-lock per the protocol above:
+- `addRepoToScope` / `removeRepoFromScope` / `renameScope` / `setScopeDescription` / `setScopeTag` / `removeScopeTag` / `deleteScope`
+
+Read-only methods do NOT acquire scope-lock:
+- `getScope` (computed-on-demand reverse-index; reads mission-configs without lock per MEDIUM-R1.2)
+- `listScopes` (same; computed-on-demand)
+- `getScope({includeReferences: true})` (still no lock; reads mission-configs read-only)
 
 ### §2.5 Mission-config schema (v1.1 reshape — extends with `repos: [...]` per refinement #3)
 
@@ -1622,6 +1672,37 @@ Single canonical schema; no validation-bypass surface.
 5. **Lock-timeout-recovery test (v0.2 fold per §H.3):** acquire lock; force `expiresAt` to past; concurrent acquire from second mission attempt; assert second acquire succeeds + first lock auto-released
 
 **NO chaos / fault-injection tests.** **NO cross-version-compatibility tests.** Q5=b boundary respected.
+
+#### §2.6.5 Engine runtime model (v2.2 fold per HIGH-R2.1 — substrate-currency on lock-holder + cadence-tick semantics)
+
+**v1 substrate model: on-disk POSIX-style locks with TTL + cooperative-tick (option (c) per round-2 ask 4).** No daemon process at v1.
+
+**Lock semantics:**
+- `<workspace>/locks/missions/<missionId>.lock` is a stateful marker file: JSON-encoded `{ pid: <number>, acquiredAt: <ISO-8601>, expiresAt: <ISO-8601> }`.
+- Lockfile persists between operator-CLI invocations as the **active-mission marker** during `started`/`in-progress` lifecycle states.
+- Each operator-CLI invocation that needs to mutate mission state acquires the mission-lock briefly (extends `expiresAt` via TTL-sliding-window per acquire); releases on operation-completion. "Retained for lifecycle" is the LOCKFILE PERSISTENCE semantic — NOT a long-held active-process hold.
+- Lock-acquire mechanism: POSIX `O_EXCL` create on the lockfile if absent; if present, read its `expiresAt`; if expired → atomic-takeover (rewrite with new pid + extended expiresAt); if not expired → respect existing holder; respect `waitMs` per `acquireMissionLock` API.
+- Default TTL: 24h sliding window (`MSN_LOCK_VALIDITY_MS` per §2.4 precedence chain). Each acquire extends expiresAt = now + 24h.
+- Same model applies to scope-locks + repo-locks.
+
+**Cadence-tick semantics:**
+- §2.6.1 wip-cadence (default 30s) + §2.6.2 snapshot-cadence (default 5min) are **cooperative-on-operator-activity** at v1 — NOT background-daemon-driven.
+- Each per-mission git op (`msn git <id> <repo> commit` / `push` / etc.) performs a **wip-tick** check before/after the operation: "if last wip-commit > 30s ago, fire wip-commit before exit". Same for snapshot-tick.
+- Idle missions (no operator activity for hours) DO NOT auto-tick. Last wip-commit persists at the timestamp of the last operator activity; bundle-snapshot last-write similarly.
+- Operator MAY explicitly trigger tick: `msn tick <id>` (NEW v2.0 CLI verb; reserved-verbs list extended) — fires both wip-tick + snapshot-tick on demand. Useful for long-idle missions where operator wants to capture current state.
+- Composes with §2.6.4 lock-timeout-recovery test pattern: mission-lock TTL extended on each operator activity; expires only after sustained idle.
+
+**Mid-mission tag-mutation (per MEDIUM-R1.3 state-restriction matrix `setMissionTag` allowed in `started`/`in-progress`):**
+- `msn update <id> tags-set <key> <value>` invocation: acquire mission-lock (briefly; under TTL-sliding extend); read mission-config; mutate tags; atomic-write mission-config (per MEDIUM-11); release mission-lock.
+- Operator-CLI exits → lockfile persists (still under TTL); next operator-CLI re-acquires.
+- No conflict with cadence-tick (cooperative-on-activity model means tag-mutation IS the activity that fires the wip-tick).
+
+**v1.x evolution path (deferred):**
+- v1.x can add a daemon mode (`msn daemon start`) for continuous-cadence-tick (idle missions auto-tick); mission-lock held by daemon process for daemon-uptime; mid-mission operator mutations communicate via IPC.
+- v1 ships cooperative-tick model only; idle-mission cadence-tick deferred.
+- Strict-1.0 commits the v1 model; daemon-mode would be ADDITIVE evolution (new verb; new lock-holder model layered on existing on-disk lockfile semantics).
+
+**NEW reserved-verb at v2.0:** `tick` (added to §2.3.2 Rule 1 reserved-verbs list per HIGH-R2.1 fold).
 
 ### §2.7 Test surface (per Q5=b unit + integration; bounded)
 
@@ -2038,10 +2119,11 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v1.8 BILATERAL RATIFIED** | **2026-05-09** | **engineer round-8 ratify-clean on thread-510 (round 15/20) + architect label-flip + bilateral-commit close** | **0 findings round-8; 8-round audit cycle close (R1=24 → R2=15 → R3=14 → R4=14 → R5=11 → R6=10 → R7=5 → R8=0); 93 findings folded; substantive-reshape envelope landed within thread-509 6-9 round prediction range. Strict-1.0 contract committed for `@apnex/missioncraft@1.0.0`. Implementation-ready; Phase 5 Manifest entry triggered. Architect-side commit pin: SHA `226aa46`.** |
 | **v2.0 PENDING-BILATERAL-RATIFICATION** | **2026-05-09-late** | **3 Director-direct architectural refinements (Round-2; post v1.8 RATIFIED; pre-Phase-6)** | **this version; substantial reshape covering: (A) verb-first grammar (BREAKING — all first positionals are reserved verbs; eliminates v1.8 implicit-mission-selector shape); (B) `update` verb (additive — field-targeted mutations complementing `apply -f`; new typed SDK methods: renameMission/setMissionDescription/setMissionHubId/setMissionScope/setMissionTag/removeMissionTag); (C) `scope` template (additive — new first-class resource for multi-mission composition; hybrid resolution model option (c) snapshot-on-startMission per k8s-ConfigMap analogy; new SDK class methods + new CLI verb namespace + new schema + new state-machine + new workspace path). New branch `agent-lily/m-missioncraft-v2-design` off v1.8 RATIFIED at SHA `226aa46`. NEW §2.4.2 Scope state machine; NEW §2.5.1 Scope-config schema; rewritten §2.3.2 grammar (verb-first; 13 reserved-verbs; 5 sub-action vocabularies); extended §2.3.1 SDK class (renameMission/setMissionDescription/etc.; createScope/getScope/listScopes/updateScope/deleteScope/etc.; ScopeHandle/ScopeState/ScopeFilter/ScopeConfig/ScopeStatePhase interfaces); new core/scope-types.ts + core/scope-config-schema.ts source files. Pending engineer round-1 audit on new thread (TBD; thread-511 candidate; maxRounds=20).** |
 | **v2.1 PENDING-ROUND-2** | **2026-05-09-late** | **engineer round-1 audit fold (thread-511 round 1/20; 15 findings: 5 HIGH + 7 MEDIUM + 3 MINOR; within predicted 10-18 envelope)** | **HIGH-1 createMission({repo}/{scope}) state-transition rows added (combined create + first-repo-add atomic; final state = configured); HIGH-2 cascade-protection atomicity model (c) optimistic concurrency at setMissionScope + scope-lock-held during deleteScope-scan; HIGH-3 Step 1.5 NEW (scope-inline under both scope-lock + mission-lock; scope-lock released BEFORE Step 2 clones); HIGH-4 mission.scope-id persists CANONICAL scp-<hash> only (CLI resolves name→id at write-time; scope-rename does NOT break mission-config refs); HIGH-5 --retain-config flag dropped from §2.4.2 (scopes are templates; no forensic value); MEDIUM-R1.1 setScopeTag/removeScopeTag SDK methods + CLI rows added (symmetric with mission tag-ops); MEDIUM-R1.2 reverse-index computed-on-demand at v1 (linear scan; v1.x can materialize); MEDIUM-R1.3 per-field state-restriction matrix (8 fields × 6 states); MEDIUM-R1.4 cross-resource lock-ordering rule (mission → scope → repos); MEDIUM-R1.5 setMissionScope re-validation discipline at write-time; MEDIUM-R1.6 schema-version independence; MEDIUM-R1.7 scope CLI prefix-detection (^scp-[a-f0-9]{8}$); MINOR-R1.1 deleteScope error message includes mission-id list (first-5 + +N more); MINOR-R1.2 namespace error-message disambiguation hint (msn vs scope cross-check); MINOR-R1.3 listMissionRepos removal annotation. Pending engineer round-2 audit on thread-511.** |
+| **v2.2 PENDING-ROUND-3** | **2026-05-09-late** | **engineer round-2 audit fold (thread-511 round 3/20; 10 findings: 2 HIGH + 5 MEDIUM + 3 MINOR; pattern-decay R1=15 → R2=10 tracking thread-510 envelope)** | **HIGH-R2.1 NEW §2.6.5 Engine runtime model committed (option (c) on-disk POSIX-style locks with TTL + cooperative-tick at v1; no daemon; cadence-tick on operator-activity; new `tick` reserved-verb at §2.3.2 Rule 1 list now 14 verbs; daemon-mode deferred to v1.x as additive); HIGH-R2.2 state-machine table verb-first cross-fold cleanup (msn <id> repo-add/repo-remove rows updated to msn update <id> form); MEDIUM-R2.1 createMission --repo + --scope COMPATIBLE (option b; effective-repos union with conflict-resolution); MEDIUM-R2.2 applyMission scope-id mutation acquires scope-lock asymmetric vs setMissionScope optimistic (option c — different operation-cost tiers); MEDIUM-R2.3 getScope/listScopes opt-in `includeReferences` flag (default false; deleteScope always computes); MEDIUM-R2.4 OIS adapter integration shape — Scope is missioncraft-internal-only at v1 (option a); adapter validates scope-id reference exists via getScope; rejects on uncreated scope; MEDIUM-R2.5 startMission entry-condition relaxed to effective-repos truth-source (mission.repos UNION scope.repos ≥1 entry; state-string informational); MINOR-R2.1 explicit scope-mutation SDK methods list at scope-lock subsection (7 mutating + 3 read-only); MINOR-R2.2 8-step transition renumber (Step 1.5 → Step 2; clean numbering); MINOR-R2.3 cross-resource lock-ordering release-order semantic clarification (sequentially-held unrestricted; simultaneously-held reverse). Pending engineer round-3 audit on thread-511.** |
 | v2.x BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on thread-511 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger (re-trigger on v2.x close; v1.8 trigger superseded) |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); **v2.1 PENDING-ROUND-2 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v2-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; **v2.2 PENDING-ROUND-3 → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v2-design` branch). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
 **Phase 4 dispatch destination (v2.0 cycle):** greg / engineer; new thread (TBD; thread-511 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 4-7 rounds close per thread-509 + thread-510 pattern empirics for substantive reshapes (smaller envelope than v1.1 reshape since v1.8 substrate is mature; 3 refinements vs 6).
