@@ -1,6 +1,33 @@
-# M-Missioncraft-V1 — Design v2.5 BILATERAL RATIFIED
+# M-Missioncraft-V1 — Design v3.0 PENDING-BILATERAL-RATIFICATION
 
-**Status:** **v2.5 BILATERAL RATIFIED** (architect-side label-flip + bilateral-commit close 2026-05-09; engineer round-6 ratify-clean on thread-511 round 11/20). 6-round substantive-reshape audit cycle: R1=15 → R2=10 → R3=7 → R4=5 → R5=2 → **R6=0 ratify-clean**. Total **39 findings folded** across 6 rounds. Pattern-decay tracks thread-510 envelope shape (smaller per smaller refinement-count 3 vs 6 + mature v1.8 substrate carry-forward; ~25% compression). Composes from **v2.4 PENDING-ROUND-5** at SHA `fa39830` → v2.5 PENDING-ROUND-6 at SHA `77df359` (engineer round-5 fold-pass; 2 micro findings dispositioned) → **v2.5 BILATERAL RATIFIED** (this version; engineer round-6 ratify-clean closure). v1.8 BILATERAL RATIFIED preserved at SHA `226aa46` (prior-version historical artifact). **v2.5 SUPERSEDES v1.8 as the implementation-target Strict-1.0 contract for `@apnex/missioncraft@1.0.0`** — implementation-ready; Phase 5 Manifest entry RE-TRIGGERED on v2.x close (v1.8 trigger superseded).
+**Status:** **v3.0 PENDING-BILATERAL-RATIFICATION** (architect-side; substantial reshape post v2.5 BILATERAL RATIFIED via 6 Director-direct architectural refinements 2026-05-09-late; **Round-3 of Director-direct refinements**). Composes from **v2.5 BILATERAL RATIFIED** at SHA `5984334` on `agent-lily/m-missioncraft-v2-design` branch (preserved as historical artifact; 6-round audit cycle close; 39 findings folded). New branch `agent-lily/m-missioncraft-v3-design`.
+
+**6 Director-direct architectural refinements (Round-3; approved 2026-05-09-late post v2.5 RATIFIED):**
+
+The cumulative refinement is **engineer-git-less code workspace hypervisor framing** — Engineer interacts with code via filesystem only; missioncraft handles all git operations (commits, branches, pushes, PRs, cleanup) invisibly. Engineer's CLI surface collapses to 4-6 verbs total.
+
+1. **DROP `msn git` namespace + `*InMission` SDK methods (BREAKING + simplification):** engineer-git-less framing makes per-mission git-op wrapping unnecessary. ~13 SDK methods removed (`branchInMission`/`commitInMission`/`pushInMission`/etc.); 5-positional `msn git <id> <repo> <verb>` grammar pattern removed; reserved-verb `git` removed. Engineer uses workspace path via `msn workspace` (NEW); engine handles all git ops internally via GitEngine pluggable.
+
+2. **DROP `msn status` verb (simplification):** redundant with `msn list` (no-arg) + `msn show <id>` (with-arg). `list` becomes unified tabular default; `show` covers per-mission detail. Reserved-verb `status` removed.
+
+3. **DROP cooperative-tick on operator-CLI-op-activity (substrate model shift):** engineer never invokes per-op CLI commands; cooperative-tick model from v2.5 §2.6.5 is invalidated. Replaced with **filesystem-watch cadence-tick** + per-mission daemon-watcher process spawned at `msn start`.
+
+4. **ADD `msn complete <id|name> <message>` 2-positional + atomic PR-set publish-flow:** mission completion is a HEAVY publish-action, not just lifecycle-state mutation. Per-repo: squash wip-commits → push to remote → openPullRequest. Atomic across mission's repos; partial-failure recovery via idempotent retry. `--message` is required positional (audit-record + PR-title). `msn abandon <id|name> <message>` symmetric.
+
+5. **CHANGE cadence-tick model to filesystem-watch (substrate model shift):** §2.6.1 + §2.6.2 + §2.6.5 substantively re-spec'd. Engine spawns per-mission daemon-watcher process at `start`; watcher uses Node `fs.watch` API + debounce-window (default 30s) to fire `commitToRef` on filesystem-modify events. Watcher dies on `complete`/`abandon`. Per-mission daemon-mode at v1 (no global daemon).
+
+6. **ADD `msn workspace <id|name> [<repo-name>]` verb (path resolution):** replaces `msn git`'s implicit workspace discovery. Engineer obtains absolute path: `cd $(msn workspace <id> <repo>)`. Composable with shell. Engine-side: SDK exposes `getMissionWorkspacePath(id, repoName?): Promise<string>`.
+
+**Cumulative shift in CLI surface:**
+- Reserved-verbs count: 14 (v2.5) → 13 (v3.0) [drop `status` + `git`; add `workspace`]
+- Sub-action vocabularies: 5 (v2.5) → 4 (v3.0) [drop `git`-scoped; retain `update` + `scope` + `scope update` + `config`]
+- Engineer's typical CLI vocabulary: 4-6 verbs (`scope create`, `create`, `start`, `complete`, `abandon`, `workspace`)
+
+**Cumulative shift in mission tele:** explicit ENGINEER COGNITIVE-LOAD MINIMIZATION as primary value-prop. Missioncraft is invisible substrate; engineer focuses purely on code changes; every git operation, branch, PR, push, cleanup is engine-handled. Architect-engineer separation of concerns: architect drives mission via brief; engineer executes; missioncraft is the substrate that bridges.
+
+**v2.5 RATIFIED preserved as historical artifact at `agent-lily/m-missioncraft-v2-design` SHA `5984334`.** v3.0 reshape inherits all v2.5 substrate-currency contracts (5 pluggables; PROVIDER_REGISTRY closed-set; symlink name-mechanism; 8-step lock-acquisition order; preserve-config invariant; lifecycle-state engine-controlled; operator-config schema; precedence chain; OS-support boundary; cross-resource lock-ordering; scope template + hybrid resolution; effective-repos compatibility; `update`-scoped + `scope`-scoped sub-action vocabularies) — v3.0 deltas are CLI grammar simplification (drop git+status; add workspace) + complete-as-publish-flow + filesystem-watch cadence-tick model. Strict-1.0 contract committed for `@apnex/missioncraft@1.0.0` (SDK still ships at 1.0.0 — design-doc v3.0 indicates audit-cycle iteration; implementation hasn't started).
+
+**Trajectory:** v0.1 → v0.7 → v1.0 BILATERAL RATIFIED on prior `agent-lily/m-branchcraft-v1-survey` branch → v1.x → v1.8 BILATERAL RATIFIED on `agent-lily/m-missioncraft-v1-design` → v2.x (Round-2 of refinements; 3 architectural refinements) → v2.5 BILATERAL RATIFIED at SHA `5984334` → **v3.0 PENDING-BILATERAL-RATIFICATION** (this version; Round-3 of Director-direct refinements; 6 architectural refinements; engineer-git-less workspace-hypervisor framing) → engineer round-1 audit per comprehensive-sweep methodology → v3.0 BILATERAL RATIFIED.
 
 **3 Director-direct architectural refinements (Round-2; approved 2026-05-09-late post v1.8 RATIFIED):**
 
@@ -646,10 +673,10 @@ class Missioncraft {
   createMission(opts?: { name?: string, repo?: string, scope?: string }): Promise<MissionHandle>;  // v2.0 fold per Refinement A+C — extended opts: --repo for one-liner; --scope for scope-template reference. Validates name via MissionConfigSchema (slug-format + reserved-verbs + msn- prefix + name-uniqueness; throws ConfigValidationError on violation)
   getMission(id: string): Promise<MissionState>;                              // describe (k8s describe)
   listMissions(filter?: MissionFilter): Promise<MissionState[]>;              // get (k8s get)
-  startMission(input: string | { config: MissionConfig }): Promise<MissionHandle>;  // realize the declared state; if mission references scope, engine inlines scope.repos at this point (snapshot per §2.4.2 hybrid resolution)
+  startMission(input: string | { config: MissionConfig }): Promise<MissionHandle>;  // realize declared state; engine spawns daemon-watcher (per §2.6.5 v3.0); inlines scope.repos if mission references scope (snapshot per §2.4.2 hybrid resolution)
   applyMission(input: { id: string, config: MissionConfig }): Promise<MissionState>;  // upsert (additive-only mid-mission per refinement #3); returns updated state
-  completeMission(id: string, opts?: { purgeConfig?: boolean }): Promise<void>;       // terminal: release lock; destroy workspace
-  abandonMission(id: string, opts?: { purgeConfig?: boolean }): Promise<void>;        // terminal: release lock; destroy workspace
+  completeMission(id: string, message: string, opts?: { purgeConfig?: boolean }): Promise<MissionState>;  // **v3.0 NEW per Round-3 Refinement #4** — atomic PR-set publish-flow: per-repo squash + push + openPullRequest; mission becomes `completed`. Returns final state including PR URLs (in returned MissionState.publishedPRs[] field). `message` REQUIRED (audit-record + PR-title + commit-message). Partial-failure → mission stays `in-progress` for idempotent retry.
+  abandonMission(id: string, message: string, opts?: { purgeConfig?: boolean }): Promise<MissionState>;  // **v3.0 NEW per Round-3 Refinement #4** — cleanup-only (NO PR creation); per-repo cleanup local mission-branch (no push); mission becomes `abandoned`. `message` REQUIRED (audit-record reason).
 
   // Mission-config field-targeted mutations (v2.0 NEW per Refinement B — typed update methods; CLI `msn update <id> <field>` dispatches to these)
   addRepoToMission(id: string, repo: RepoSpec): Promise<MissionState>;        // pre-start full upsert OR post-start additive
@@ -662,11 +689,10 @@ class Missioncraft {
   removeMissionTag(id: string, key: string): Promise<MissionState>;
   // (listMissionRepos REMOVED v2.0 per Refinement A grammar-shift — `getMission(id).repos` covers SDK; `msn show <id> --repos` CLI shape replaces v1.8 `msn <id> repo-list`. v2.1 fold per MINOR-R1.3 — annotation tracked at §8 status v2.0 row.)
 
-  // Per-mission git ops (delegate to GitEngine pluggable; namespaced by mission + repo; CLI `msn git <id> <repo> <verb>` dispatches to these)
-  branchInMission(id: string, repoName: string, branchName: string, opts?: { from?: string }): Promise<void>;
-  commitInMission(id: string, repoName: string, opts: CommitOptions): Promise<string>;
-  pushInMission(id: string, repoName: string, opts?: PushOptions): Promise<void>;
-  // ... full set of GitEngine ops scoped to mission + repo
+  // (v3.0: per-mission git-ops `*InMission` SDK methods REMOVED per Round-3 Refinement #1 — engineer-git-less framing; engine performs git operations internally via GitEngine pluggable invoked from completeMission/startMission/cadence-watcher; not exposed at SDK API surface)
+
+  // Workspace path resolution (v3.0 NEW per Round-3 Refinement #6 — engineer-friendly path discovery)
+  getMissionWorkspacePath(id: string, repoName?: string): Promise<string>;  // returns absolute path to mission workspace (root if repoName undefined; specific repo subdir otherwise). Composes with shell: `cd $(msn workspace <id> <repo>)` resolves via this method. Errors on pre-`started` (no workspace yet) OR terminal-with-no-`--retain` (workspace destroyed).
 
   // Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)
   createScope(opts?: { name?: string, description?: string }): Promise<ScopeHandle>;  // scaffolds scope config at <workspace>/scopes/<id>.yaml; auto-generates scp-<8-char-hash>; validates name via ScopeConfigSchema
@@ -762,17 +788,11 @@ Mission is the implicit primary resource; non-mission ops keep explicit resource
 | `msn start <id\|name>` | `[--retain]` | `startMission(id)` | Realize the declared state — clones repos in parallel; allocates workspace; acquires locks. If mission references scope, engine inlines scope.repos into mission-config (snapshot per §2.4.2 hybrid resolution) |
 | `msn start -f <path>` | `[--retain]` | `startMission({config: parsedYAML})` | Start from explicit YAML path (OIS-adapter integration shape) |
 | `msn apply -f <path>` | (no flags) | `applyMission({id, config})` | Upsert (per refinement #3); additive-only mid-mission (repo-add); non-additive errors. v2.0 boundary per Refinement B: `apply` for full-config-upsert; `update` for field-targeted mutations. Both paths converge in SDK. |
-| `msn complete <id\|name>` | `[--purge-config]` | `completeMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace unless mission was started with `--retain`. `--purge-config` also deletes `<workspace>/config/<id>.yaml` (default: config preserved for mission-history). **v1.7 fold per MINOR-R6.2:** if mission was started with `--retain` AND `--purge-config` is supplied at complete-time → reject with `MissionStateError("--retain (set at start) + --purge-config (at complete) would orphan workspace; choose one")`. v1.2 fold per HIGH-6. |
-| `msn abandon <id\|name>` | `[--purge-config]` | `abandonMission(id, {purgeConfig?})` | Terminal — release locks; destroy workspace; `--purge-config` deletes config (default: preserved). **v1.7 fold per MINOR-R6.2:** if mission was started with `--retain` AND `--purge-config` is supplied → reject with `MissionStateError("--retain + --purge-config would orphan workspace; choose one")`. v1.2 fold per HIGH-6. |
-| `msn status [<id\|name>]` | `[--output json\|yaml]` | `getMission(id)` if id given else `listMissions()` (v1.2 fold per MINOR-3) | Runtime status (single mission OR all if no id) — `getMission` returns full `MissionState` including runtime status; `getMissionStatus` removed |
-| `msn tick <id\|name>` | (no flags) | `tickMission(id)` | Explicit cadence-tick trigger; fires both wip-tick + snapshot-tick. Useful for long-idle missions to capture current state. v2.3 fold per HIGH-R3.1 (composes with §2.6.5 cooperative-tick model). Graceful no-op on pre-`started` missions; errors on terminal. |
-| **Per-mission git ops (v2.0 `git`-namespace per Refinement A; replaces v1.8 implicit `msn <id> <repo>` shape)** | | | |
-| `msn git <id\|name> <repo-name> branch <name>` | `[--from <branch>] [--delete] [--force]` | `branchInMission` / `deleteBranchInMission` | Branch ops within a mission's repo |
-| `msn git <id\|name> <repo-name> checkout <branch>` | (no flags) | `checkoutInMission` | Switch HEAD in a mission's repo |
-| `msn git <id\|name> <repo-name> stage <paths...\|--all>` | (no flags) | `stageInMission` | Stage paths |
-| `msn git <id\|name> <repo-name> commit` | `-m <message> [--amend] [--auto-stage]` | `commitInMission` | Commit |
-| `msn git <id\|name> <repo-name> push` | `[--branch <name>] [--remote <name>] [--force] [--tags]` | `pushInMission` | Push |
-| `msn git <id\|name> <repo-name> pull / fetch / merge / tag / log / revparse / status` | (varied flags) | (corresponding `*InMission` methods) | Wire + read ops |
+| `msn complete <id\|name> <message>` | `[--purge-config]` | `completeMission(id, message, {purgeConfig?})` | **Terminal — atomic PR-set publish-flow (v3.0 NEW per Round-3 Refinement #4):** per repo with changes — squash wip-commits → push to remote → openPullRequest (target=base; title=message; body auto-generated). Single message applies across all repos. Atomic across mission's repos; partial-failure rejects mission-state-advance + retains PRs already opened. Then: persist `lifecycle-state: completed`; release locks; destroy workspace unless `--retain` set at start. `--purge-config` also deletes `<workspace>/config/<id>.yaml`. **Mutual-exclusion preserved:** if mission was started with `--retain` AND `--purge-config` supplied → reject. **`<message>` required positional** (audit-record + PR-title + commit-message). |
+| `msn abandon <id\|name> <message>` | `[--purge-config]` | `abandonMission(id, message, {purgeConfig?})` | **Terminal — cleanup-only, NO PR creation (v3.0):** abandon means "mission failed/cancelled; do not publish". Per repo: cleanup local mission-branch (no push; no PR). Then: persist `lifecycle-state: abandoned`; release locks; destroy workspace; cleanup local branches. `--purge-config` deletes config. Mutual-exclusion with `--retain` preserved. `<message>` required positional (audit-record reason). |
+| `msn tick <id\|name>` | (no flags) | `tickMission(id)` | Explicit cadence-tick trigger; fires wip-tick + snapshot-tick on demand. (v3.0 retained but de-emphasized — filesystem-watch model fires automatically; explicit `tick` is operator-override for forced cadence.) Graceful no-op on pre-`started` missions; errors on terminal. |
+| `msn workspace <id\|name> [<repo-name>]` | (no flags) | `getMissionWorkspacePath(id, repoName?)` | **(v3.0 NEW per Round-3 Refinement #6)** Returns absolute path to mission workspace (mission-root if no repo-name; specific repo subdir if repo-name supplied). Composable: `cd $(msn workspace msn-deadbeef adapter-kernel)`. Replaces v2.5 implicit workspace-discovery via `msn git` namespace. Path-only; engineer uses native filesystem tools inside. |
+| **(v3.0: per-mission git-ops `msn git` namespace REMOVED — engineer-git-less workspace-hypervisor framing per Round-3 Refinement #1; engine handles git internally; engineer uses native filesystem-tools inside the workspace path returned by `msn workspace`)** | | | |
 | **Scope resource ops (v2.0 NEW per Refinement C — multi-mission composition primitive)** | | | |
 | `msn scope create` | `[--name <slug>] [--description <text>]` | `createScope({name?, description?})` | Scaffold scope config at `<workspace>/scopes/<scope-id>.yaml`; auto-generates `scp-<8-char-hash>` id; optional `--name` for human-friendly slug. **stdout:** prints canonical id one-line (`scp-a3bd610c\n`); with `--name`: tab-delimited |
 | `msn scope show <id\|name>` | `[--include-references] [--output json\|yaml]` | `getScope(id, {includeReferences})` | Detail view; default omits `referencedByMissions` scan (O(1) lookup); `--include-references` flag triggers O(N) scan of mission-configs (v2.2 fold per MEDIUM-R2.3) |
@@ -802,10 +822,10 @@ Per-verb required/optional positional + flag spec for Rule 6 post-dispatch arg-c
 | `msn show` | 1 (`<id\|name>`) | 0 | `--output json\|yaml` + global |
 | `msn start` | 0 (with `-f <path>`) OR 1 (`<id\|name>`) | 0 | `-f <path>`, `--retain` + global |
 | `msn apply` | 0 | 0 | `-f <path>` (required) + global |
-| `msn complete` | 1 (`<id\|name>`) | 0 | `--purge-config` + global |
-| `msn abandon` | 1 (`<id\|name>`) | 0 | `--purge-config` + global |
-| `msn status` | 0 | 1 (`<id\|name>`) | `--output json\|yaml` + global |
-| `msn tick` | 1 (`<id\|name>`) | 0 | global (v2.3 fold per HIGH-R3.1) |
+| `msn complete` | 2 (`<id\|name> <message>`) | 0 | `--purge-config` + global (v3.0: message required positional per Round-3 Refinement #4) |
+| `msn abandon` | 2 (`<id\|name> <message>`) | 0 | `--purge-config` + global (v3.0: message required positional) |
+| `msn tick` | 1 (`<id\|name>`) | 0 | global |
+| `msn workspace` | 1 (`<id\|name>`) | 1 (`<repo-name>`) | global (v3.0 NEW per Round-3 Refinement #6) |
 | **`update` namespace (v2.0 NEW per Refinement B)** | | | |
 | `msn update <id\|name> repo-add` | 2 (`<id> <file\|url>`) | 0 | `--name <slug>`, `--branch <name>`, `--base <branch>` + global |
 | `msn update <id\|name> repo-remove` | 2 (`<id> <repo-name>`) | 0 | global |
@@ -815,13 +835,7 @@ Per-verb required/optional positional + flag spec for Rule 6 post-dispatch arg-c
 | `msn update <id\|name> scope-id` | 2 (`<id> <scope-id\|name\|"">`) | 0 | global |
 | `msn update <id\|name> tags-set` | 3 (`<id> <key> <value>`) | 0 | global |
 | `msn update <id\|name> tags-remove` | 2 (`<id> <key>`) | 0 | global |
-| **`git` namespace (v2.0 NEW per Refinement A)** | | | |
-| `msn git <id\|name> <repo-name> branch` | 3 (`<id> <repo> <branch-name>`) | 0 | `--from <branch>`, `--delete`, `--force` + global |
-| `msn git <id\|name> <repo-name> checkout` | 3 (`<id> <repo> <branch>`) | 0 | global |
-| `msn git <id\|name> <repo-name> stage` | 2 (`<id> <repo>`) | many (paths) | `--all` + global |
-| `msn git <id\|name> <repo-name> commit` | 2 (`<id> <repo>`) | 0 | `-m <msg>` (required), `--amend`, `--auto-stage` + global |
-| `msn git <id\|name> <repo-name> push` | 2 (`<id> <repo>`) | 0 | `--branch <name>`, `--remote <name>`, `--force`, `--tags`, `--force-with-lease` + global |
-| `msn git <id\|name> <repo-name> <other-git-verb>` | (per git-verb signature) | (per git-verb signature) | (per git-verb signature) + global |
+| **(v3.0: `git` namespace REMOVED per Round-3 Refinement #1 — engineer-git-less workspace-hypervisor framing)** | | | |
 | **`scope` namespace (v2.0 NEW per Refinement C)** | | | |
 | `msn scope create` | 0 | 0 | `--name <slug>`, `--description <text>` + global |
 | `msn scope show` | 1 (`<id\|name>`) | 0 | `--output json\|yaml` + global |
@@ -856,32 +870,37 @@ Global flags apply UNIFORMLY across all verbs; per-verb flags shown in CLI table
 
 CLI grammar tokenization rules (parser-disambiguation):
 
-1. **Reserved-verbs list (top-level; v2.0 fold per Refinement A — verb-first grammar; v2.2 fold per HIGH-R2.1 added `tick`):** `create / list / show / start / apply / update / complete / abandon / status / tick / git / scope / config / --help / --version` (14 reserved verbs). **First positional MUST match this list** — there is NO implicit-mission-selector shape at v2.0. First-positional-not-matching → error `"unknown verb '<positional>'; use 'msn --help' for verb list"`. Strict-1.0 commits this list; v2.x can ADD verbs (additive-only); REMOVING verbs requires v3.x.
+1. **Reserved-verbs list (top-level; v3.0 fold per Round-3 refinements):** `create / list / show / start / apply / update / complete / abandon / tick / scope / workspace / config / --help / --version` (13 reserved verbs at v3.0; was 14 at v2.5). **First positional MUST match this list** — there is NO implicit-mission-selector shape. First-positional-not-matching → error `"unknown verb '<positional>'; use 'msn --help' for verb list"`. Strict-1.0 commits this list; v3.x can ADD verbs (additive-only); REMOVING verbs requires v4.x.
 
-   **v2.0 additions** (vs v1.8): `update` (Refinement B; field-targeted mutations); `git` (Refinement A; per-mission per-repo git-op namespace replacing v1.8's implicit `msn <id> <repo> <git-verb>` shape); `scope` (Refinement C; scope-template namespace).
+   **v3.0 changes** (vs v2.5): `git` REMOVED (per Round-3 refinement #1 — engineer-git-less workspace-hypervisor framing); `status` REMOVED (per Round-3 refinement #2 — collapse to `list`+`show`); `workspace` ADDED (per Round-3 refinement #6 — path-resolution surface).
 
-   **v1.8 → v2.0 grammar shift cascade:**
-   - v1.8 `msn <id> repo-add <url>` → v2.0 `msn update <id> repo-add <url>`
-   - v1.8 `msn <id> repo-remove <name>` → v2.0 `msn update <id> repo-remove <name>`
-   - v1.8 `msn <id> repo-list` → v2.0 `msn show <id> --repos` (read-shape; not update)
-   - v1.8 `msn <id> <repo> <git-verb>` → v2.0 `msn git <id> <repo> <git-verb>`
+   **v2.5 → v3.0 grammar shift cascade:**
+   - v2.5 `msn git <id> <repo> <git-verb>` → v3.0 (REMOVED) — engineer cd's via `msn workspace` + uses native filesystem-tools; engine handles git internally via GitEngine pluggable
+   - v2.5 `msn status [<id|name>]` → v3.0 `msn list` (no-arg) OR `msn show <id|name>` (with-arg)
+   - v2.5 implicit-workspace-discovery → v3.0 `msn workspace <id> [<repo>]` (returns absolute path; composable: `cd $(msn workspace <id> <repo>)`)
 
-2. **Reserved sub-actions (verb-scoped vocabularies; v2.0 fold per Refinements A+B+C — verb-first grammar reshape):**
-   - **`update`-scoped sub-actions** (after `msn update <mission-id|name>`; v2.0 NEW per Refinement B): `repo-add / repo-remove / name / description / hub-id / scope-id / tags-set / tags-remove`. Field-targeted mutations + sub-action mutations under the `update` umbrella.
-   - **`scope`-scoped sub-actions** (after `msn scope`; v2.0 NEW per Refinement C): `create / show / list / update / delete`.
-   - **`scope update`-scoped sub-actions** (after `msn scope update <scope-id|name>`; v2.0 NEW per Refinement C): `repo-add / repo-remove / name / description / tags-set / tags-remove`.
+   **v3.0 engineer-git-less invariant:** at v3.0, no CLI verb performs git operations directly. Engine performs all git operations (commits, branches, pushes, PRs, cleanup) invisibly via GitEngine pluggable + RemoteProvider. Engineer interacts with code via filesystem-tools only (Edit/Write/native shell tools; no `git` knowledge required).
+
+2. **Reserved sub-actions (4 verb-scoped vocabularies at v3.0; was 5 at v2.5):**
+   - **`update`-scoped sub-actions** (after `msn update <mission-id|name>`): `repo-add / repo-remove / name / description / hub-id / scope-id / tags-set / tags-remove`. Field-targeted mutations + sub-action mutations under the `update` umbrella.
+   - **`scope`-scoped sub-actions** (after `msn scope`): `create / show / list / update / delete`.
+   - **`scope update`-scoped sub-actions** (after `msn scope update <scope-id|name>`): `repo-add / repo-remove / name / description / tags-set / tags-remove`.
    - **`config`-scoped sub-actions** (after `msn config`): `get / set`.
-   - **`git`-scoped per-mission per-repo positionals** (after `msn git <mission-id|name>`; v2.0 NEW per Refinement A): free-form `<repo-name>` then `<git-verb>` ∈ `{branch / branch delete / checkout / fetch / commit / stage / push / pull / merge / tag / log / revparse / status}`. 5-positional pattern: `msn git <mission> <repo> <git-verb> [args]`. Replaces v1.8's implicit `msn <id> <repo> <git-verb>` shape.
+   - (v3.0 fold per Refinement #1: `git`-scoped per-mission per-repo positionals REMOVED — engineer-git-less workspace-hypervisor framing makes per-op git-wrapping unnecessary; engine handles git internally.)
    - (v1.6 fold HIGH-R5.1: `remote`-scoped sub-actions REMOVED — RemoteProvider is per-mission singleton via SDK constructor injection OR mission-config field.)
    - (v2.0 fold per Refinement A: `mission-scoped sub-actions` REMOVED entirely — v1.8's implicit `msn <id> repo-add` shape replaced by `msn update <id> repo-add` under the `update` umbrella.)
 
-3. **Verb-first grammar (v2.0 fold per Refinement A):** all top-level dispatches start with a reserved-verb. Subsequent positional shape depends on the verb:
+3. **Verb-first grammar (v3.0 update of v2.0 Refinement A; `git` namespace REMOVED + `complete`/`abandon` 2-positional + `workspace` ADD):** all top-level dispatches start with a reserved-verb. Subsequent positional shape depends on the verb:
    - **0-arg verbs:** `msn list` / `msn --help` / `msn --version`
-   - **1-positional verbs:** `msn create` (with flags); `msn show <id|name>`; `msn start <id|name>`; `msn complete <id|name>`; `msn abandon <id|name>`; `msn status [<id|name>]`; `msn apply` (with `-f <path>` required-flag)
+   - **1-positional verbs:** `msn show <id|name>`; `msn start <id|name>`; `msn tick <id|name>`
+   - **0-or-1-positional verbs:** `msn create` (flag-driven; optional positional)
+   - **2-positional verbs (v3.0 NEW shape):** `msn complete <id|name> <message>`; `msn abandon <id|name> <message>` (message required for audit-record + PR-title; per Round-3 refinement #4)
    - **2-positional + sub-action verbs:** `msn update <id|name> <sub-action> [args]`
+   - **`workspace` 1-or-2-positional (v3.0 NEW per Refinement #6):** `msn workspace <id|name> [<repo-name>]` (returns absolute path)
+   - **Disjunctive verbs:** `msn start` accepts `<id|name>` OR `-f <path>` (mutually-exclusive)
    - **`scope` namespace** (verb-then-sub-verb pattern): `msn scope <sub-verb> [<id|name>] [args]`
-   - **`git` namespace** (5-positional pattern): `msn git <mission-id|name> <repo-name> <git-verb> [args]`
    - **`config` namespace:** `msn config <get|set> <key> [<value>]`
+   - (v3.0: `git` namespace REMOVED; `status` verb REMOVED — collapsed to `list` + `show`)
 
 4. **Disambiguation algorithm (v2.0 fold per Refinement A — simplified vs v1.8 since first positional is always verb):**
    - **0 positionals:** error ("no command specified; use `msn --help`")
@@ -913,24 +932,33 @@ CLI grammar tokenization rules (parser-disambiguation):
      - `msn status` → 0 positional acceptable (lists all missions); valid
      - `msn status storage-extract extra-arg` → extra-positional error
 
-**Algorithm walk-through on edge cases (v2.0 fold per Refinements A+B+C — verb-first grammar):**
-- `msn list show` → `[0]=list ∈ top-level verbs` → `list` dispatch with extra positional `show`. **Rule 6:** `msn list` is flag-only signature → error "unexpected positional `show` for `list`; use `--status <state>` / `--output ...`"
-- `msn create show` → `[0]=create` → `create` dispatch with extra positional `show`. **Rule 6:** `msn create` is flag-only signature → error "unexpected positional `show` for `create`; use `--name <slug>` / `--repo <url>` / `--scope <id>`"
-- `msn show` → 1 positional. **Rule 6:** `msn show <id|name>` requires selector → error "missing required arg `<id|name>` for `show`"
-- `msn storage-extract storage-provider branch feature/foo` → `[0]=storage-extract` NOT in reserved-verbs → error "unknown verb 'storage-extract'; use 'msn --help'". (v1.8 implicit-mission-selector shape rejected at v2.0; operator must use `msn git storage-extract storage-provider branch feature/foo` or `msn update storage-extract ...`.)
-- `msn git storage-extract storage-provider branch feature/foo` → 5 positional. `[0]=git ∈ top-level` → `git` namespace. Per Rule 2 5-positional pattern: `[1]=storage-extract` mission-selector (resolved via §2.4 symlink); `[2]=storage-provider` repo-name; `[3]=branch` git-verb; `[4]=feature/foo` arg. Resolved.
-- `msn update storage-extract repo-add https://...` → 4 positional. `[0]=update ∈ top-level` → `update` namespace. Per Rule 2: `[1]=storage-extract` mission-selector; `[2]=repo-add ∈ update-scoped sub-actions`; arg=`https://...`. Resolved.
-- `msn update storage-extract name new-name` → 4 positional. Field-targeted update; sub-action=`name`; arg=`new-name`. Triggers symlink-rename flow per §2.4 (4-step config-write-FIRST mechanism).
-- `msn update storage-extract repo-add` → 3 positional. `[1]=storage-extract` mission-selector; `[2]=repo-add` reserved sub-action. **Rule 6:** `update repo-add` requires `<file|url>` arg → error "missing required arg `<file|url>` for `update repo-add`"
-- `msn complete msn-a3bd610c` → 2 positional. `[0]=complete ∈ top-level` → `complete` dispatch; arg=`msn-a3bd610c` matches `<id|name>` selector (regex match → id-form). Resolved.
-- `msn create --name new-feature --repo https://github.com/example.git` → flag-driven one-liner per Director example. Mission scaffolded with single repo declaratively. Resolved.
-- `msn create --scope scp-a3bd610c --name new-feature` → flag-driven; mission references scope-id; engine inlines scope.repos at `startMission` time (hybrid resolution per §2.4.2).
-- `msn create` → 1 positional → `create` dispatch (no mission-name; auto-id assigned; no repos configured; no scope). Returns canonical id one-line. Resolved.
-- `msn scope create --name claude-plugin` → 2 positional + flag. `[0]=scope ∈ top-level` → `scope` namespace. `[1]=create ∈ scope-scoped sub-actions` → `scope create` dispatch with `--name <slug>` flag. Resolved.
-- `msn scope update claude-plugin repo-add https://...` → 5 positional. `[0]=scope` ∈ top-level. `[1]=update ∈ scope-scoped sub-actions` → `scope update` namespace. `[2]=claude-plugin` scope-selector; `[3]=repo-add ∈ scope update-scoped sub-actions`; arg=`https://...`. Resolved.
-- `msn scope list` → 2 positional. `[0]=scope` + `[1]=list ∈ scope-scoped sub-actions` → `scope list` dispatch. Resolved.
-- `msn scope delete claude-plugin` → 3 positional. `[0]=scope` + `[1]=delete ∈ scope-scoped sub-actions` → `scope delete` dispatch with `<id|name>` arg. Resolved (engine validates no non-terminal missions reference scope before delete; per §2.4.2 cascade-protection).
-- `msn config get identity.provider` → 3 positional. `[0]=config ∈ top-level` → `config` namespace. `[1]=get ∈ config-scoped sub-actions` → `config get` dispatch; arg=`identity.provider`. Resolved.
+**Algorithm walk-through on edge cases (v3.0 fold per Round-3 refinements; verb-first grammar):**
+
+Engineer-typical flow (most common; all 4-6 verbs):
+- `msn scope create --name claude-plugin --repo url1 --repo url2` → flag-driven scope-template setup with multi-repo (repeatable `--repo` flag pattern; v3.0 confirmed at MEDIUM-R3.x discussion). Resolved.
+- `msn create --name update-adapter --scope claude-plugin` → flag-driven mission scaffold; mission references scope-id; auto-generates `msn-<8-char-hash>`. Resolved.
+- `msn start msn-deadbeef` → 1 positional. `[0]=start ∈ top-level` → `start` dispatch with `<id|name>` arg. 8-step transition fires (per §2.4.1); engine spawns daemon-watcher (per §2.6.5 v3.0 NEW). Returns workspace path. Resolved.
+- `msn workspace msn-deadbeef adapter-kernel` → 3 positional. `[0]=workspace` → `workspace` dispatch with mission-selector + repo-name. Returns absolute path; composable: `cd $(msn workspace msn-deadbeef adapter-kernel)`. Resolved.
+- `msn complete msn-deadbeef "Refactor adapter kernel for v2.0"` → 3 positional. `[0]=complete ∈ top-level` → `complete` dispatch. `[1]=msn-deadbeef` mission-selector. `[2]="Refactor adapter kernel for v2.0"` message (required positional v3.0 NEW). Atomic PR-set publish-flow fires (per §2.4.1 NEW complete-step-sequence). Resolved.
+- `msn abandon msn-deadbeef "stuck on issue X; restarting"` → 3 positional. Symmetric with complete; abandon-cleanup without PR creation. Resolved.
+
+Architect / setup flow:
+- `msn list` → 0 positional. `[0]=list` → tabular list of all missions (v3.0 unified default; was `msn status` in v2.5). Resolved.
+- `msn list --status started` → flag filter; tabular output. Resolved.
+- `msn show msn-deadbeef` → 1 positional. Detail view of mission. Resolved.
+- `msn update msn-deadbeef name new-name` → 4 positional. `[0]=update ∈ top-level`; `[1]` mission-selector; `[2]=name` ∈ update-scoped sub-actions; `[3]` new-name arg. Triggers symlink-rename flow. Resolved.
+
+Edge / error cases:
+- `msn list show` → `[0]=list` → `list` dispatch with extra positional `show`. **Rule 6:** flag-only signature → error "unexpected positional `show` for `list`; use `--status <state>` / `--output ...`"
+- `msn create show` → `[0]=create` → `create` dispatch with extra positional `show`. **Rule 6:** flag-only signature → error "unexpected positional `show` for `create`; use `--name <slug>` / `--repo <url>` / `--scope <id>`"
+- `msn show` → 1 positional. **Rule 6:** requires selector → error "missing required arg `<id|name>` for `show`"
+- `msn storage-extract storage-provider branch feature/foo` → `[0]=storage-extract` NOT in reserved-verbs → error "unknown verb 'storage-extract'; use 'msn --help'". (v3.0 has no `git` namespace; engineer should not be running git ops via missioncraft at all per workspace-hypervisor framing.)
+- `msn complete msn-deadbeef` → 2 positional. **Rule 6:** `complete` requires `<message>` positional → error "missing required arg `<message>` for `complete`"
+- `msn workspace` → 1 positional. **Rule 6:** requires `<id|name>` → error "missing required arg `<id|name>` for `workspace`"
+- `msn status msn-deadbeef` → `[0]=status` NOT in reserved-verbs (REMOVED v3.0) → error "unknown verb 'status'; use `msn list` for tabular OR `msn show <id>` for detail"
+- `msn git msn-deadbeef adapter-kernel commit -m "msg"` → `[0]=git` NOT in reserved-verbs (REMOVED v3.0) → error "unknown verb 'git'; missioncraft handles git operations internally; engineer interacts via filesystem-tools only. Use `msn workspace <id> <repo>` to obtain workspace path."
+
+Common-case + error coverage. v3.0 algorithm is simpler than v2.5 (4 sub-action vocabularies vs 5; no 5-positional pattern; no `git`/`status` verbs).
 
 This is the PARSER-LEVEL contract; v1.0 commits this disambiguation. Future v2 verb additions must avoid colliding with existing mission-name slugs (Strict-1.0 cross-version compat).
 
@@ -1076,13 +1104,23 @@ Per-precedence-chain: env-var > mission-config > SDK constructor > operator-conf
   3. **`fs.unlink` old symlink** `<workspace>/config/.names/<foo>.yaml` — on failure (e.g., concurrent unlink, fs error) → **rollback:** unlink new symlink (restore single-name state); delete `<id>.yaml.tmp`; original config + symlink preserved; emit `StorageAllocationError`
   4. **`fs.rename` temp config → final config** (`<id>.yaml.tmp` → `<id>.yaml`; POSIX atomic on same-fs) — on failure → **rollback:** recreate old symlink at `<workspace>/config/.names/<foo>.yaml` pointing to `<id>.yaml`; unlink new symlink; emit `StorageAllocationError`
   Mission-lock guards concurrent-applyMission on same mission; `O_EXCL` guards concurrent create-or-rename collision on `bar`. Rollback invariant: ALL failure modes preserve operator-observable state (either old name fully intact OR new name fully active; never partial).
-- **`--purge-config` step-ordering on terminal-state transition (v1.6 fold per MEDIUM-R5.5 — Order A: locks-first, config-last):** `complete <id> --purge-config` from `started`/`in-progress` performs steps in order:
-  0. **(v2.5 fold per MINOR-R5.2 — NEW pre-step-0):** Cadence-tick fires under existing mission-lock (per MINOR-R4.3 single-cycle invariant) — wip-tick + snapshot-tick capture pre-terminal state for forensic-history. Composes with `--retain` flag for preserving wip-branch + bundle-snapshot post-terminal. Same step-0 applies to `msn abandon <id>`. Tick under mission-lock; closes race-window. Partial-success per MINOR-R4.4 (snapshot-tick failure logs warning but doesn't block terminal-transition).
-  1. **Persist `lifecycle-state: completed` to config** via read-modify-write under mission-lock (mission-lock already held throughout terminal transition per MEDIUM-R4.7; concurrency-safe — no second writer + no read-while-write race); atomic-write discipline applies to the rewrite (write-temp + zod-validate-roundtrip + rename per MEDIUM-11). Single source of truth — no separate state-file. (v1.7 fold per round-6 ask 4: option (c) RMW-under-mission-lock; survives crash; recoverable if subsequent steps fail)
-  2. **Release mission-lock + repo-locks** via StorageProvider
-  3. **Destroy runtime workspace** at `<workspace>/missions/<id>/` (per `--retain` not set)
-  4. **(if `--purge-config`)** Delete `<id>.yaml` + `.names/<slug>.yaml` symlink (atomic — single transaction; both-or-neither)
-  Crash anywhere after step 1 leaves mission in `completed` state on-disk — recoverable via `complete --purge-config <id>` retry. Config-purge is the LAST step so partial-completion preserves config (operator forensics not lost). Same ordering applies to `abandon --purge-config` substituting `lifecycle-state: abandoned`.
+- **`complete` step-sequence (v3.0 NEW per Round-3 Refinement #4 — atomic PR-set publish-flow; supersedes v2.5 simpler cleanup-only flow):** `msn complete <id> "<message>"` from `started`/`in-progress` performs steps in order under existing mission-lock:
+  0. **Final cadence-tick** (filesystem-watch flush): capture any pending workspace edits as wip-commits on `mission/<id>` branch. Single lock-cycle invariant per v2.4 fold MINOR-R4.3 — under existing mission-lock.
+  1. **Per-repo publish-loop** (atomic across mission's repos):
+     For each `repo` in mission.repos[]:
+     - **(v3.0):** if no wip-commits beyond start-branch creation → SKIP (no-changes; just cleanup local branch); log `[no changes in <repo>]`
+     - **Squash wip-commits** (per `defaults.complete-strategy: squash` operator-config; default squash; opt-in `preserve-history` keeps N commits): produce final commit with `<message>` text on `mission/<id>` branch
+     - **Push** `mission/<id>` to remote (fast-forward push; no force). On push-failure: mission stays `in-progress`; partial state preserved; engineer retries `msn complete`. On base-diverged (non-fast-forward): reject with `MissionStateError("base diverged for <repo>; mission cannot complete cleanly; abandon and create new mission off updated base")` — NO auto-rebase at v1; operator-recovery via mission-recreation (per workspace-hypervisor framing — engineer never resolves rebase conflicts).
+     - **Open PR** via `RemoteProvider.openPullRequest({head: 'mission/<id>', base: <RepoSpec.base>, title: <message>, body: <auto-generated>})`. Capability-gated: if `RemoteProvider.capabilities.supportsPullRequests = false` (e.g., `pure-git` mode) → SKIP PR-creation (push only); log `[push-only; no PR for <repo>]`. PR-creation failure (gh-cli auth expired, etc.) → mission stays `in-progress`; partial-success preserved (PRs already opened are durable); engineer retries.
+  2. **Persist `lifecycle-state: completed` to config + `published-prs[]`** via RMW under mission-lock (atomic-write per MEDIUM-11). Returns `MissionState.publishedPRs[]: { repoName, prUrl }[]` to operator (CLI prints; SDK returns).
+  3. **Release mission-lock + repo-locks** via StorageProvider.
+  4. **Daemon-watcher signaled to terminate** (per §2.6.5 v3.0 NEW — daemon dies on mission-terminal).
+  5. **Cleanup local mission-branches** in each repo workspace (delete local branch; remote branch persists for PR-merge).
+  6. **Destroy runtime workspace** at `<workspace>/missions/<id>/` (per `--retain` not set).
+  7. **(if `--purge-config`)** Delete `<id>.yaml` + `.names/<slug>.yaml` symlink (atomic; both-or-neither).
+  Idempotent retry: per-repo state tracked in `<workspace>/config/<id>.yaml.publishStatus[<repoName>]` (NEW v3.0 field). If `complete` fails partway (e.g., 3 of 5 PRs opened then push-fails), retry resumes from where it failed. Crash anywhere after step 2 leaves mission in `completed` state on-disk; recoverable. Same step-sequence applies to `abandon` MINUS the publish-loop (steps 1.0 + 1.4 only — final tick + cleanup local branches; NO push; NO PR creation).
+  - **Mutual-exclusion preserved (v1.7 fold MINOR-R6.2):** if mission was started with `--retain` AND `--purge-config` supplied at terminal-time → reject with `MissionStateError("--retain (set at start) + --purge-config (at complete) would orphan workspace; choose one")`.
+  - **Engineer-git-less invariant (v3.0):** engineer's CLI invocation is just `msn complete <id> "<msg>"`; engine performs all squash + push + PR-creation invisibly. No git knowledge required from engineer.
 - **`--purge-config` on auto-id-only mission (no name-symlink) (v1.6 fold per MEDIUM-R5.7):** auto-id-only missions (operator didn't supply `--name`) have no `.names/<slug>.yaml` symlink. `--purge-config` step 4 gracefully no-ops the symlink-unlink if absent (existence-check before unlink); only deletes `<id>.yaml`. Operator-observable behavior identical regardless of name-presence.
 - **Terminal-state name-symlink retention (v1.5 fold per MEDIUM-R4.5; option (c) preserve both):** `complete`/`abandon` WITHOUT `--purge-config` flag (default) PRESERVES BOTH `<id>.yaml` AND `.names/<slug>.yaml` symlink. Name-namespace blocks reuse: `msn create --name <slug>` MUST reject if any TERMINAL mission with same name exists (until operator invokes `complete --purge-config` or `abandon --purge-config` to free the name). This:
   - Composes with mission-history-preservation default (config retained for forensics + replay)
@@ -1722,9 +1760,11 @@ Single canonical schema; no validation-bypass surface.
 
 **NO chaos / fault-injection tests.** **NO cross-version-compatibility tests.** Q5=b boundary respected.
 
-#### §2.6.5 Engine runtime model (v2.2 fold per HIGH-R2.1 — substrate-currency on lock-holder + cadence-tick semantics)
+#### §2.6.5 Engine runtime model (v3.0 substantive reshape per Round-3 Refinement #5 — filesystem-watch + per-mission daemon-watcher; supersedes v2.2 cooperative-tick model)
 
-**v1 substrate model: on-disk POSIX-style locks with TTL + cooperative-tick (option (c) per round-2 ask 4).** No daemon process at v1.
+**v3.0 substrate model: on-disk POSIX-style locks with TTL + per-mission daemon-watcher process via Node `fs.watch` API.** Per-mission daemon (NOT global daemon).
+
+**Why the model shifted v2.5 → v3.0:** v2.5 cooperative-tick model assumed operator runs CLI ops; cadence-tick fired AFTER each op under the existing mission-lock. Round-3 refinements established **engineer-git-less workspace-hypervisor framing** — engineer interacts with workspace via filesystem only; never invokes CLI ops mid-mission. Cooperative-tick has no operator-op-activity to wrap. Filesystem-watch model fills the gap: engine watches workspace edits + fires wip-commits + bundle-snapshots on debounce.
 
 **Lock semantics:**
 - `<workspace>/locks/missions/<missionId>.lock` is a stateful marker file: JSON-encoded `{ pid: <number>, acquiredAt: <ISO-8601>, expiresAt: <ISO-8601> }`.
@@ -1739,46 +1779,50 @@ Single canonical schema; no validation-bypass surface.
 - Default TTL: 24h sliding window (`MSN_LOCK_VALIDITY_MS` per §2.4 precedence chain). Each acquire extends expiresAt = now + 24h.
 - Same model applies to scope-locks + repo-locks.
 
-**Cadence-tick semantics:**
-- §2.6.1 wip-cadence (default 30s) + §2.6.2 snapshot-cadence (default 5min) are **cooperative-on-operator-activity** at v1 — NOT background-daemon-driven.
-- Each MUTATING per-mission op performs a **wip-tick check AFTER operation completion** (v2.3 fold per MEDIUM-R3.4 — after-only, not before/after; tick-after captures post-mutation state; tick-before would capture stale): "if last wip-commit > 30s ago, fire wip-commit before exit". Same for snapshot-tick.
-- **Lock-acquisition timing (v2.4 fold per MINOR-R4.3):** wip-tick fires UNDER the operation's existing mission-lock (BEFORE lock-release at op-completion); single lock-acquisition cycle per op. Closes race-window between mission-lock-release and storage-lock-reacquire. Op's mission-lock-acquire → mutation → wip-tick (under same lock) → snapshot-tick if applicable (under same lock) → lock-release → op-completion. Same lock-cycle invariant for `tickMission(id)` explicit invocation: tickMission acquires mission-lock briefly; fires wip-tick + snapshot-tick under that lock; releases.
-- **Partial-success / error semantics (v2.4 fold per MINOR-R4.4):** if wip-tick succeeds but snapshot-tick fails (e.g., snapshotRoot disk full): wip-commit retained (durable per §2.6.1); snapshot-tick failure logs warning but does NOT rollback wip-commit. tickMission returns `{wipCommitSha: <sha>, snapshotPath: undefined}`. Operator can retry snapshot-tick later via `msn tick <id>`. Composes with §2.6.2 layered durability: wip-commit (process-crash recovery) is independent of snapshot (disk-failure recovery); missing one snapshot doesn't lose wip-state. wip-tick failure (e.g., GitEngine error) → tick fails entirely; throws `StorageAllocationError` or appropriate engine error; mission-config NOT advanced.
+**Cadence-tick semantics (v3.0 — filesystem-watch model):**
 
-  **Mutating-ops trigger cadence-tick** (v2.3 fold per MEDIUM-R3.4):
-  - ✓ `msn git <id> <repo> commit` (workspace → object store)
-  - ✓ `msn git <id> <repo> push` (remote mutation; possible workspace-state change)
-  - ✓ `msn git <id> <repo> branch` / `branch --delete` (ref creation/deletion)
-  - ✓ `msn git <id> <repo> checkout` (HEAD change)
-  - ✓ `msn git <id> <repo> stage` (index change)
-  - ✓ `msn git <id> <repo> merge` (merge-commit creation)
-  - ✓ `msn git <id> <repo> tag` (ref creation; v2.4 fold per MINOR-R4.2 — parallel to branch)
-  - ✓ `msn update <id> <field>` (any field-targeted mutation)
-  - ✓ `msn apply -f <path>` (full-config-upsert)
-  - ✓ `msn start <id>` (Step 6 transition; `started` lifecycle entry)
-  - ✓ `msn complete <id>` / `msn abandon <id>` (v2.4 fold per MINOR-R4.2 — terminal-transitions tick BEFORE terminal config-write to capture pre-terminal state; wip-branch + bundle-snapshot capture last working-state; composes with `--retain` for forensic-history)
+- §2.6.1 wip-cadence (default 30s) + §2.6.2 snapshot-cadence (default 5min) are **filesystem-watch-debounced** — fired by per-mission daemon-watcher process listening on workspace via Node `fs.watch` API.
+- **Daemon-watcher lifecycle:**
+  - **Spawn:** `msn start` 8-step transition Step 7 spawns a detached daemon-watcher process (Node `child_process.spawn` with `detached: true; stdio: 'ignore'`); watcher inherits mission-lock (extends TTL); records its pid in lockfile.
+  - **Lifetime:** watcher runs for mission's started/in-progress duration; dies on `complete`/`abandon` (signaled via lockfile-state-watch OR explicit SIGTERM from CLI).
+  - **TTL-keepalive:** watcher periodically (every `validityMs / 4`; default 6h for 24h TTL) extends lockfile expiresAt; prevents stale-lock-takeover during active missions.
+- **Watcher loop:**
+  1. `fs.watch(workspaceRoot, { recursive: true })` for filesystem-modify events
+  2. Debounce-window (`wip-cadence-ms` default 30s): collect modify events; suppress noise (file-save-storms; editor-tmp-file churn)
+  3. On debounce-fire: acquire mission-lock briefly; check `last-wip-commit-time`; if > `wip-cadence-ms` ago → fire `commitToRef` per §2.6.1; release lock.
+  4. Snapshot-cadence (`snapshot-cadence-ms` default 5min): fire `git bundle create` per §2.6.2 on similar debounce-pattern.
+  5. Continue until terminal-signal received.
+- **Single lock-cycle invariant (v3.0 retained from v2.4 MINOR-R4.3):** wip-commit + snapshot-write fire UNDER mission-lock acquired briefly; release after; not held continuously by watcher.
 
-  **Read-only ops DO NOT trigger cadence-tick** (no state change to capture):
-  - ✗ `msn git <id> <repo> log / status / revparse / fetch / pull` (read-only OR remote-side fetches that don't mutate workspace)
-  - ✗ `msn show <id>` / `msn list` / `msn status` (read-only)
-  - ✗ `msn scope show / list` (read-only)
-  - ✗ `msn config get` (read-only)
-  - Note: `msn git <id> <repo> fetch` and `pull` MAY modify object store but typically not working-tree; tick excluded for v1 (operator can `msn tick` if needed). Spec-completeness: these COULD be added in v1.x as additive cadence-trigger surface.
-- Idle missions (no operator activity for hours) DO NOT auto-tick. Last wip-commit persists at the timestamp of the last operator activity; bundle-snapshot last-write similarly.
-- Operator MAY explicitly trigger tick: `msn tick <id>` (NEW v2.0 CLI verb; reserved-verbs list extended) — fires both wip-tick + snapshot-tick on demand. Useful for long-idle missions where operator wants to capture current state.
-- Composes with §2.6.4 lock-timeout-recovery test pattern: mission-lock TTL extended on each operator activity; expires only after sustained idle.
+**Filesystem-watch debounce details:**
+- File-modify events that match `.gitignore` patterns → ignored (don't trigger debounce-fire)
+- `.git/` directory writes → ignored (engine's own writes don't recursively trigger)
+- Editor temp-files (`.swp`, `.tmp`, `~` suffix) → ignored
+- Default debounce: 30s of "no events" before firing wip-commit (`wip-cadence-ms` operator-config-overridable)
+- Filesystem-watch primitives portability: Node `fs.watch` is platform-dependent (Linux `inotify`; macOS `FSEvents`); both supported per §2.4 OS-support boundary
 
-**Mid-mission tag-mutation (per MEDIUM-R1.3 state-restriction matrix `setMissionTag` allowed in `started`/`in-progress`):**
-- `msn update <id> tags-set <key> <value>` invocation: acquire mission-lock (briefly; under TTL-sliding extend); read mission-config; mutate tags; atomic-write mission-config (per MEDIUM-11); release mission-lock.
-- Operator-CLI exits → lockfile persists (still under TTL); next operator-CLI re-acquires.
-- No conflict with cadence-tick (cooperative-on-activity model means tag-mutation IS the activity that fires the wip-tick).
+**Operator-explicit tick (`msn tick <id>` retained from v2.0):**
+- Fires wip-tick + snapshot-tick on-demand, regardless of debounce-window state
+- Useful when watcher-debounce hasn't fired yet but operator wants explicit-capture (pre-Phase-X-checkpoint, etc.)
+- Composes with v3.0 daemon: tickMission CLI signals daemon (via lockfile-state-watch OR Unix domain socket); daemon performs tick + acks
 
-**v1.x evolution path (deferred):**
-- v1.x can add a daemon mode (`msn daemon start`) for continuous-cadence-tick (idle missions auto-tick); mission-lock held by daemon process for daemon-uptime; mid-mission operator mutations communicate via IPC.
-- v1 ships cooperative-tick model only; idle-mission cadence-tick deferred.
-- Strict-1.0 commits the v1 model; daemon-mode would be ADDITIVE evolution (new verb; new lock-holder model layered on existing on-disk lockfile semantics).
+**Mid-mission state-mutation (`msn update <id> <field>` invocations DURING started state):**
+- CLI invocation acquires mission-lock briefly; daemon-watcher temporarily yields lock; CLI mutates config; releases; daemon resumes
+- Lockfile-coordination: CLI-side acquire bumps lockfile expiresAt; daemon detects lock-acquire-by-other-pid (lockfile-mtime-watch); daemon waits + re-acquires after CLI releases
+- Concurrent CLI + daemon under same TTL window — coordination via lockfile (advisory; not adversarial)
 
-**NEW reserved-verb at v2.0:** `tick` (added to §2.3.2 Rule 1 reserved-verbs list per HIGH-R2.1 fold).
+**Daemon-watcher robustness:**
+- **Watcher crash recovery:** if daemon process crashes mid-mission, lockfile TTL eventually expires; next `msn` invocation against the mission detects expired lock + can take-over (via `link(2)` primitive per v2.3 MEDIUM-R3.3) OR operator explicitly restarts via... TBD spec — NEW reserved-verb candidate `msn resume <id>` for operator-explicit watcher-respawn?
+- **OS-shutdown / system-reboot:** daemon dies; mission-state on-disk is durable (wip-branch + bundle-snapshot per §2.6); on next operator session, mission shows `lifecycle-state: started` (was active); daemon can be respawned via `msn resume <id>` (NEW; deferred to round-1 audit ask)
+- **Multiple concurrent missions:** N missions started → N daemon-watcher processes running concurrently; each holds its own mission-lock; resource cost: N × small Node process per active mission (acceptable for v1 operator-targeting envelope ~10-100 concurrent missions)
+
+**v3.x evolution path (deferred):**
+- v3.x can add `msn resume <id>` reserved-verb for daemon-watcher respawn after crash/reboot
+- v3.x can add push-cadence to operator-config (`defaults.push-cadence-ms`) for continuous-remote-backup; daemon-watcher fires `git push mission/<id>` on push-cadence
+- v3.x can add system-level daemon-mode (`msn daemon start` global-process) for adapter-driven-multi-mission concurrent management; supersedes per-mission daemon if scale demands
+- Strict-1.0 commits the v1 per-mission daemon-watcher model; system-daemon would be ADDITIVE evolution
+
+**Reserved-verbs at v3.0 (Round-3 changes):** `tick` (v2.0 added; retained — explicit operator-trigger for forced cadence); `git` REMOVED (Refinement #1 engineer-git-less); `status` REMOVED (Refinement #2 list+show collapse); `workspace` ADDED (Refinement #6 path-resolution).
 
 ### §2.7 Test surface (per Q5=b unit + integration; bounded)
 
@@ -2199,10 +2243,14 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v2.3 PENDING-ROUND-4** | **2026-05-09-late** | **engineer round-3 audit fold (thread-511 round 5/20; 7 findings: 1 HIGH + 4 MEDIUM + 2 MINOR; pattern-decay R1=15 → R2=10 → R3=7 convergence-zone)** | **HIGH-R3.1 `tick` verb propagation — tickMission(id) SDK method added; CLI table row + arg-count row added; graceful no-op on pre-`started` missions per MINOR-R3.2; MEDIUM-R3.1 §2.6.1/§2.6.2 cooperative-tick wording aligned ("On operator-activity, if last X > N seconds ago"); MEDIUM-R3.2 effective-repos conflict-resolution validation timing (option a — every-mutation defense-in-depth; 5 trigger-points + operator recovery paths); MEDIUM-R3.3 stale-lock-takeover atomicity via POSIX link(2) primitive (closes lost-update race under concurrent expired-detection); MEDIUM-R3.4 cooperative-tick activity boundary (after-only; mutating-ops trigger; read-only ops don't); MINOR-R3.1 commentary renumber Step 1.5→Step 2 < Step 3; MINOR-R3.2 tickMission graceful no-op on pre-`started` missions. Pending engineer round-4 audit on thread-511. Ratify-clean predicted next round per pattern empirics. |
 | **v2.4 PENDING-ROUND-5** | **2026-05-09-late** | **engineer round-4 audit fold (thread-511 round 7/20; 5 findings: 0 HIGH + 1 MEDIUM + 4 MINOR; pattern-decay R1=15 → R2=10 → R3=7 → R4=5 convergence-zone tail; ratify-clean predicted)** | **MEDIUM-R4.1 cross-validation lock-discipline asymmetric — addRepoToMission/setMissionScope STRICT (acquires mission-lock + scope-lock per cross-resource ordering); addRepoToScope OPTIMISTIC (scope-lock only; race-resolution at startMission Step 2 inline); MINOR-R4.1 tickMission return-type `?:` idiomatic (string | undefined; not null); MINOR-R4.2 cadence-tick trigger list extended (msn git tag + msn complete + msn abandon); MINOR-R4.3 cadence-tick lock-acquisition under existing mission-lock (single-cycle; closes race-window); MINOR-R4.4 tickMission partial-success semantics (wip-tick succeeds + snapshot-tick fails → return partial; no rollback; operator-retry via msn tick). Pending engineer round-5 audit on thread-511. Ratify-clean predicted per pattern empirics. |
 | **v2.5 PENDING-ROUND-6** | **2026-05-09-late** | **engineer round-5 audit fold (thread-511 round 9/20; 2 micro findings: 0 HIGH + 0 MEDIUM + 2 MINOR; pattern-decay R5=2 convergence-zone tail; ratify-clean imminent)** | **MINOR-R5.1 effective-repos dedup-by-name precedence — mission-side wins (operator-explicit authoritative over scope-template-defaults; v1.x evolution path noted for opt-in scope-precedence); MINOR-R5.2 cadence-tick step-0 in terminal step-sequence (NEW pre-step-0 BEFORE lifecycle-state-persist; under existing mission-lock per MINOR-R4.3 single-cycle invariant; same step-0 for msn complete + msn abandon). Pending engineer round-6 audit on thread-511. Ratify-clean imminent per pattern empirics. |
-| **v2.5 BILATERAL RATIFIED** | **2026-05-09-late** | **engineer round-6 ratify-clean on thread-511 (round 11/20) + architect label-flip + bilateral-commit close** | **0 findings round-6; 6-round audit cycle close (R1=15 → R2=10 → R3=7 → R4=5 → R5=2 → R6=0); 39 findings folded; substantive-reshape envelope landed within architect's predicted "Realistic 4-7 rounds close" range; smaller than thread-510's 8-round v1.x envelope per smaller refinement-count (3 vs 6) + mature v1.8 substrate carry-forward. v2.x SUPERSEDES v1.8 as implementation-target Strict-1.0 contract for `@apnex/missioncraft@1.0.0`. Implementation-ready; Phase 5 Manifest entry RE-TRIGGERED. Architect-side commit pin: THIS COMMIT.** |
+| **v2.5 BILATERAL RATIFIED** | **2026-05-09-late** | **engineer round-6 ratify-clean on thread-511 (round 11/20) + architect label-flip + bilateral-commit close** | **0 findings round-6; 6-round audit cycle close (R1=15 → R2=10 → R3=7 → R4=5 → R5=2 → R6=0); 39 findings folded; substantive-reshape envelope landed within architect's predicted "Realistic 4-7 rounds close" range; smaller than thread-510's 8-round v1.x envelope per smaller refinement-count (3 vs 6) + mature v1.8 substrate carry-forward. v2.x SUPERSEDES v1.8 as implementation-target Strict-1.0 contract for `@apnex/missioncraft@1.0.0`. Implementation-ready; Phase 5 Manifest entry RE-TRIGGERED. Architect-side commit pin: SHA `5984334`.** |
+| **v3.0 PENDING-BILATERAL-RATIFICATION** | **2026-05-09-late** | **6 Director-direct architectural refinements (Round-3; post v2.5 RATIFIED; pre-Phase-6)** | **this version; substantial reshape covering: (1) DROP `msn git` namespace + `*InMission` SDK methods (engineer-git-less workspace-hypervisor framing); (2) DROP `msn status` verb (collapse to list+show); (3) DROP cooperative-tick on operator-CLI-op-activity (engineer never invokes ops); (4) ADD `msn complete <id> <message>` 2-positional + atomic PR-set publish-flow (per-repo squash + push + openPullRequest; partial-failure recovery); (5) CHANGE cadence-tick to filesystem-watch model with per-mission daemon-watcher process; (6) ADD `msn workspace <id> [<repo>]` verb for path resolution. Cumulative refinement: engineer-git-less code workspace hypervisor framing — Engineer interacts with code via filesystem only; missioncraft handles all git operations invisibly. Reserved-verbs: 14 → 13 (drop status + git; add workspace). Sub-action vocabularies: 5 → 4. Engineer's typical CLI: 4-6 verbs. New branch `agent-lily/m-missioncraft-v3-design`. NEW §2.6.5 substantive rewrite (filesystem-watch + per-mission daemon); §2.4.1 NEW complete-step-sequence (8-step publish-flow); §2.3.1 SDK class trim (~13 *InMission methods removed; `getMissionWorkspacePath` added); §2.3.2 CLI table trim (~6 git-rows removed; status row removed; workspace row added); algorithm walk-through reshape. Pending engineer round-1 audit on new thread (TBD; thread-512 candidate; maxRounds=20). Realistic 5-8 rounds close per pattern empirics for substantive-substrate-shift envelopes.** |
+| v3.0 BILATERAL RATIFIED (planned) | TBD | engineer round-N converge-close on TBD thread + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger (re-trigger on v3.x close; v2.5 trigger superseded) |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; **v2.5 BILATERAL RATIFIED → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v2-design` branch; bilateral-commit close per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; v2.5 BILATERAL RATIFIED → `5984334` (preserved as historical artifact); **v3.0 PENDING-BILATERAL → THIS COMMIT** (post-push on `agent-lily/m-missioncraft-v3-design` branch; v2.5 RATIFIED preserved at `agent-lily/m-missioncraft-v2-design` SHA `5984334`). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+
+**Phase 4 dispatch destination (v3.0 cycle):** greg / engineer; new thread (TBD; thread-512 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 5-8 rounds close per pattern empirics — **substantive substrate-shift envelope** (filesystem-watch model + complete-as-publish-flow are NEW substrate; comparable to v1.1 reshape's substrate-introduction surface; expect higher round-1 catch-rate ~15-20). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
 **Phase 4 dispatch destination (v2.0 cycle):** greg / engineer; new thread (TBD; thread-511 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 4-7 rounds close per thread-509 + thread-510 pattern empirics for substantive reshapes (smaller envelope than v1.1 reshape since v1.8 substrate is mature; 3 refinements vs 6).
