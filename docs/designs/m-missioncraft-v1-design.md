@@ -1,6 +1,6 @@
-# M-Missioncraft-V1 — Design v4.0 PENDING-BILATERAL-RATIFICATION
+# M-Missioncraft-V1 — Design v4.1 PENDING-ROUND-2
 
-**Status:** **v4.0 PENDING-BILATERAL-RATIFICATION** (architect-side; 12 scope items rolled up from idea-265 multi-participant Concept; Phase 4 Design substantial reshape; pending engineer round-1 audit on new thread). Composes from **v3.6 BILATERAL RATIFIED** at SHA `e581a21` (post-ratify revisitation per Director-doctrine Lean 7 — target-state-pull; ratification convergent-for-now). v3.6 BILATERAL RATIFIED preserved as historical artifact + base for v4.0 additive extensions; v2.5 BILATERAL RATIFIED preserved at SHA `5984334`.
+**Status:** **v4.1 PENDING-ROUND-2** (architect-side; engineer round-1 audit fold on thread-513 — 18 findings: 0 CRITICAL + 3 HIGH + 10 MEDIUM + 5 MINOR — all dispositioned; within architect's predicted 15-20 envelope). Composes from **v4.0 PENDING-BILATERAL** at SHA `59c7489` (initial v4 fold of idea-265 12 scope items). Cumulatively from v3.6 BILATERAL RATIFIED at SHA `e581a21` (post-ratify revisitation per Director-doctrine Lean 7).
 
 **12 scope items (idea-265; bilateral architect↔Director walkthrough 2026-05-10):**
 
@@ -2688,8 +2688,9 @@ Both invoke `msn workspace m-foo:design-repo/docs/foo.md` and the substrate reso
 
 **Writer-side (mostly v3.6 unchanged; ONE conditional addition):**
 - Wip-cadence-tick fires wip-commits to local wip-branch (existing v3.6 §2.6.5)
-- **NEW v4.0:** if `mission.participants[]` contains ≥1 reader → daemon ALSO pushes wip-branch to `mission.coordinationRemote` on same cadence-tick (uses RemoteProvider per §2.6.6 commit+push auth; coordination-remote MAY differ from publish-flow's PR-target remote)
+- **NEW v4.0:** if `mission.participants[]` contains ≥1 reader → daemon ALSO pushes wip-branch to `mission.coordinationRemote` on same cadence-tick. **v4.1 fold per HIGH-R1.1 substrate-path correction:** push goes through **GitEngine plain-git wire-protocol** (NOT RemoteProvider). Per §2.1.5 PureGitRemoteProvider clause — *"`push`/`pull` semantics flow through GitEngine plain git wire-protocol; RemoteProvider not invoked for push/pull; only for PR + API operations"*. Coordination-remote push/pull is a `git push`/`git fetch` against a remote URL; auth flows through git-native (HTTPS-token-helper / SSH-key for cross-host; no auth for `file://` same-host). Coordination-remote is decoupled from publish-flow's PR-target remote (different substrate-paths; different auth-mechanisms).
 - Solo writer-only mission: NO push (v3.6 baseline preserved; zero needless network/disk traffic)
+- **v4.1 fold per MEDIUM-R1.9 push-cadence error-handling:** `git push` to coord-remote is fired OUTSIDE the brief lock-cycle (lock released after wip-commit; push fires async). Push-failure semantics: best-effort with retry-on-next-cadence (transient network failures recover automatically; persistent failures emit warning to `<workspace>/missions/<id>/.daemon.log`); operator-DX visibility via `msn show <id>` reporting `lastPushSuccessAt` field. Durability guarantee: if writer's OS shuts down with unpushed wip-commits, recovery on next-start re-attempts push. Lock-held duration is bounded by local-write only (network-flaky push doesn't block concurrent CLI ops).
 
 **Reader-side (NEW v4.0 daemon-watcher mode):**
 - Same per-mission daemon-watcher process model (k8s-shape uniformity per Lean 4)
@@ -2774,7 +2775,250 @@ All compose with v4.0 substrate; defer until concrete demand emerges:
 | **F-V4.4** | Reader-daemon shutdown sequence on `msn complete`/`msn abandon` — only writer's daemon participates in publish-flow Steps 1-8 / abandon-flow Steps 1-8; reader-daemons receive what signal? | MEDIUM | Architect-recommendation: writer's daemon broadcasts terminal-state via coordination-remote tag (`msn-<id>-terminated`); readers' daemons detect + auto-shut-down. Spec at §2.10.4 round-1 fold. |
 | **F-V4.5** | Substrate-coordinate parsing grammar formalization at §2.3.2 Rule N (mirror v2.5 Rule 6 disjunctive arg-shape grammar; how does parser distinguish `m-foo:r1/foo.md` from `m-foo` `:` `r1/foo.md` 3-positional?) | MEDIUM | Architect-recommendation: single positional containing colon → coordinate-form; no whitespace splits within coordinate. Spec at §2.3.2 round-1 fold. |
 | **F-V4.6** | `participants[]` mutation while mission `in-progress` — does adding/removing readers mid-mission require any state-transition / lock acquisition? | MINOR | Architect-recommendation: participants[] mutation under mission-lock; reader-add triggers wip-push backfill (push current state to coord-remote so new reader has starting-point). Spec at §2.5 round-1 fold. |
-| **F-V4.7** | Coordination-remote auth handling — separate from publish-flow's RemoteProvider auth, OR shared? | MINOR | Architect-recommendation: shared (single RemoteProvider per mission per §2.6.6 v3.6 ratification; coordination-remote uses same auth). Operator concern only if multi-org. |
+| **F-V4.7** | Coordination-remote auth handling — separate from publish-flow's RemoteProvider auth, OR shared? | MINOR | **v4.1 reframe per HIGH-R1.1**: coord-remote auth flows through git-native (HTTPS-token-helper / SSH-key); RemoteProvider is NOT in coord-remote substrate-path. Reframed F-V4.7 question: "git-credential-helper config for cross-host coord-remote — operator-side concern OR substrate-prescription?" Architect-recommendation: operator-side concern (consistent with v3.6 §2.6.6 AI-agent-provisioning discipline); substrate documents the requirement at §2.6.6. |
+
+### §2.10.9 v4.1 fold additions — substantive resolution of HIGH-class round-1 findings
+
+**v4.1 fold per HIGH-R1.2 — Workspace partition-spec table:**
+
+v3.6 §2.4 workspace contract structures workspace-root as a tree with multiple per-mission shared subdirectories. v4.0 spec'd only the `missions/<id>/<repo>/` per-principal partition. v4.1 commits the full partition-spec:
+
+| Subdirectory | Disposition | Mechanism |
+|---|---|---|
+| `<workspace>/missions/<id>/<repo>/` | **per-principal** | Each principal has own copy (cloned from coord-remote at reader-join-time; sync'd via wip-branch on cadence) |
+| `<workspace>/config/<id>.yaml` | **per-principal** | Initialized from coord-remote at reader-join-time; subsequent participant-mutation propagates via coord-remote tag-event (writer pushes `refs/tags/missioncraft/<id>/config-update` on participant mutation per MINOR-R1.3; reader-daemon detects + re-fetches config) |
+| `<workspace>/scopes/<scope-id>.yaml` | **per-principal (operator-side concern)** | Scopes are template-manifests; operator-side concern (not mission-state-coupled). Each principal manages own scope-collection independently; cross-principal scope-sharing out-of-scope at v1. |
+| `<workspace>/locks/missions/<id>.<principal>.lock` | **per-principal** (NAME-EXTENDED per HIGH-R1.3) | Per-principal lockfile naming. Each principal's daemon writes own lockfile. Cross-principal IPC via coord-remote tags (per F-V4.4 mechanism). Inside-principal lockfile-mtime-watch IPC unchanged from v3.6 §2.6.5. |
+| `<workspace>/locks/repos/<sha256(repoUrl)>.<principal>.lock` | **per-principal** | Per-principal repo-locks; cross-mission scope on same principal (per v3.6 HIGH-5); cross-host topology cannot share filesystem-locks anyway. |
+| `<workspace>/locks/scopes/<scope-id>.<principal>.lock` | **per-principal** | Same logic as mission-locks; per-principal naming. |
+| `<workspace>/operator.yaml` | **per-OS-user** | Already implicit in v3.6; v4.1 extends with multi-principal override mechanism per §2.10.5 + MEDIUM-R1.7 fold. |
+
+**v4.1 fold per HIGH-R1.3 — Reader-daemon lockfile composition:**
+
+Pick: **option (a) per-principal lockfile naming** — `<workspace>/locks/missions/<id>.<principal>.lock`. Writer-daemon writes own lockfile; reader-daemon writes own lockfile. Both follow v3.6 LockfileState schema (no structural change; principal-id encoded in filename). Cross-principal IPC via coord-remote tag-events (per F-V4.4 mechanism), NOT via lockfile-watch. Inside-principal lockfile-mtime-watch IPC unchanged (writer-CLI signals writer-daemon; reader-CLI signals reader-daemon).
+
+Rationale: (a) preserves v3.6 LockfileState schema (no backward-incompat structural change to dead-pid detection 7-step sequence at §2.6.5); (b) cross-host topology naturally supports per-principal lockfiles (filesystem-lock can't span hosts anyway); (c) k8s-shape uniformity preserved (each principal's daemon-process model is identical to v3.6 single-principal model; multi-principal compose at coord-remote layer, not lockfile layer).
+
+**v4.1 fold per MEDIUM-R1.10 — Coordination-remote granularity:**
+
+Pick: **option (a) one bare repo per mission, with per-repo branches**. `mission.coordinationRemote` is a single git remote URL pointing to a bare repo. Engine derives per-repo refs at the bare repo as `refs/heads/<repo-name>/wip/<id>`. Multi-repo missions share the bare repo; each repo's wip-branch lives at its own ref-namespace.
+
+Rationale: gsutil-bucket-style — single bucket per mission, multiple objects (per-repo branches) within. Cleaner than per-mission-per-repo (which would need parent-dir URL parsing). Substrate-coordinate addressing (§2.10.3) maps cleanly: `m-foo:design-repo` → `coordinationRemote/refs/heads/design-repo/wip/m-foo`.
+
+§2.10.2 YAML example corrected:
+
+```yaml
+mission:
+  id: msn-a1b2c3d4
+  participants:
+    - principal: lily@apnex
+      role: writer
+      added-at: 2026-05-10T12:00:00Z
+    - principal: greg@apnex
+      role: reader
+      added-at: 2026-05-10T12:05:00Z
+  coordination-remote: file:///home/apnex/.missioncraft-coordination/msn-a1b2c3d4.git   # ONE bare repo per mission; engine derives per-repo refs
+```
+
+§2.10.3 worked example corrected:
+
+```
+Coordination point (single local bare repo; multi-repo via per-repo refs):
+  /home/apnex/.missioncraft-coordination/msn-a1b2c3d4.git
+    └── refs/heads/design-repo/wip/m-foo    ← lily's daemon pushes here on cadence (one ref per repo)
+    └── refs/heads/other-repo/wip/m-foo     (if mission has multiple repos)
+                                              greg's daemon pulls each ref on cadence
+
+Per-principal workspaces (unchanged from v4.0):
+  /home/apnex/.missioncraft-lily/workspace/missions/m-foo/design-repo/  ← writable; daemon fs-watches
+  /home/apnex/.missioncraft-greg/workspace/missions/m-foo/design-repo/  ← 0444; auto-synced from coord
+```
+
+### §2.10.10 v4.1 fold additions — MEDIUM-class cross-fold render-gaps
+
+**v4.1 fold per MEDIUM-R1.1 — §2.5 mission-config schema body extensions:**
+
+`MissionConfigSchema` (zod) extended with v4.0 fields + F-V4.2 conditional-validation:
+
+```typescript
+const MissionParticipantSchema = z.object({
+  principal: z.string(),
+  role: z.enum(['writer', 'reader']),
+  addedAt: z.string().datetime(),
+});
+
+const MissionConfigSchema = z.object({
+  // ... all existing v3.6 fields preserved
+  participants: z.array(MissionParticipantSchema).optional(),
+  coordinationRemote: z.string().url().optional(),
+}).superRefine((config, ctx) => {
+  // F-V4.2 conditional-validation: coordinationRemote required IFF participants[] contains a reader
+  const hasReader = config.participants?.some(p => p.role === 'reader') ?? false;
+  if (hasReader && !config.coordinationRemote) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'coordinationRemote required when participants[] contains a reader', path: ['coordinationRemote'] });
+  }
+  const writerCount = config.participants?.filter(p => p.role === 'writer').length ?? 0;
+  if (config.participants && writerCount !== 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'exactly 1 writer required at v1; co-writer mode deferred to v1.x', path: ['participants'] });
+  }
+});
+```
+
+Validation enforced at all parse-sites enumerated in §2.5 (createMission / msn create / applyMission / startMission / YAML hydration / adapter parse). Parse-fail → `ConfigValidationError`. No schema-version bump (additive-only per §2.5 v1.x evolution rule).
+
+**v4.1 fold per MEDIUM-R1.2 — §2.6.5 daemon-watcher body extensions:**
+
+Reader-daemon mode + writer push-on-cadence-conditional spec'd at §2.10.4; cross-folded into §2.6.5 body:
+
+- LockfileState structurally unchanged; per-principal naming via filename (per HIGH-R1.3); reader-daemon writes own LockfileState
+- Reader-daemon `chokidar.watch` config: ignore-patterns identical to writer-mode; coord-remote-poll interval = `wip-cadence-ms` (single knob); on poll fires `git fetch <coord-remote>` + `git pull --ff-only`
+- Dead-pid detection 7-step per-principal (reader's CLI runs detection against reader's lockfile; no cross-principal lockfile-read)
+- Writer's push-on-cadence OUTSIDE brief lock-cycle (per MEDIUM-R1.9; lock released after wip-commit; push fires async best-effort with retry-on-next-cadence)
+
+**v4.1 fold per MEDIUM-R1.3 — §2.3.2 CLI grammar Rule N:**
+
+Rule N (NEW disambiguation rule for substrate-coordinate parsing):
+
+> **Rule N (v4.0):** any single positional containing `:` is parsed as a substrate-coordinate (`<mission-id>:<repo>[/<path>]`). Whitespace within a coordinate is rejected (`ConfigValidationError`). Mission/scope `--name <slug>` MUST NOT contain `:` (collision with coordinate-form parsing). Coordinate-form interchangeable with whitespace-separated form: `msn workspace m-foo design-repo` ≡ `msn workspace m-foo:design-repo`.
+
+§2.3.2 CLI table rows for `msn workspace` / `msn show` / `msn list` extend with coordinate-form variants per §2.10.6. Reserved-verbs count: 13 (v3.6) → **15 (v4.1 with `join`/`leave` reader-side verbs per MEDIUM-R1.8)**.
+
+**v4.1 fold per MEDIUM-R1.4 — §2.3.1 SDK class extensions:**
+
+`MissionMutation` discriminated-union extended with NEW kinds:
+
+```typescript
+type MissionMutation =
+  // ... 8 existing v3.6 kinds preserved
+  | { kind: 'add-participant'; principal: string; role: 'writer' | 'reader' }
+  | { kind: 'remove-participant'; principal: string }
+  | { kind: 'set-coordination-remote'; remote: string };
+```
+
+Mutation flows through existing `update<T>('mission', id, mutation)` polymorphism — NO new top-level SDK verb added for mutation. Engine-side last-mile dispatch validates state-restriction per §2.4.1 matrix (per MEDIUM-R1.5).
+
+`workspace()` SDK signature accepts coordinate-form via colon-notation in `id` arg:
+
+```typescript
+// v4.1: id arg accepts colon-notation; engine parses internally
+workspace(idOrCoordinate: string, repoName?: string): Promise<string>;
+//   'm-foo'                    → mission workspace root
+//   'm-foo:design-repo'        → per-repo dir
+//   'm-foo:design-repo/path'   → file path
+```
+
+`get('mission', id)` and `list('mission', filter?)` accept coordinate-form for repo-granularity per §2.10.6.
+
+**v4.1 fold per MEDIUM-R1.5 — §2.4.1 per-field state-restriction matrix extensions:**
+
+Three new MissionMutation rows added to per-field matrix:
+
+| Mutation | `created` | `configured` | `started` | `in-progress` | `completed` | `abandoned` |
+|---|---|---|---|---|---|---|
+| `add-participant` | ✓ | ✓ | ✓ | ✓ | ERROR | ERROR |
+| `remove-participant` | ✓ | ✓ | ✓ | ✓ | ERROR | ERROR |
+| `set-coordination-remote` | ✓ | ✓ | ERROR | ERROR | ERROR | ERROR |
+
+Rationale: participant-mutations allowed mid-mission (operator may add/remove readers during in-progress); coord-remote-change allowed only pre-`started` (post-start change would orphan readers). All under mission-lock per F-V4.6; reader-add triggers immediate wip-push backfill (writer's daemon receives participant-add IPC signal via lockfile-mtime-watch; fires immediate-push to coord-remote; new reader has starting-point on first daemon-poll).
+
+**v4.1 fold per MEDIUM-R1.6 — §2.6.6 commit+push auth coord-remote auth case:**
+
+§2.6.6 extended with NEW sub-section:
+
+> **Coord-remote auth (v4.1 fold per HIGH-R1.1 + MEDIUM-R1.6):** Coordination-remote push/pull goes through GitEngine plain-git wire-protocol (per §2.1.5 PureGitRemoteProvider clause); RemoteProvider is NOT in coord-remote substrate-path.
+> - **Cross-host coord-remote (e.g., `https://github.com/<org>/<bare>.git`):** auth via git-native HTTPS-token-helper (typically gh-cli's stored token if installed; OR `git credential.helper` config). Same auth-mechanism as `PureGitRemoteProvider` push/pull.
+> - **Same-host coord-remote (`file:///path/to/bare.git`):** no auth required; filesystem-permissions only. Operator-side concern: bare repo's parent directory must be writable by writer-principal AND readable by reader-principal.
+> - **Reader-principal credential-helper config:** reader's daemon does `git fetch` from coord-remote (no commit-author needed since reader doesn't author commits) BUT may need credential-helper config for HTTPS coord-remote. Operator-side concern (consistent with AI-agent-provisioning discipline).
+
+"Single RemoteProvider per mission" v3.6 invariant PRESERVED — coord-remote isn't a RemoteProvider concern.
+
+**v4.1 fold per MEDIUM-R1.7 — §2.4 OperatorConfigSchema multi-principal extension:**
+
+If §2.10.5 default-resolution picks option (a) working-tree-derived → OperatorConfigSchema unchanged. If option (b)/(c), OperatorConfigSchema extends:
+
+```yaml
+defaults:
+  workspace-root: "~/.missioncraft"   # legacy-default (v3.6 single-principal)
+  workspace-root-by-principal:        # v4.1 NEW (option (b)/(c))
+    lily@apnex: "~/.missioncraft-lily/workspace"
+    greg@apnex: "~/.missioncraft-greg/workspace"
+```
+
+Env-var `MSN_WORKSPACE_ROOT` mapping unchanged for option (a). For option (b)/(c): NEW env-var `MSN_PRINCIPAL_ID` selects principal-id; engine derives workspace-root from per-principal config.
+
+**v4.1 fold per MEDIUM-R1.8 — §2.4.1 reader-side `msn start` flow:**
+
+NEW reader-side state-machine overlay (parallel to v3.6 9-step writer-side `configured → started` transition):
+
+7-step `joined → reading` transition (reader-side; spawned via `msn join <id> --coord-remote <url>`):
+
+1. Validate mission-id + coord-remote URL; verify reader-principal authorized (writer-principal must have run `msn update <id> add-participant <principal> reader` first; coord-remote tag confirms)
+2. Allocate reader's per-principal workspace at `<reader-workspace-root>/missions/<id>/`
+3. Initialize mission-config from coord-remote (`git fetch <coord-remote> <config-ref>` + apply); subsequent config-changes propagate via coord-remote tag-event
+4. Clone per-repo workspaces from coord-remote (`git clone --reference <coord-remote> <repo-name>/wip/<id>`); set filesystem-mode `0444` on all files
+5. Acquire reader-side mission-lock at `<reader-workspace>/locks/missions/<id>.<principal>.lock`
+6. Spawn detached reader-daemon-watcher (per §2.10.4 reader-mode); daemon writes pid + reader-mode flag to lockfile
+7. Persist mission-state-yaml as `reading` (reader-side lifecycle-state; distinct from writer-side `started`/`in-progress`)
+
+Reader-side terminal transitions: `reading → readonly-completed` (writer terminated; readers transition to read-only-archive mode) OR `reading → leaving` (operator-explicit `msn leave <id>` to disengage).
+
+NEW reserved-verbs at v4.1: `msn join` + `msn leave` (reader-side only). Reserved-verbs count: 13 (v3.6) → **15 (v4.1)**.
+
+Alternative considered + rejected: reader-side spawn auto-triggered by writer's participant-add. Rejected because cross-host topology requires reader to know coord-remote URL out-of-band; explicit `msn join` is the natural information-injection moment.
+
+### §2.10.11 v4.1 fold additions — MINOR cross-fold
+
+**MINOR-R1.1 — §2.10.7 deferral list clarification:**
+
+"Co-writer mode" + "multi-writer atomic transactions" collapsed to single deferral:
+> **Co-writer mode (multi-writer with atomic-transaction discipline)** — extension of `MissionParticipant.role` enum to allow `'writer'` count > 1; requires conflict-resolution + atomic-transaction discipline; both concerns deferred to v1.x as a single feature-bundle.
+
+**MINOR-R1.2 — `MissionState` interface per-repo runtime-state extension:**
+
+`MissionState.repos[]` array entries extended (engine-derived; not config-persisted):
+
+```typescript
+interface MissionRepoState {
+  readonly name: string;                       // existing v3.6
+  readonly url: string;                        // existing v3.6
+  readonly base: string;                       // existing v3.6
+  // v4.1 NEW per-repo runtime-state for `msn show <id>:<repo>` columns
+  readonly role?: 'writer' | 'reader';         // role of CURRENT principal viewing this state
+  readonly syncState?: 'synced' | 'fetching' | 'stale' | 'no-coord';
+  readonly remoteRef?: string;                 // coord-remote ref name
+  readonly lastSyncAt?: string;                // ISO-8601; reader-side last successful coord-fetch
+}
+```
+
+`msn show <id>:<repo>` reads these fields for tabular display.
+
+**MINOR-R1.3 — F-V4.4 tag-namespace disambiguation:**
+
+Coord-remote tag-namespace formalized as `refs/tags/missioncraft/<id>/<event>`:
+- `refs/tags/missioncraft/<id>/terminated` — writer-daemon broadcasts on `msn complete`/`msn abandon`
+- `refs/tags/missioncraft/<id>/config-update` — writer pushes on participant mutation; readers re-fetch config
+
+Disambiguates from mission-id namespace `msn-<8-char-hash>`.
+
+**MINOR-R1.4 — `MissionParticipant.principal` IdentityProvider relationship:**
+
+Principal-id format spec'd: `<user>@<host>` or `<user>@<org>` (operator-supplied opaque-string; principal-equality via string-comparison at v1).
+
+At writer-side `msn start`, engine calls `IdentityProvider.resolve()` → returns `{name, email}`; engine stores `principal: <email>` (or operator-overridable via `--principal <id>` flag) in `participants[]` writer entry. Reader-principal supplied at `msn join <id> --coord-remote <url> --principal <id>` (operator-side responsibility for cross-host consistency).
+
+Cross-host principal-id consistency: operator-side concern. Substrate uses principal-id as opaque-string for participants[] membership.
+
+`IdentityProvider` interface unchanged at v4.1 (no extension needed).
+
+**MINOR-R1.5 — Option (a) apnex-org-specificity decoupling:**
+
+§2.10.5 architect-recommendation reframed:
+
+> **Architect-recommendation (v4.1 fold):** working-tree-derived path is the **recommended operator-pattern** (composes with apnex-style sibling-trees per `feedback_user_agent_identity`); substrate-engine doesn't enforce working-tree-naming. Substrate-default behavior: option (c) explicit-required when multi-principal-on-host detected (engine emits `MissionStateError("multi-principal host detected; configure workspace-root via configSet workspace-root <path> OR derive from working-tree per feedback pattern")`); operator-side configures via OperatorConfigSchema multi-principal extension OR working-tree-derived script.
+
+This decouples v1.0 contract from apnex-org-specific operator-pattern; substrate stays operator-agnostic.
+
+---
 
 ---
 
@@ -2911,11 +3155,12 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v3.6 PENDING-ROUND-7** | **2026-05-09-late** | **engineer round-6 audit fold (thread-512 round 11/20; 3 findings: 0 HIGH + 1 MEDIUM + 2 MINOR; pattern-decay R1=22 → R2=11 → R3=9 → R4=6 → R5=4 → R6=3 convergence-zone deep tail; round-7 ratify-clean predicted per pattern empirics; matches thread-510 R8=0 envelope)** | **MEDIUM-R6.1 concurrent-CLI dispatch logic for abandon-flow Steps 5-8 post-lock-release (mission-config-based abandonProgress signal — survives lockfile-delete at Step 4; CLI dispatch preflight checks lifecycleState='in-progress' + abandonProgress!==undefined → routes per abandon-flow logic: msn abandon retry idempotent-resume; read-only ops allowed; mutating ops rejected with MissionStateError; daemon-respawn SKIPPED; full coverage Steps 2-7 via lockfile.abandonInProgress + mission.abandonProgress); dead-pid detection extended 6→7 ordered checks (Step 1 mission-config preflight added). MINOR-R6.1 atomic single-lock-cycle integration (Step 8 lifecycle-advance integrated into Step 6 transaction — eliminates v3.5 disjunctive "OR" + race-window between Step 7 release and Step 8 re-acquire; matches single-lock-cycle invariant; Step 8 demoted to marker-only). MINOR-R6.2 'workspace-handled' marker rename (renamed 'workspace-destroyed' → 'workspace-handled' across MissionState interface + §2.5 YAML schema + §2.4.1 abandon-flow + §2.6.5 fold-notes; --retain-aware semantic; §8 historical rows preserved). Pending engineer round-7 audit on thread-512 — ratify-clean target.** |
 | **v3.6 BILATERAL RATIFIED** | **2026-05-09-late** | **engineer round-7 ratify-clean on thread-512 (round 13/20; 0 findings; converged=true + close_no_action staged); 7-round Phase 4 audit cycle closed; 55 total findings folded; pattern matches thread-510 v1.x envelope shape** | **NO new edits this commit; label-flip ONLY (header v3.6 PENDING-ROUND-7 → v3.6 BILATERAL RATIFIED + §8 status row + commit-pin trail). v3.x SUPERSEDES v2.5 as implementation-target Strict-1.0 contract for `@apnex/missioncraft@1.0.0`. Phase 5 Manifest entry trigger fires post-thread (re-trigger on v3.x close; v2.5 trigger superseded). Architect-side post-ratification: bilateral-commit close on thread-512; v3.6 BILATERAL RATIFIED commit pin on `agent-lily/m-missioncraft-v3-design` branch.** |
 | **v4.0 PENDING-BILATERAL-RATIFICATION** | **2026-05-10** | **12 scope items rolled up from idea-265 multi-participant Concept (post v3.6 BILATERAL RATIFIED; bilateral architect↔Director walkthrough 2026-05-10; Director-doctrine Lean 7 post-ratify revisitation)** | **this version; substantial reshape covering: (1) mission-wide participant granularity (NEW `mission.participants[]` field with role-typed entries: writer/reader); (2) strict-enforce reader workspace mode (filesystem 0444); (3) sync cadence reuses `wip-cadence-ms` (single knob); (4) reader-side actions = pure-read at v1 (comment/annotate/line-tied-thread deferred to v1.x); (5) wip-push to coordination remote conditional on readers (solo writer-only missions stay local-only; matches v3.6 baseline); (6) coordination-point configurable per topology (`mission.coordination-remote` field; same-host = local bare repo; cross-host = network remote); (7) workspace-root principal-scoped per-agent (existing `configSet workspace-root` mechanism preserved; default-resolution TBD per Director-pick); (8) substrate-coordinate addressing convention NEW (`<mission-id>:<repo>/<path>` single-string format; principal-portable; gsutil-style); (9) `msn workspace` extends to substrate-coordinate granularity (file-level resolution); (10) substrate-coordinate addressing applies uniformly across all verbs that take resource-id (`msn show`/`msn list`/`msn workspace`); (11) `msn list <coord>` drill-down semantics (row-per-resource at coordinate-granularity); (12) v1.x deferrals codified per Lean 6 YAGNI. Cumulative refinement: multi-participant missions with read-only role + cross-host workspace sync. New branch `agent-lily/m-missioncraft-v4-design` off v3.6 RATIFIED at SHA `e581a21`. NEW §2.10 multi-participant extension section (interfaces + schema + reader-daemon spec + coord-remote spec + substrate-coordinate addressing); §2.5 mission-config schema extended (participants + coordination-remote fields); §2.6.5 daemon-watcher extended (reader-mode + push-on-cadence-conditional); §2.3.2 CLI table updated (substrate-coordinate addressing on workspace + show + list verbs). Pending engineer round-1 audit on new thread (TBD; predicted 5-7 round close envelope per pattern empirics for additive-extension cycles; substantive-but-additive extensions track tighter than substrate-shifts).** |
+| **v4.1 PENDING-ROUND-2** | **2026-05-10** | **engineer round-1 audit fold (thread-513 round 1/20; 18 findings: 0 CRITICAL + 3 HIGH + 10 MEDIUM + 5 MINOR; within architect's predicted 15-20 envelope)** | **HIGH-R1.1 push attribution substrate-path correction (coord-remote push goes through GitEngine plain-git wire-protocol NOT RemoteProvider per §2.1.5 PureGitRemoteProvider clause; F-V4.7 reframed); HIGH-R1.2 workspace partition-spec table NEW §2.10.9 (7 subdirectories × disposition mapping; per-principal vs per-OS-user; coord-remote-sync mechanism for config); HIGH-R1.3 reader-daemon lockfile composition pick option (a) per-principal lockfile naming `<id>.<principal>.lock` (preserves v3.6 LockfileState schema; no structural change; cross-principal IPC via coord-remote tags); MEDIUM-R1.1 §2.5 mission-config schema body extensions (zod conditional-validation: coordinationRemote required IFF participants[] contains reader; exactly-1-writer at v1; MissionConfig interface extension); MEDIUM-R1.2 §2.6.5 daemon-watcher body extensions (per-principal lockfile naming; reader-mode chokidar config; coord-poll interval = wip-cadence-ms; push outside lock-cycle); MEDIUM-R1.3 §2.3.2 CLI grammar Rule N (single-positional-with-colon → coordinate-form; whitespace-in-coordinate rejected; reserved-verbs 13→15 with join/leave); MEDIUM-R1.4 §2.3.1 SDK class extensions (MissionMutation 3 new kinds: add-participant/remove-participant/set-coordination-remote via existing update<T> polymorphism); MEDIUM-R1.5 §2.4.1 per-field state-restriction matrix (3 new mutation rows; participant-mutations allowed mid-mission; coord-remote-change pre-started only); MEDIUM-R1.6 §2.6.6 commit+push auth coord-remote auth case (cross-host = git-native HTTPS-token-helper / SSH-key; same-host = filesystem-permissions); MEDIUM-R1.7 §2.4 OperatorConfigSchema multi-principal extension (workspace-root-by-principal map for option b/c; MSN_PRINCIPAL_ID env-var); MEDIUM-R1.8 §2.4.1 reader-side `msn join` 7-step `joined → reading` transition NEW (coord-clone + 0444 enforcement + reader-daemon-spawn); MEDIUM-R1.9 writer push-on-cadence outside brief lock-cycle (best-effort with retry-on-next-cadence; persistent-failure to .daemon.log); MEDIUM-R1.10 coord-remote granularity pick option (a) one bare repo per mission with per-repo refs; MINOR-R1.1 deferral list co-writer + multi-writer-tx collapsed; MINOR-R1.2 MissionState repos[] runtime-state extension (role/syncState/remoteRef/lastSyncAt); MINOR-R1.3 tag-namespace formalized as refs/tags/missioncraft/<id>/<event>; MINOR-R1.4 principal-id format `<user>@<host>` opaque-string at v1; IdentityProvider unchanged; MINOR-R1.5 working-tree-derived decoupled from substrate (recommended operator-pattern; substrate-default = explicit-required for multi-principal). Pending engineer round-2 audit on thread-513.** |
 | v4.x BILATERAL RATIFIED (planned) | TBD (predicted 5-7 round close per pattern empirics) | engineer round-N converge-close on new thread + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger (re-trigger on v4.x close; v3.6 trigger preserved as implementation-target until v4.x close) |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; v2.5 BILATERAL RATIFIED → `5984334` (preserved as historical artifact); v3.0 PENDING-BILATERAL initial draft → `d534f4e` (6 Round-3 refinements); v3.0 Refinement #7 fold → `3652f65` (SDK API consolidation); v3.0 Refinement #8 fold → `afc56e4`; v3.1 PENDING-ROUND-2 → `b23ded3`; v3.2 PENDING-ROUND-3 → `aa75be4`; v3.3 PENDING-ROUND-4 → `269f226`; v3.4 PENDING-ROUND-5 → `3a2f7df`; v3.5 PENDING-ROUND-6 → `fa2f6b4`; v3.6 PENDING-ROUND-7 → `12408b8`; v3.6 BILATERAL RATIFIED → `e581a21` (architect-side label-flip post engineer round-7 ratify-clean on thread-512; on `agent-lily/m-missioncraft-v3-design` branch); **v4.0 PENDING-BILATERAL → THIS COMMIT** (12 scope items rolled up from idea-265 multi-participant Concept; on `agent-lily/m-missioncraft-v4-design` branch off v3.6 RATIFIED). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; v2.5 BILATERAL RATIFIED → `5984334` (preserved as historical artifact); v3.0 PENDING-BILATERAL initial draft → `d534f4e` (6 Round-3 refinements); v3.0 Refinement #7 fold → `3652f65` (SDK API consolidation); v3.0 Refinement #8 fold → `afc56e4`; v3.1 PENDING-ROUND-2 → `b23ded3`; v3.2 PENDING-ROUND-3 → `aa75be4`; v3.3 PENDING-ROUND-4 → `269f226`; v3.4 PENDING-ROUND-5 → `3a2f7df`; v3.5 PENDING-ROUND-6 → `fa2f6b4`; v3.6 PENDING-ROUND-7 → `12408b8`; v3.6 BILATERAL RATIFIED → `e581a21` (architect-side label-flip post engineer round-7 ratify-clean on thread-512; on `agent-lily/m-missioncraft-v3-design` branch); v4.0 PENDING-BILATERAL → `59c7489` (12 scope items rolled up from idea-265 multi-participant Concept; on `agent-lily/m-missioncraft-v4-design` branch off v3.6 RATIFIED); **v4.1 PENDING-ROUND-2 → THIS COMMIT** (engineer round-1 fold; 18 findings dispositioned). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
 **Phase 4 dispatch destination (v3.0 cycle):** greg / engineer; new thread (TBD; thread-512 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 5-8 rounds close per pattern empirics — **substantive substrate-shift envelope** (filesystem-watch model + complete-as-publish-flow are NEW substrate; comparable to v1.1 reshape's substrate-introduction surface; expect higher round-1 catch-rate ~15-20). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
