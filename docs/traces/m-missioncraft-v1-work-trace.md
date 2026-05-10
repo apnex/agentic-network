@@ -31,11 +31,14 @@
 | **W5c WAVE-CLOSE** | **CONVERGED 2026-05-10 20:03 AEST** | engineer-staged close_no_action + architect-staged W5c→W6 cascade |
 | W6 slice (i) | CLOSED 2026-05-10 20:12 AEST | Real-engine start() happy-path (`d07c44d`; +2 tests; 240 → 242); 4 W4.4-deferred carry-overs dispositioned as Q5=b boundary doc-markers + slice (iii) fold |
 | W6 slice (ii) | CLOSED 2026-05-10 20:18 AEST | Step 5 join() impl-extension + sync-deletion-handling + real-engine join/leave + storage.list hidden-dir filter (`781dc0d`; +3 tests; 242 → 245) |
-| W6 slice (iii)+(iv) bundled | CLOSED 2026-05-10 20:24 AEST | Network-partition resilience + mission-class signature audit-pass coverage map + closing audit doc + npm publish-prep + Director pre-publish artifact (`b306c6d`; +2 tests; 245 → 247) |
-| **W6 WAVE-CLOSE** | **CONVERGING 2026-05-10 20:24 AEST** | engineer-staged close_no_action; awaiting architect bilateral-ratify; engineer-side publish-ready at `b306c6d` |
-| **MISSION-77 SUBSTRATE-IMPL ARC** | **COMPLETE** | 4 consecutive waves (W5a + W5b + W5c + W6) substrate-currency-clean; 162 baseline → 247 = +85 net tests; ~38 commits W0→W6; v4.10 PATCH bundle FINAL = 12 items |
+| W6 slice (iii)+(iv) bundled | CLOSED 2026-05-10 20:24 AEST | Network-partition resilience + mission-class signature audit-pass coverage map + closing audit doc v1 + npm publish-prep v1 (`b306c6d`; +2 tests; 245 → 247) |
+| **DIRECTOR (Y) DIRECTIVE** | **2026-05-10 20:26 AEST** | "Extend W6. Proceed to publish when everything is good to go." — bundle-ops disk-failure recovery becomes W6 in-scope; substrate-completeness restored at v1.0.0 |
+| W6 slice (v) ▶ Director (Y) | CLOSED 2026-05-10 20:30 AEST | **Bundle-ops substrate-extension** (`df5b8ae`; +11 tests; 247 → 258); GitEngine.createBundle?/restoreBundle? F13-capability-gated (preserves 5-pluggable frozen API per architect (p) lean) + IsomorphicGitEngine native-git shell-out + new core/snapshot.ts module with sibling-snapshot OUT-OF-BAND-from-workspace + SDK snapshotWipBranches/restoreFromSnapshot + daemon-watcher post-wip-commit hook + end-to-end disk-failure recovery integration test |
+| W6 slice (vi) | CLOSED 2026-05-10 20:35 AEST | Closing-audit revision + npm pack --dry-run artifact refresh post bundle-ops (`7f28274`; +0 tests doc-only) |
+| **W6 WAVE-CLOSE** | **CONVERGING 2026-05-10 20:35 AEST** | retract action-1 + new action-2 close_no_action; engineer-side publish-ready at `7f28274`; awaiting architect bilateral-ratify |
+| **MISSION-77 SUBSTRATE-IMPL ARC** | **COMPLETE (3 of 3 durability-modes)** | 4 consecutive waves substrate-currency-clean; 162 baseline → 258 = +96 net tests; ~40 commits W0→W6; 3 of 3 durability-modes shipped (process-crash + network-partition + disk-failure via bundle-ops) |
 | Director-direct npm publish | pending | Director executes `git tag v1.0.0` + `git push origin v1.0.0` + `npm publish --access public` from their machine per Q1 (γ) ratification |
-| Phase 9 (Audit) | LANDED | `docs/audits/m-missioncraft-v1-closing-audit.md` at `b306c6d` |
+| Phase 9 (Audit) | LANDED REVISED | `docs/audits/m-missioncraft-v1-closing-audit.md` at `7f28274` (post-bundle-ops revision; substrate-completeness restored; #12 evolved to design-prose-update) |
 | Phase 10 (Retrospective) | pending | mission-77.status advance to `completed` on Hub side post-Director-publish |
 
 ---
