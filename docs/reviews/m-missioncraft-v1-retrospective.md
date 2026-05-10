@@ -242,3 +242,99 @@ Compounding rationale operationally proven (parallel to mission-66's M65→M66 c
 **Mission-77 Phase 10 Retrospective DRAFT — awaiting Director-architect-bilateral ratify.** Architect-side can ratify via convergence-thread OR Director-direct fold-this-doc-with-revisions.
 
 — Lily (architect; agent-40903c59)
+
+---
+
+## §10 Addendum — v1.0.1 patch trail (CLI silent-failure + lockfile resync)
+
+**Authored:** 2026-05-10T~22:30Z UTC (post-publish; same day as v1.0.0 ship)
+**Trigger:** Director-initiated CLI dogfood test against apnex/missioncraft as read-only single-repo workflow. First `msn --help` invocation post `npm install -g @apnex/missioncraft@1.0.0` returned exit 0 with 0 bytes output — silent-failure.
+
+### 10.1 Defect class
+**Defect-D1: `isMainModule` guard symlink-mismatch.** Conventional Node ESM CLI pattern `import.meta.url === \`file://${process.argv[1]}\`` fails silently under symlinked-bin invocation (npm-global-install creates `<prefix>/bin/<name>` symlink). Node 24 default `--preserve-symlinks-main=false` resolves `import.meta.url` to realpath while `process.argv[1]` retains symlink path; equality returns false; `main()` never invoked.
+
+**Architect-side hypothesis was wrong**: I conjectured P1 ESM relative-import resolution failure. Engineer's dynamic-import bisector (per `feedback_dynamic_import_bisector_for_silent_failure.md` captured post-fact) refuted the conjecture and isolated the actual root cause at `bin.ts:341`.
+
+### 10.2 v1.0.1 commits
+| Commit | Slice | Substance |
+|---|---|---|
+| `87bf370` | (i) | bin.ts:341 symlink-safe guard refactor: `fileURLToPath(import.meta.url) === realpathSync(process.argv[1])` |
+| `2721f19` | (ii) | regression test `bin-shim-bootstrap.test.ts` — canonical sandbox-install-then-spawn pattern (invokes bin via npm-created symlink path, NOT direct `node $REAL_PATH`) |
+| `23a2336` | (iii) | closing audit + manifest version bump 1.0.0 → 1.0.1 |
+| `5d4b8fd` | (iv') | lockfile resync (rm -rf node_modules + package-lock.json + npm install) — release.yml `npm ci` failure recurrence; mirrors v1.0.0 slice (vii) pattern |
+
+### 10.3 v1.0.1 disposition (post-ship)
+v1.0.1 was DEPRECATED on npm registry post-v1.0.2 ship per Director directive ("Deprecate 1.0.1. Perform other updates"). Deprecation executed via workflow_dispatch path `deprecate.yml` (run `25642987485`); `npm view @apnex/missioncraft@1.0.1 deprecated` returns the deprecation message pointing operators to v1.0.2+.
+
+### 10.4 v1.0.1 calibrations captured
+- `feedback_isMainModule_guard_symlink_safety.md` (architect-side auto-memory; engineer-side likely-companion)
+- `feedback_dynamic_import_bisector_for_silent_failure.md` (architect-side auto-memory; diagnostic pattern for silent-failure class; refuted my P1 conjecture)
+- **v4.10 PATCH item #16 candidate**: Design §2.9.x prose-extension on Node ESM CLI bin authoring discipline — symlink-safe `isMainModule` pattern + regression test must invoke via npm-created symlink path
+
+---
+
+## §11 Addendum — v1.0.2 patch trail (3 SD-defects + D1 dep-slim + substrate-design conflict)
+
+**Authored:** 2026-05-10T~23:30Z UTC (post-publish v1.0.2; same day as v1.0.0 + v1.0.1 ships)
+**Trigger:** Director directive "Fix the bugs. Go for a quick win on deps" — surfaced 3 shipped defects observed during CLI scenario-doc testing + 1 dependency-slimming opportunity.
+
+### 11.1 Defect classes
+- **SD1**: complete() Step 6 mission-branch cleanup — orphan-defect-shape on partial-cleanup-failure
+- **SD2**: abandon() Step 5 per-repo cleanup — orphan-defect-shape on partial-cleanup-failure (companion to SD1; emerged via grep-audit of `start()`/`complete()`/`abandon()` symmetric-cleanup patterns)
+- **SD3**: start() post-Step-8 lockfile-as-daemon-IPC-channel preservation — fix-site lockfile lifecycle (substrate-component class)
+- **D1**: vitest@4 dep-tree slimming — operator install-time footprint reduction; downgrade to vitest@3 (preserves all test functionality; cuts ~40 transitive deps)
+
+### 11.2 v1.0.2 commits
+| Commit | Slice | Substance |
+|---|---|---|
+| `3966c6e` | (i) | SD3 substrate-fix: start() preserves lockfile-as-daemon-IPC channel post-Step-8 (was unconditionally cleared) |
+| `924c538` | (i.5) | **Vestigial-acquire-removal** on abandon() per architect (B) disposition — downstream-conflict cleanup from slice (i) SD3 fix |
+| `3a9b8dc` | (ii) | SD1 + SD2 symmetric-cleanup orphan-defect fixes |
+| `3cfe0cf` | (iii) | D1 vitest@4 → vitest@3 downgrade (operator dep-slim win) |
+| `35334f6` | (iv) | closing audit + manifest version bump 1.0.1 → 1.0.2 |
+
+### 11.3 Substrate-design conflict at slice (i.5) — downstream-path verification
+Slice (i) SD3 fix preserved lockfile post-Step-8 (forward-path invariant: lockfile exists post-start with pid populated). Slice-internal regression test in `w6-real-engine-start.test.ts` verified forward-path. **Architect signed off slice (i) + green-lighted autonomous slices (ii)-(v).**
+
+Engineer-side ad-hoc smoke-test BEFORE slice (ii) execution: `create → start → abandon` end-to-end → caught `LockTimeoutError` on abandon's `acquireMissionLock(id, { waitMs: 0 })`. Downstream consumer (abandon) now saw invariant different from what it expected (lockfile-already-held with 24h TTL). Engineer surfaced as scope-question.
+
+Architect-disposition Option (B) acquire-removal: abandon() no longer acquires the lockfile since start() now leaves it held as daemon-IPC channel. Slice (i.5) `924c538` removed the vestigial `acquireMissionLock(id, { waitMs: 0 })` call.
+
+**Without engineer-side ad-hoc smoke-test, autonomous slice (ii) execution would have proceeded + shipped a v1.0.2 that broke `abandon()` entirely.** Captured as `feedback_downstream_path_verification_post_substrate_fix.md`.
+
+### 11.4 v1.0.2 calibrations captured
+- `feedback_downstream_path_verification_post_substrate_fix.md` (engineer-side auto-memory; architect-side ratify) — substrate-fix forward-path regression tests miss downstream-consumer breakage; ad-hoc smoke-test BEFORE next autonomous slice
+- **idea-267 filed** (spawn-failure-rollback daemon-orphan in `start()` catch-block lines 322-335) — SD2-class adjacent; route-a Triage-Protocol skip-to-triaged; v1.0.x roadmap candidate; companion to slim-deps cycle filed at thread-530
+- **v4.10 PATCH item #17 candidate**: Design §2.6.x prose-extension on conditional-cleanup-on-failure-return symmetric-discipline — any code-path that conditionally-spawns processes/resources needs symmetric conditional-cleanup on the failure-return path
+- **v4.10 PATCH item #18 candidate**: methodology bilateral-loop — architect signoff on slice-internal regression-test-coverage is NOT sufficient for substrate-fix commits; engineer-side ad-hoc smoke-test BEFORE next autonomous slice is mandatory addition to slice-close handshake
+
+---
+
+## §12 Addendum — Methodology-arc summary post-v1.0.x patches
+
+**Authored:** 2026-05-10T~23:30Z UTC
+
+### 12.1 Three reusable engineering patterns captured cross-mission
+1. **`feedback_isMainModule_guard_symlink_safety.md`** — Node ESM CLI bin authoring discipline; symlink-safe guard pattern; regression test must invoke via npm-created symlink path. Generalizes to ANY Node ESM CLI mission shipping `bin` field in package.json.
+
+2. **`feedback_dynamic_import_bisector_for_silent_failure.md`** — Diagnostic pattern for silent CLI failures (exit 0; 0 bytes); dispositive `await import(REAL_PATH)` bisector isolates main-module-equality bug vs import-graph-resolution bug. Generalizes to ANY Node ESM CLI silent-failure class.
+
+3. **`feedback_downstream_path_verification_post_substrate_fix.md`** — Engineer-side ad-hoc smoke-test BEFORE next autonomous slice on substrate-component fixes; slice-internal regression tests verify fix-site invariant, not downstream-consumer invariants. Generalizes to ANY substrate-component fix (lockfile lifecycle, schema field, shared state mechanism).
+
+### 12.2 Ops-mechanism pattern captured
+**`deprecate.yml` workflow_dispatch path** — eliminates local-auth dependency for npm-deprecate operations. Reuses existing `NPM_TOKEN` GHA secret (Granular Access Token Bypass-2FA). Triggered via `gh workflow run deprecate.yml -f version=<v> -f message=<reason>`. Generalizes to ANY npm registry ops operation requiring 2FA-protected account (e.g., `unpublish`, `dist-tag`, `access` mods).
+
+**Critical-feedback origin**: I initially surfaced a local-auth 401-unauthorized back to Director for v1.0.1 deprecate. Director-corrective ("No. You have NPM access. You were able to publish the package, so I expect you and greg to resolve this") pushed me to find the GHA workflow_dispatch path. Captured as anti-pattern guard: **Don't surface CI-auth-mechanism friction to Director when GHA-secret-path is already available for publish; reuse the same path for ops operations.**
+
+### 12.3 Mission-class refinement signals
+- **Strict-1.0 commit shapes mature into v1.0.x patch cadence** — v1.0.0 shipped architecturally-complete; 3 patch releases within same session (v1.0.1 + v1.0.2 + v1.0.1-deprecation) refined operator-UX defects without breaking frozen-API; capability-gated optional method pattern + symmetric-cleanup discipline preserved
+- **Sustained-cadence sessions amplify methodology-currency compounding** — original baseline ~6-8 weeks for substrate-introduction mission-class; actual ~4h15min ship + ~3h post-ship patch cadence (~7h15min total session-time); 3 reusable cross-mission patterns captured + 1 ops-mechanism pattern + 2 new idea-files (slim-deps + idea-267 spawn-failure-rollback)
+- **v4.10 PATCH bundle now 18 items** — 15 from pre-publish trail + 3 from post-publish patch trail (#16 + #17 + #18 candidates from this addendum). Architect-side fold scheduled post-Phase-10-ratify
+
+### 12.4 Open follow-ons
+- v4.10 PATCH bundle fold-into-Design on `agent-lily/m-missioncraft-v4-design` branch (2-3 commits estimated)
+- idea-267 disposition: route-a Triage-Protocol skip-to-triaged; v1.0.3 patch candidate OR fold into slim-deps v1.0.x bundle
+- CLI dogfood testing continues per Director plan: "Then we will get back to CLI testing"
+- Scenario doc 02+ workflows (read-write single-repo + multi-repo + multi-participant) — v1.x scenario-coverage roadmap
+
+— Lily (architect; agent-40903c59)
