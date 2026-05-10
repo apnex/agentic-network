@@ -12,8 +12,20 @@
 
 | Wave | Status | Description |
 |---|---|---|
-| W0 | in-progress (2026-05-10 13:30 AEST) | Scaffold + Repo Bootstrap; local-first at `~/taceng/missioncraft` |
-| W1-W6 | pending | Subsequent waves — TBD |
+| W0 | CLOSED | Scaffold + Repo Bootstrap (3 commits) |
+| W1 | CLOSED | Pluggable Interfaces + Types + Schemas (4 commits incl. MissionParticipant + 3 v4.x mutation-rows) |
+| W2 | CLOSED | Default Pluggable Implementations + PROVIDER_REGISTRY (3 commits) |
+| W3 | CLOSED | SDK Class + CLI Persona + Grammar Rules 1-7 (3 commits) |
+| W4.1 | CLOSED | Mission state machine FSM + state-restriction matrix + Missioncraft.update wire-through (`d44ef75`) |
+| W4.2 | CLOSED | POSIX symlinks + setReaderWorkspaceMode helper (`12da840`) |
+| W4.3 | CLOSED | Complete + Abandon Flows + State-Restriction Matrix Runtime Wiring (5 commits + 1 spot-fix; +19 tests) |
+| W4.4 | CLOSED | Daemon-Watcher + State Durability (6 commits; +24 tests; 5 W4.4-GRAFT graft) |
+| W5a | CLOSED | Multi-participant primitives — principal-resolution + role-derivation + canonicalization + join/leave input-validation (3 commits + Q2 substrate-confirmation) |
+| W5b slice (i) | CLOSED 2026-05-10 19:08 AEST | join/leave runtime + 7-step joined→reading transition (`e5863b9`; +12 tests; 178 → 190) |
+| W5b slice (ii) | pending | Writer-side push-flow + refs (items #2+#3+#4) |
+| W5b slice (iii) | pending | Closing audit + W5b-internal integration tests + cumulative SHA surface |
+| W5c | pending | HTTP-server fixture + real-engine clone integration |
+| W6 | pending | Test surface + closing wave + npm publish v1.0.0 |
 
 ---
 
@@ -115,8 +127,45 @@ While awaiting namespace decision, authored namespace-agnostic scaffold files:
 
 ## Outstanding R10 carry-forward (informational; v4.9 PATCH track per architect)
 
-- bug-62 (major; pre-W4 blocker): §2.4.1.v4 Step 4 chmod parallel-site
+- bug-62 (major; pre-W4 blocker): §2.4.1.v4 Step 4 chmod parallel-site — RESOLVED at W4.2 setReaderWorkspaceMode helper
 - bug-63 (minor; pre-W4 cleanup): §2.6.5.v4 stale checkout-index reference
 - MINOR-R10.1/R10.2/R10.3: cross-fold-stale text references (cosmetic)
 
 Architect-side v4.9 PATCH bundle planned post-W0; no engineer action required.
+
+---
+
+## Session log — W5b slice (i) (2026-05-10 19:00-19:10 AEST)
+
+### Cold-pickup re-acquaint
+
+Director cleared engineer context 2026-05-10; thread-524 spawned by architect with cold-pickup primer + Director-override resume. Thread-524 supersedes thread-523 (engineer-pause hold; bilateral mirror-accepted at thread-523 round 3 then cleared by Director).
+
+Cold-context loaded fresh from `apnex/missioncraft:main` HEAD `4da7fa6` + git log + source-surface verification:
+- W0–W5a closed-state confirmed (joined throw-stubs at `missioncraft.ts:937-980`; CLI verbs already in arg-spec at W3 build; ResourceMap `getOpts/listOpts: {principal?}` typed at W3 build)
+- Substrate-currency discipline noted (Step 3.5 + Step 7 MUST route through `_engineMutate` per architect spec)
+- Slice (i) START SIGNAL replied on thread-524 round 2
+
+### Slice (i) implementation (`e5863b9`)
+
+**SDK runtime swap** (`src/missioncraft-sdk/core/missioncraft.ts`):
+- 7-step `join()` runtime: validate inputs → canonicalize URL → resolve principal → acquire mission-lock → Step 3.5 atomic-write 'joined' via `_engineMutate(role: 'auto')` (handles cross-partition pre-state writer/reader; idempotent-retry per v4.6 MINOR-R7.1) → Step 4 workspace-allocate per repo → Step 5 SUBSTRATE-BYPASS clone (HTTP-fixture defers W5c per (α)) → Step 6 setReaderWorkspaceMode chmod-down → Step 7 atomic-write 'reading' via `_engineMutate(role: 'reader')`
+- `leave()` runtime: pre-flight role-detection short-circuits writer-state with HIGH-R2.3 read-only-participant rejection → 'reading' → 'leaving' via `_engineMutate(role: 'reader')` → optional `--purge-workspace` chmod-up + storage.cleanup + config unlink (terminal-removed)
+- `_engineMutate` extends with optional `role` override ('writer' | 'reader' | 'auto'); plumbs through to parseMissionConfig
+
+**Schema-tooling extension** (`src/missioncraft-sdk/core/yaml-transform.ts`):
+- `parseMissionConfig` accepts `roleOverride: 'writer' | 'reader' | 'auto'`; 'auto' mode peeks `lifecycleState` to dispatch role-aware schema (handles writer/reader partition-boundary moments at Step 3.5)
+
+**Test surface** (+12 tests; 178 → 190):
+- New `test/missioncraft-sdk/join-leave-runtime.test.ts`: 8 tests — happy-path 7-step transition + chmod-down stat-verify + idempotent-retry per v4.6 MINOR-R7.1 + writer-terminal rejection + URL canonicalization + leave happy-path/idempotent/purge/writer-state-rejection
+- 4 stub-test refinements at `test/missioncraft-sdk/missioncraft-class.test.ts` (replace W5a HTTP-fixture stub-tests with slice-(i)-appropriate input-validation + missing-config gates)
+
+**CLI dispatch already wired at W3 build**: `arg-spec.ts:200-209` (msn join + msn leave entries) + `bin.ts:326-334` (dispatch); slice (i) SDK runtime swap activates the CLI end-to-end (no CLI changes needed).
+
+**ResourceMap MEDIUM-R4.1 verification**: `getOpts/listOpts: {principal?}` typed at W3 build (`missioncraft.ts:77-78`); internal threading verified at `get<T>` + `list<T>` (lines 163, 178); slice (i) "verification" satisfied — no extension needed.
+
+**CI**: build clean (tsc); 190/190 tests passing locally; pushed to `apnex/missioncraft:main` HEAD `e5863b9`. Architect post-merge SHA review expected via `gh api repos/apnex/missioncraft/commits/main`.
+
+### Slice (i) milestone — surface to architect on thread-524
+
+`e5863b9`: 4 files changed, 388 insertions, 32 deletions. Slice (i) CLOSED. Standby for architect ratification + slice (ii) authorization (writer-side push-flow + refs; items #2+#3+#4).
