@@ -1,6 +1,8 @@
-# M-Missioncraft-V1 — Design v4.8 BILATERAL RATIFIED
+# M-Missioncraft-V1 — Design v4.9 PATCH (post-W3 spec-precision corrections)
 
-**Status:** **v4.8 BILATERAL RATIFIED** (architect-side label-flip; thread-513 round-budget exhausted at 19/20 with greg in `online_idle` cognitive-dormant state; architect-drives-mission close per Director-doctrine Lean 7 + per `feedback_architect_drives_mission_not_director.md`). 9-round Phase 4 audit cycle on thread-513 closed: 64 findings folded across rounds (R1=18 → R2=14 → R3=6 → R4=4 → R5=0 → R6=8 → R7=3 → R8=2 → R9=1; META-HIGH-R2.1 closed at v4.2; substrate-mechanism precision-corrections cleanly converged) — pattern matches substrate-mechanism re-spec multi-round cycle per `feedback_refactor_introduces_regression_during_fold.md`. v4.8 incorporates **idea-265 multi-participant extension** (12 scope items; cumulative refinement: multi-participant missions with read-only role + cross-host workspace sync via git-as-coordination). Composes from **v4.7 PENDING-ROUND-9** at SHA `5aedc6f` + **v4.8 PENDING-ROUND-10** at SHA `29c9b1c`. v3.6 BILATERAL RATIFIED preserved at SHA `e581a21` (historical artifact; SUPERSEDED by v4.8 as implementation-target Strict-1.0 contract for `@apnex/missioncraft@1.0.0`).
+**Status:** **v4.9 PATCH** (post-W3 spec-precision corrections; cosmetic-precision per Director-doctrine Lean 7 target-state-pull discipline; no bilateral re-audit needed; v4.8 BILATERAL RATIFIED at SHA `2959496` remains the canonical implementation-target reference for mission-77; v4.9 PATCH bundles 5 spec-precision fixes that surfaced during W0-W3 implementation contact: (1) bug-62 §2.4.1.v4 Step 4 chmod file-vs-directory POSIX-portable pattern parallel-site fix per W3 R10.1 carry-forward; (2) bug-63 §2.6.5.v4 stale v4.4 git-checkout-index reference cleanup per W3 R10.2 carry-forward; (3) §2.1.5 PureGitRemoteProvider.getCurrentUser() prose-fix per W2 forward-fold #1 (interface signature Promise<RemoteUser> can't return null; throws UnsupportedOperationError per F13); (4) §2.9.5 README v3.x-grammar correction per W0 forward-fold #1 (engineer-git-less hypervisor framing; verb-first grammar; substrate-coordinate addressing examples; v1.x/v2.5 stale CLI examples retired); (5) MINOR-R10.1/R10.2/R10.3 inline cosmetic cross-fold-stale text fixes. v4.10 PATCH planned for remaining bundle items: §2.9.1 + §2.9.3 changesets internal-consistency (greg W0 forward-fold #3) + §2.9.1 lockfile-generation discipline note (greg W0 retrospective insight) + §2.9.3 CI git-config-global step discipline (greg W2 forward-fold #2) — process-doc improvements deferred to post-mission-77 close. Pre-W4-dispatch landing requirement: bug-62 (major; pre-W4 blocker) ✓ folded; W4 dispatch unblocked.
+
+**Status (archived from v4.8 BILATERAL RATIFIED):** (architect-side label-flip; thread-513 round-budget exhausted at 19/20 with greg in `online_idle` cognitive-dormant state; architect-drives-mission close per Director-doctrine Lean 7 + per `feedback_architect_drives_mission_not_director.md`). 9-round Phase 4 audit cycle on thread-513 closed: 64 findings folded across rounds (R1=18 → R2=14 → R3=6 → R4=4 → R5=0 → R6=8 → R7=3 → R8=2 → R9=1; META-HIGH-R2.1 closed at v4.2; substrate-mechanism precision-corrections cleanly converged) — pattern matches substrate-mechanism re-spec multi-round cycle per `feedback_refactor_introduces_regression_during_fold.md`. v4.8 incorporates **idea-265 multi-participant extension** (12 scope items; cumulative refinement: multi-participant missions with read-only role + cross-host workspace sync via git-as-coordination). Composes from **v4.7 PENDING-ROUND-9** at SHA `5aedc6f` + **v4.8 PENDING-ROUND-10** at SHA `29c9b1c`. v3.6 BILATERAL RATIFIED preserved at SHA `e581a21` (historical artifact; SUPERSEDED by v4.8 as implementation-target Strict-1.0 contract for `@apnex/missioncraft@1.0.0`).
 
 **12 scope items (idea-265; bilateral architect↔Director walkthrough 2026-05-10):**
 
@@ -422,7 +424,7 @@ export interface RemoteProvider {
 }
 ```
 
-**Default v1 implementation:** `PureGitRemoteProvider` — null-object pattern (v1.5 fold per HIGH-R4.1(3)); `capabilities = { supportsPullRequests: false, supportsApi: false }`; `authenticate()` no-op succeeds; `getCurrentUser()` returns `null`; `openPullRequest()` / `listPullRequests()` / `getRepoMetadata()` throw `UnsupportedOperationError` (per F13 capabilities-gated throws-on-unsupported). `push`/`pull` semantics flow through GitEngine plain git wire-protocol (RemoteProvider not invoked for push/pull; only for PR + API operations). Enables uniform PROVIDER_REGISTRY dispatch (`'pure-git'` factory at §2.3.1) without special-case handling for `remote: undefined`.
+**Default v1 implementation:** `PureGitRemoteProvider` — null-object pattern (v1.5 fold per HIGH-R4.1(3)); `capabilities = { supportsPullRequests: false, supportsApi: false }`; `authenticate()` no-op succeeds; `getCurrentUser()` throws `UnsupportedOperationError` per F13 capabilities-gated throws-on-unsupported (v4.9 PATCH per W2 forward-fold #1 — interface signature `Promise<RemoteUser>` cannot return null; consistent with other API methods); `openPullRequest()` / `listPullRequests()` / `getRepoMetadata()` throw `UnsupportedOperationError` (per F13 capabilities-gated throws-on-unsupported). `push`/`pull` semantics flow through GitEngine plain git wire-protocol (RemoteProvider not invoked for push/pull; only for PR + API operations). Enables uniform PROVIDER_REGISTRY dispatch (`'pure-git'` factory at §2.3.1) without special-case handling for `remote: undefined`.
 
 Operators who explicitly want no RemoteProvider can either inject `new PureGitRemoteProvider()` OR omit the field entirely (engine substitutes `PureGitRemoteProvider` at construction; `remote: undefined` in mission-config behaves identically to `remote.provider: pure-git`).
 
@@ -2561,7 +2563,14 @@ git clone --branch '<repo-name>/wip/<id>' '<coord-remote-url>' '<reader-workspac
 
 (v4.0 anchor-prose had `git clone --reference <coord-remote> <repo-name>/wip/<id>` which is wrong — `--reference` is for object-database sharing assuming both repos exist locally; the intended operation is clone-with-named-branch from coord-remote URL).
 
-Post-clone: engine sets file-mode `0444` on all working-tree files (recursive `chmod` OR via `git checkout-index --prefix` with engine-overridable mode per MEDIUM-R2.2 mechanism); `0444` strict-enforce invariant established before reader-daemon-watcher spawns.
+Post-clone: engine sets file-mode using **POSIX-portable file-vs-directory split with `.git/` tree-prune** (v4.9 PATCH per bug-62 carry-forward from thread-513 R10.1; same pattern as M-R9.1 fix at §2.6.5.v4 Loop B engine-internal git-checkout):
+
+```bash
+find <reader-workspace>/missions/<id>/<repo-name>/ -path '*/.git' -prune -o -type f -exec chmod 0444 {} \;
+find <reader-workspace>/missions/<id>/<repo-name>/ -path '*/.git' -prune -o -type d -exec chmod 0555 {} \;
+```
+
+Files 0444 (read-only); directories 0555 (read+traverse; no write); `.git/` excluded via `-path '*/.git' -prune` (git-dir needs write access for subsequent reader-daemon Loop B fetches; `chmod 0444` on directories would break engineer's `cd` traversal + chokidar Loop A recursive-watch + git operations on `.git/`). Engine-internal sets via `find` + `chmod`; cross-platform POSIX-portable; preserves `0444` strict-enforce invariant on working-tree files. Established before reader-daemon-watcher spawns. (Replaces v4.4 anchor-prose `git checkout-index --prefix` mechanism — that referenced v4.4 stale mechanism per bug-63 carry-forward; canonical sync-mechanism is `git checkout -f` against cached git-dir at §2.6.5.v4 Loop B per M-R8.1 v4.7 fold.)
 
 #### §2.6.6 Commit + push authentication semantics (v3.0 NEW per Round-3 Refinement #8 — clarification-fold)
 
@@ -2875,24 +2884,22 @@ Sovereign git+workspace orchestration for multi-agent code coordination.
 npm install @apnex/missioncraft
 \`\`\`
 
-## CLI quick start (k8s-resource-shape per v1.1 refinement #2)
+## CLI quick start (engineer-git-less hypervisor framing per v3.x; k8s-shape verb-polymorphism per v3.0 Refinement #7)
 
 \`\`\`
-# Create + configure a mission
-msn create --name storage-extract
-msn storage-extract repo-add https://github.com/example/repo.git
+# Create + configure a mission (verb-first grammar per v2.0 Refinement A)
+msn create --name storage-extract --repo https://github.com/example/repo.git
 
-# Start the mission (engine clones; allocates workspace; acquires locks)
+# Start the mission (engine clones; allocates workspace; spawns daemon-watcher)
 msn start storage-extract
 
-# Per-mission git ops (mission-selector → repo-name → verb; Shape (b) v1.3 fold per HIGH-R2.1)
-msn storage-extract storage-provider branch feature/example
-# ... edit files in the workspace ...
-msn storage-extract storage-provider commit -m "Initial work"
-msn storage-extract storage-provider push
+# Engineer interacts with code via filesystem only — no git CLI
+cd $(msn workspace storage-extract repo)
+# ... edit files in the workspace ... daemon-watcher fires wip-commits on debounce
+# Engine handles all git operations (commits, branches, pushes, PRs) invisibly via GitEngine pluggable
 
-# Complete the mission (release locks; destroy workspace; preserve config)
-msn complete storage-extract
+# Complete the mission (atomic PR-set publish-flow; squash + push + openPullRequest per repo)
+msn complete storage-extract "Refactor storage-provider for v2.0"
 \`\`\`
 
 ## Declarative quick start (single-call from manifest)
@@ -2901,16 +2908,18 @@ msn complete storage-extract
 msn start -f mission-77.yaml      # full manifest: declares + starts in one call
 \`\`\`
 
-## Library quick start (SDK-primary per v1.1 refinement #4)
+## Library quick start (SDK-primary per v1.1 Refinement #4; k8s-shape verb-polymorphism per v3.0 Refinement #7)
 
 \`\`\`typescript
 import { Missioncraft } from '@apnex/missioncraft';
 const mc = new Missioncraft({ /* defaults */ });
-const handle = await mc.createMission({ name: 'storage-extract' });
-await mc.addRepoToMission(handle.id, { url: 'https://github.com/example/repo.git' });
-await mc.startMission(handle.id);
-// ... per-mission git ops ...
-await mc.completeMission(handle.id);
+const handle = await mc.create('mission', { name: 'storage-extract', repos: [{ url: 'https://github.com/example/repo.git' }] });
+await mc.start(handle.id);
+// ... engineer interacts via filesystem; daemon fires wip-commits ...
+const workspace = await mc.workspace(handle.id, 'repo');
+// ... or via substrate-coordinate addressing (v4.0+):
+// const filePath = await mc.workspace('storage-extract:repo/docs/foo.md');
+await mc.complete(handle.id, 'Refactor storage-provider for v2.0');
 \`\`\`
 
 ## Architecture
