@@ -1,6 +1,6 @@
-# M-Missioncraft-V1 — Design v4.4 PENDING-ROUND-5 (PARTIAL — R4 architect-picks only)
+# M-Missioncraft-V1 — Design v4.4 PENDING-ROUND-6 (SUBSTANTIAL — full v4.4 fold complete)
 
-**Status:** **v4.4 PENDING-ROUND-5 (PARTIAL)** (architect-side; engineer round-4 audit fold on thread-513 — 4 findings: 0 META + 0 HIGH + 2 MEDIUM + 2 MINOR — within architect's predicted 2-4 envelope ✓). **v4.4 PARTIAL** commits R4 architect-picks (M-R4.1 ResourceMap.mission.getOpts/listOpts extension to support per-call principal override + M-R4.2 IdentityProvider.resolve email-verbatim coercion + invocation-context broadening note); the **substantial v4.4 bundle** (§2.6.5 daemon-watcher body inline-flatten with substrate-mechanism fixes R2.1-R2.4 + M-R3.3 daemon-state.yaml mechanism + §2.6.6 commit+push auth coord-remote + §2.4 OperatorConfigSchema multi-principal + §2.4.1 state-restriction matrix + reader-side 7-step transition + state-machine cascade-mechanism) **REMAINS deferred to subsequent v4.4 commit**. Per partial-flatten discipline: this v4.4 PARTIAL closes the R4 picks cleanly; substantial-bundle is a separate fold-target. Composes from **v4.3 PENDING-ROUND-4** at SHA `97b9014`. Cumulatively from v4.2 → v4.1 → v4.0 → v3.6 BILATERAL RATIFIED at SHA `e581a21`.
+**Status:** **v4.4 PENDING-ROUND-6** (architect-side; v4.4 SUBSTANTIAL commit completes the full v4.4 bundle: §2.6.5 daemon-watcher body inline-flatten with substrate-mechanism fixes R2.1-R2.4 + M-R3.3 .daemon-state.yaml mechanism; §2.6.6 commit+push auth coord-remote auth case + M-R4.2 invocation-context broadening; §2.4 OperatorConfigSchema multi-principal extension; §2.4.1 state-restriction matrix + reader-side 7-step `joined → reading` transition + state-machine cascade-mechanism; §2.5 zod superRefine role-based state-validation per M-R3.2 + lastPushSuccessAt removal per MINOR-R4.2; §2.10.10 STATUS table closeout to all-rows `INLINE-FLATTENED ✓`). Composes from **v4.4 PARTIAL** at SHA `efa18fd` (engineer R5 picks-correctness clean-pass; 0 findings). Cumulatively from v4.3 → v4.2 → v4.1 → v4.0 → v3.6 BILATERAL RATIFIED at SHA `e581a21`.
 
 **12 scope items (idea-265; bilateral architect↔Director walkthrough 2026-05-10):**
 
@@ -1278,6 +1278,22 @@ defaults:                                # operator-side defaults (lower-precede
   workspace-root: "~/.missioncraft"      # operator-default; CLI/env override per precedence chain
   snapshot-root: "~/.missioncraft/snapshots"  # default snapshotRoot for state-durability
 
+  # v4.0 NEW per idea-265 multi-participant + v4.4 fold per MEDIUM-R1.7 — multi-principal extension
+  # Resolves on multi-principal hosts (per HIGH-R1.2 partition-spec — workspace-root MUST be principal-distinct)
+  # Optional: if absent, single-principal-on-host behavior preserved (uses `workspace-root` above; v3.6 baseline)
+  workspace-root-by-principal:
+    lily@apnex: "~/.missioncraft-lily/workspace"     # per-principal workspace-root override
+    greg@apnex: "~/.missioncraft-greg/workspace"
+  # Engine resolution (current-principal precedence chain Step 4 per §2.3.1):
+  #   1. CLI flag --workspace-root <path>
+  #   2. Env-var MSN_WORKSPACE_ROOT
+  #   3. mission-config workspace-root field (per-mission override)
+  #   4. SDK constructor workspaceRoot
+  #   5. v4.4 NEW: workspace-root-by-principal[<current-principal>]  (looked up via current-principal precedence chain Steps 1-4 per §2.3.1)
+  #   6. defaults.workspace-root (single-principal default)
+  #   7. built-in default `~/.missioncraft`
+  # Multi-principal-host detection: if MULTIPLE principals invoke missioncraft on same OS-user host AND `workspace-root-by-principal` is unset → engine emits MissionStateError("multi-principal host detected; configure workspace-root-by-principal in operator.yaml OR set MSN_PRINCIPAL_ID per-invocation"). Detection mechanism: principal-id mismatch on existing lockfile in workspace.
+
   state-durability:                      # per-key override of built-in defaults
     wip-cadence-ms: 30000
     snapshot-cadence-ms: 300000
@@ -1771,6 +1787,46 @@ Composability with HIGH-R3.1 dead-pid detection: post-Step-4 lockfile is absent 
 - Birthday-collision threshold ~65k missions; cap-3-retries gives ~10^-30 effective collision probability at sane mission-counts
 - Operator-supplied `--name <slug>` is independent — slug-format `[a-z0-9][a-z0-9-]{1,62}` (DNS-style); slug must NOT match any reserved verb (see §2.3.2 reserved-words list)
 
+#### §2.4.1.v4 Multi-participant state machine extensions (v4.0 NEW + v4.4 substrate-fixes; INLINE-FLATTEN of §2.10.10 anchor-prose)
+
+**Reader-side state machine (v4.0 NEW per idea-265 multi-participant; v4.4 fold per MEDIUM-R1.8 inline-flatten):**
+
+Reader-side state machine is parallel to writer-side but distinct (per HIGH-R1.2 partition-spec — each principal holds own per-principal config with own `lifecycle-state` field):
+
+```
+joined ──[7-step msn-join transition]──> reading ──[writer-terminated coord-tag detected]──> readonly-completed (terminal; preserves last-synced state)
+                                            │
+                                            └──[msn-leave operator-action]──> leaving ──[7-step msn-leave transition]──> (workspace removed if --purge-workspace; else preserved for forensic-history)
+```
+
+**7-step `joined → reading` transition (reader-side; spawned via `msn join <id> --coord-remote <url> [--principal <id>]`):**
+
+1. **Validate authorization**: read coord-remote at `<coord-remote>/refs/heads/config/<id>` (mission-config branch); verify `participants[]` contains current-principal (per §2.3.1 precedence-chain) with `role: reader`. Reject with `MissionStateError("not authorized as reader for mission <id>; ask writer to add participant via msn update <id> add-participant <principal> reader first")` if not. v4.4 substrate-mechanism: writer pushes mission-config to coord-remote on participant-add per §2.6.5.v4 immediate-push backfill; reader's `msn join` reads it from there.
+2. **Allocate reader's per-principal workspace** at `<reader-workspace-root>/missions/<id>/` (reader-workspace-root resolved per §2.3.1 current-principal precedence chain Step 5 → §2.4 OperatorConfigSchema `workspace-root-by-principal[<current-principal>]`).
+3. **Initialize mission-config from coord-remote**: `git fetch <coord-remote> <config-ref>` + apply to `<reader-workspace>/config/<id>.yaml` (per HIGH-R1.2 partition-spec — config is per-principal). Subsequent config-changes propagate via coord-remote tag-event `refs/tags/missioncraft/<id>/config-update` (per MINOR-R1.3 tag-namespace).
+4. **Clone per-repo workspaces from coord-remote** (per MEDIUM-R2.3 substrate-fix):
+   ```bash
+   git clone --branch '<repo-name>/wip/<id>' '<coord-remote-url>' '<reader-workspace>/missions/<id>/<repo-name>'
+   ```
+   Post-clone: set filesystem-mode `0444` recursively (engine-controlled; preserves strict-enforce per scope-item #2 + F-V4.3 hard-error).
+5. **Acquire reader-side mission-lock** at `<reader-workspace>/locks/missions/<id>.<principal>.lock` (per HIGH-R1.3 per-principal lockfile naming).
+6. **Spawn detached reader-daemon-watcher** (per §2.6.5.v4 reader-mode 2-loop spec — Loop A chokidar fs-watch + Loop B Node setInterval timer-poll); daemon writes pid + reader-mode flag + startTime to lockfile.
+7. **Persist mission-state-yaml as `lifecycle-state: reading`** (atomic-write per MEDIUM-11) — reader-side lifecycle-state distinct from writer-side `started`/`in-progress`. Per HIGH-R2.3 + M-R3.2 zod superRefine role-based state-validation: reader-side config rejects writer-side enum-values + vice versa (engine determines config's owning-principal from file-path mapping per HIGH-R1.2 partition-spec).
+
+**State-machine cascade-mechanism (v4.4 fold per HIGH-R2.3):** reader-daemon's coord-poll Loop B detects writer-pushed `refs/tags/missioncraft/<id>/terminated` tag → fires reader-side state-transition `reading → readonly-completed` engine-internally. No operator-action required. Reader-daemon enters quiescent mode (no further fetches; lockfile preserved with `terminated-at` timestamp). Operator can then `msn leave <id>` to fully clean-up reader-side workspace.
+
+**`leaving → terminal` transition (`msn leave <id> [--purge-workspace]`):** symmetric with abandon-flow; SIGTERM reader-daemon; release reader's lockfile; preserve workspace by default for forensic-history (operator can re-`msn join` to resume); `--purge-workspace` removes workspace entirely.
+
+**Per-field state-restriction matrix extension (v4.4 fold per MEDIUM-R1.5):** 3 NEW MissionMutation rows added to existing matrix (per §2.3.1 SDK MissionMutation discriminated-union v4.0 extension). Per F-V4.6 lock-discipline: all under mission-lock; `add-participant` reader triggers immediate wip-push backfill via writer-daemon config-mtime-watch (per §2.6.5.v4 + MEDIUM-R2.4):
+
+| MissionMutation.kind | created | configured | started | in-progress | completed | abandoned | reading (reader-side) |
+|---|---|---|---|---|---|---|---|
+| `add-participant` | ✓ (writer-side) | ✓ | ✓ | ✓ | ERROR | ERROR | ERROR (reader can't mutate participants[]) |
+| `remove-participant` | ✓ | ✓ | ✓ | ✓ | ERROR | ERROR | ERROR |
+| `set-coordination-remote` | ✓ | ✓ | ERROR (post-start change orphans readers) | ERROR | ERROR | ERROR | ERROR |
+
+Reader-side state-restriction: ALL mutations ERROR (reader is read-only per scope-item #4); CLI `msn update <id> ...` rejected when invoked by reader-principal with `MissionStateError("read-only participant; mutation rejected")`.
+
 ### §2.4.2 Scope state machine + lifecycle (NEW v2.0 — multi-mission composition primitive per Refinement C)
 
 Scope is a NEW first-class resource at v2.0 — a reusable repo-collection template that multiple missions reference via `--scope <id>`. Scope's lifecycle is simpler than Mission's (scopes are templates, not active resources; no `started`/`in-progress` state).
@@ -1932,7 +1988,7 @@ mission:
   coordination-remote: file:///home/apnex/.missioncraft-coordination/msn-a3bd610c.git   # v4.0 NEW per idea-265; required IFF participants[] contains a reader (zod superRefine conditional-validation per F-V4.2). One bare repo per mission; engine derives per-repo refs as `refs/heads/<repo-name>/wip/<id>` (v4.1 fold per MEDIUM-R1.10 option (a) gsutil-bucket granularity). Cross-host topology = network remote URL (typically github); same-host topology = local bare repo file:// URL.
   abandon-repo-status:               # v3.5 fold per MEDIUM-R5.2 — abandon-flow Step 5 per-repo cleanup state; symmetric with publishStatus discipline
     adapter-kernel: 'cleaned'
-  last-push-success-at: "2026-05-10T01:30:45Z"  # v4.2 fold per MEDIUM-R2.8 + MEDIUM-R1.9 — operator-DX visibility for coord-remote push-cadence health; written by writer-daemon on successful push; absent until first push; persisted across daemon-restart for forensic-history; cleared only on --purge-config
+  # NOTE (v4.4 fold per MEDIUM-R3.3 + MINOR-R4.2): `last-push-success-at` removed from MissionConfig YAML schema; field now lives in NEW `<workspace>/missions/<id>/.daemon-state.yaml` (separate file) to preserve mission-config atomic-write discipline (no per-cadence config-mutation). Engine merges into MissionState response at `msn show <id>` query-time. See §2.6.5.v4 `.daemon-state.yaml` mechanism. The field REMAINS on `MissionState` interface (engine-derived; not config-persisted).
 
 # Declarative repo list (NEW v1.1 — per refinement #3)
 repos:
@@ -2040,7 +2096,7 @@ const MissionConfigSchema = z.object({
   // ... all existing v3.6 fields preserved (mission, repos, workspaceRoot, lockTimeout, identity, approval, storage, gitEngine, remote, stateDurability, autoMerge, etc.)
   participants: z.array(MissionParticipantSchema).optional(),
   coordinationRemote: z.string().url().optional(),
-  lastPushSuccessAt: z.string().datetime().optional(),
+  // lastPushSuccessAt REMOVED v4.4 fold per MEDIUM-R3.3 + MINOR-R4.2 — moved to .daemon-state.yaml; not in MissionConfigSchema. Engine merges from .daemon-state.yaml at MissionState read-time.
 }).superRefine((config, ctx) => {
   // F-V4.2 conditional-validation: coordinationRemote required IFF participants[] contains a reader
   const hasReader = config.participants?.some(p => p.role === 'reader') ?? false;
@@ -2055,7 +2111,29 @@ const MissionConfigSchema = z.object({
 });
 ```
 
-Validation enforced UNIFORMLY at all parse-sites enumerated above (createMission / msn create / applyMission / startMission / YAML hydration / adapter parse). Parse-fail → `ConfigValidationError`. **No schema-version bump** required (additive-only; participants/coordinationRemote/lastPushSuccessAt are optional fields).
+Validation enforced UNIFORMLY at all parse-sites enumerated above (createMission / msn create / applyMission / startMission / YAML hydration / adapter parse). Parse-fail → `ConfigValidationError`. **No schema-version bump** required (additive-only; participants/coordinationRemote are optional fields; lastPushSuccessAt moved to .daemon-state.yaml per MEDIUM-R3.3 v4.4 fold).
+
+**v4.4 fold per MEDIUM-R3.2 — zod superRefine role-based state-validation (option (a) inline-flatten):**
+
+Per HIGH-R1.2 partition-spec, each principal holds own per-principal `<workspace>/config/<id>.yaml`; engine knows config's owning-principal from file-path mapping (`<workspace>/missions/<id>/...` resolves to writer's workspace if owning-OS-user matches writer-principal-resolution; reader's workspace otherwise). Engine extends `MissionConfigSchema.superRefine` with role-based state-validation:
+
+```typescript
+const MissionConfigSchema = z.object({...}).superRefine((config, ctx) => {
+  // ... existing F-V4.2 conditional + writer-count refinements
+  // v4.4 fold per MEDIUM-R3.2 — role-based state-validation
+  const owningPrincipalRole = engine.deriveOwningPrincipalRole(config-file-path);  // 'writer' | 'reader'
+  const writerStates = new Set(['created', 'configured', 'started', 'in-progress', 'completed', 'abandoned']);
+  const readerStates = new Set(['joined', 'reading', 'readonly-completed', 'leaving']);
+  if (owningPrincipalRole === 'writer' && !writerStates.has(config.mission.lifecycleState)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `writer-side config rejects reader-side lifecycle-state '${config.mission.lifecycleState}'`, path: ['mission', 'lifecycleState'] });
+  }
+  if (owningPrincipalRole === 'reader' && !readerStates.has(config.mission.lifecycleState)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `reader-side config rejects writer-side lifecycle-state '${config.mission.lifecycleState}'`, path: ['mission', 'lifecycleState'] });
+  }
+});
+```
+
+Less API surface than discriminator-union split (per M-R3.2 architect-pick rationale); operator/Hub-delivered malformed-config rejected at parse-time per existing zod discipline.
 
 ### §2.5.1 Scope-config schema (v2.0 NEW per Refinement C — multi-mission composition primitive)
 
@@ -2370,6 +2448,67 @@ Single canonical schema; no validation-bypass surface.
 
 - **`'workspace-handled'` marker semantic (v3.6 fold per MINOR-R6.2):** v3.5 had `'workspace-destroyed'` marker but `--retain` preserves workspace despite the marker name; operator inspection of `getMission(id).abandonProgress === 'workspace-destroyed'` AND seeing workspace exist on-disk caused confusion. v3.6 renamed to `'workspace-handled'` for `--retain`-aware semantic — Step 6 marker indicates step-completion regardless of destroy (default) vs preserve (`--retain`). Cross-fold rename across MissionState interface + §2.5 YAML schema example + §2.4.1 abandon-flow + §2.6.5 fold-notes; §8 historical status rows preserved unchanged for record integrity.
 
+##### §2.6.5.v4 Multi-participant daemon-watcher extensions (v4.0 NEW + v4.4 substrate-fixes; INLINE-FLATTEN of §2.10.10 anchor-prose)
+
+**v4.0 reader-daemon mode (v4.4 fold per MEDIUM-R1.2 inline-flatten):**
+
+Reader-side daemon-watcher process model is parallel to writer-side (k8s-shape uniformity per Lean 4) but runs **TWO distinct loops** (v4.4 fold per MEDIUM-R2.1 — closes chokidar conflation):
+
+**Loop A — Filesystem-watch (chokidar) — reader-variant:**
+- `chokidar.watch(<reader-workspace>, { ignored: ['.git/**', '.daemon.log', '.daemon-state.yaml', 'locks/**'] })` on the reader's per-principal workspace
+- Trigger-action: detect operator tamper of 0444 files (mtime change OR mode change). On fire → emit `MissionStateError("read-only participant; reject")` to operator-DX; rollback workspace to last-synced wip-state via Loop B fetch + checkout-index re-application (force-restore 0444 mode on all files)
+- Distinct from writer-mode trigger-action (writer fires wip-commits on debounce); reader fires rollback on tamper-detect
+
+**Loop B — Coordination-remote timer-poll:**
+- Node `setInterval(<wipCadenceMs>, ...)` — default 30s per scope-item #3 single-knob (`wip-cadence-ms`)
+- Each tick: `git fetch <coord-remote> 'refs/heads/<repo>/wip/<id>:refs/remotes/coord/<repo>/wip/<id>'` (fetches into refs-only; no working-tree write)
+- If fetched ref differs from current → apply via `git checkout-index --prefix=<reader-workspace>/missions/<id>/<repo>/ -a -f` (engine-controlled file-mode; writes files with `0444` per scope-item #2; preserves strict-enforce invariant atomically per MEDIUM-R2.2 substrate-fix — closes 0444+pull EACCES; replaces v4.0 anchor-prose `git pull --ff-only` which fails against 0444)
+- On fetched terminal-tag detection (`refs/tags/missioncraft/<id>/terminated`): fire reader-side state-transition `reading → readonly-completed` per HIGH-R2.3 cascade-mechanism; reader-daemon enters quiescent mode (no further fetches; preserves last-synced state for forensic-history)
+- On fetched config-update tag (`refs/tags/missioncraft/<id>/config-update`): re-fetch mission-config from coord-remote; apply to per-principal config-file
+- Fetch-failure: log warning to `<workspace>/missions/<id>/.daemon.log`; retry-on-next-cadence (transient network-failures recover automatically)
+
+**Reader-side dead-pid detection 7-step sequence:** parallel to writer-side per HIGH-R1.3 per-principal lockfile naming (`<workspace>/locks/missions/<id>.<principal>.lock`). Reader-CLI runs detection against reader's lockfile only; no cross-principal lockfile-read.
+
+**Reader-side spawn (7-step `joined → reading` transition):** per `msn join <id> --coord-remote <url>` — see §2.4.1.v4 fold below for full step-sequence.
+
+**v4.0 writer-side push-on-cadence-conditional (v4.4 fold per MEDIUM-R1.9 + MEDIUM-R2.4):**
+
+Writer-side daemon-watcher loop (existing v3.6 §2.6.5) extended with conditional coord-remote push **OUTSIDE the brief lock-cycle**:
+
+1. wip-cadence-tick fires: acquire mission-lock briefly; check `lastWipCommitTime`; if > `wip-cadence-ms` ago → fire `commitToRef` per §2.6.1; **release lock**
+2. **(NEW v4.0):** if `mission.participants[]` contains ≥1 reader → fire `git push <coord-remote> 'refs/heads/<repo>/wip/<id>:refs/heads/<repo>/wip/<id>'` async **outside lock-cycle** (push duration unbounded by network-latency does NOT block concurrent CLI ops on the lockfile)
+3. **(NEW v4.4 per MEDIUM-R2.4):** writer-daemon polls mission-config on every cadence-tick to detect participant-list-change (config-mtime-watch via `fs.statSync(<config-path>).mtimeMs`); preserves v3.6 LockfileState schema (no `pendingParticipantAdd` field needed; closes the IPC contradiction surfaced at HIGH-R1.3). On participant-add detection → fire immediate-push backfill (out-of-cadence push) so new reader has starting-point on first daemon-poll
+4. **Push-failure semantics**: best-effort with retry-on-next-cadence (transient network-failures recover automatically); persistent-failure → emit warning to `<workspace>/missions/<id>/.daemon.log` + update `<workspace>/missions/<id>/.daemon-state.yaml` `lastPushAttemptError` field (engine reads at query-time; merges into MissionState response). Operator-DX visibility via `msn show <id>` reporting `lastPushSuccessAt` field (per M-R3.3 `.daemon-state.yaml` mechanism below)
+5. **Durability guarantee**: if writer's OS shuts down with unpushed wip-commits, recovery on next-start re-attempts push; lock-held duration is bounded by local-write only
+
+**v4.4 fold per MEDIUM-R3.3 — `.daemon-state.yaml` mechanism (NEW separate file):**
+
+Daemon-state is persisted in NEW `<workspace>/missions/<id>/.daemon-state.yaml` (separate from mission-config to preserve atomic-write discipline per MEDIUM-11; no per-cadence config-mutation):
+
+```yaml
+# .daemon-state.yaml (engine-managed; per-principal; reset on workspace-allocation; cleared on terminal-with-no-retain)
+last-push-success-at: "2026-05-10T01:30:45Z"     # writer-daemon updates on successful coord-remote push
+last-push-attempt-at: "2026-05-10T01:30:46Z"     # writer-daemon updates on every push attempt (success OR failure)
+last-push-attempt-error: "fatal: unable to access 'https://...': SSL connect error"   # absent on success
+last-fetch-success-at: "2026-05-10T01:30:48Z"    # reader-daemon updates on successful coord-remote fetch
+last-fetch-attempt-at: "2026-05-10T01:30:49Z"
+last-fetch-attempt-error: "fatal: unable to access ..."   # absent on success
+```
+
+Engine reads `.daemon-state.yaml` at `msn show <id>` query-time + merges into `MissionState` response. Trade-off (per M-R3.3 architect-pick rationale): lost forensic-history post-terminal (file destroyed with workspace per `--retain` semantics) for lighter-weight write-discipline (no mission-config atomic-write overhead per cadence-tick). Operator-DX preserved during in-progress lifetime; post-terminal status acceptable.
+
+**v4.4 fold per MEDIUM-R2.3 — git-clone arg-syntax fix:**
+
+Reader-side spawn Step 4 (clone repos from coord-remote): substrate-mechanism corrected to:
+
+```bash
+git clone --branch '<repo-name>/wip/<id>' '<coord-remote-url>' '<reader-workspace>/missions/<id>/<repo-name>'
+```
+
+(v4.0 anchor-prose had `git clone --reference <coord-remote> <repo-name>/wip/<id>` which is wrong — `--reference` is for object-database sharing assuming both repos exist locally; the intended operation is clone-with-named-branch from coord-remote URL).
+
+Post-clone: engine sets file-mode `0444` on all working-tree files (recursive `chmod` OR via `git checkout-index --prefix` with engine-overridable mode per MEDIUM-R2.2 mechanism); `0444` strict-enforce invariant established before reader-daemon-watcher spawns.
+
 #### §2.6.6 Commit + push authentication semantics (v3.0 NEW per Round-3 Refinement #8 — clarification-fold)
 
 This section explicitly pins the **temporal + actor semantics** of identity-capture and credential-use across mission lifecycle. Closes implicit-substrate surface that prior versions left under-spec'd.
@@ -2422,6 +2561,21 @@ This section explicitly pins the **temporal + actor semantics** of identity-capt
 - Per-mission identity override (`MissionConfig.identity?: { provider, ... }`) — for missions that should attribute to a non-OS-user-default identity
 
 Strict-1.0 commits the v1 single-credential-per-mission + commit-firing-time-identity-capture model; v1.x evolution paths additive.
+
+##### §2.6.6.v4 Multi-participant auth extensions (v4.0 NEW + v4.4 substrate-fixes; INLINE-FLATTEN of §2.10.10 anchor-prose)
+
+**Coord-remote auth (v4.4 fold per HIGH-R1.1 + MEDIUM-R1.6):** Coordination-remote push/pull goes through **GitEngine plain-git wire-protocol** (per §2.1.5 PureGitRemoteProvider clause); RemoteProvider is NOT in coord-remote substrate-path.
+
+- **Cross-host coord-remote (e.g., `https://github.com/<org>/<bare>.git`):** auth via git-native HTTPS-token-helper (typically gh-cli's stored token if installed; OR `git credential.helper` config). Same auth-mechanism as `PureGitRemoteProvider` push/pull.
+- **Same-host coord-remote (`file:///path/to/bare.git`):** no auth required; filesystem-permissions only. Operator-side concern: bare repo's parent directory must be writable by writer-principal AND readable by reader-principal.
+- **Reader-principal credential-helper config:** reader's daemon does `git fetch` from coord-remote (no commit-author needed since reader doesn't author commits) BUT may need credential-helper config for HTTPS coord-remote. Operator-side concern (consistent with AI-agent-provisioning discipline above).
+
+"Single RemoteProvider per mission" v3.6 invariant PRESERVED — coord-remote isn't a RemoteProvider concern.
+
+**IdentityProvider invocation-context broadening (v4.4 fold per MEDIUM-R4.2):** v3.6 §2.6.6 invariant pinned `IdentityProvider.resolve()` to commit-firing-time only. v4.0 multi-participant broadens this to **query-time invocation** (current-principal precedence-chain Step 3 per §2.3.1 — invoked when SDK queries `MissionRepoState.role` / per-principal projection). Composability:
+- **Idempotent + side-effect-free**: v3.6 reference impl `LocalGitConfigIdentity` reads `git config user.name/email` from disk; safe at any time
+- **3rd-party `IdentityProvider` implementers SHOULD observe this invariant**: `resolve()` must remain idempotent + side-effect-free + safe to invoke at any time (commit-firing-time, query-time, future-call-sites). Implementers that perform side-effects (e.g., interactive credential prompt) violate this invariant; substrate documents the requirement
+- **Email→principal-id coercion**: substrate uses **full-email-verbatim** (per M-R4.2 architect-pick); `IdentityProvider.resolve()` returns `{name, email}`; engine uses `email` field as principal-id directly. No munging. Operator who wants short-form principal supplies via `Missioncraft` constructor or `--principal` flag (per §2.3.1 precedence-chain Steps 1-2)
 
 ### §2.7 Test surface (per Q5=b unit + integration; bounded)
 
@@ -2963,12 +3117,12 @@ Per-principal workspaces (unchanged from v4.0):
 | MEDIUM-R1.1 §2.5 schema body | ✓ INLINE-FLATTENED — see §2.5 (zod schema extensions + MissionParticipant + MissionConfig fields + lifecycle-state enum extension) |
 | MEDIUM-R1.3 §2.3.2 CLI grammar Rule N | ✓ INLINE-FLATTENED — see §2.3.2 Rule 1 verb-count update (13 → 15) + Rule 5 reserved-words colon-protection + NEW Rule 7 (Rule N) substrate-coordinate parsing + CLI table msn join/leave/coord-form rows + arg-count grammar table |
 | MEDIUM-R1.4 §2.3.1 SDK class | ✓ INLINE-FLATTENED — see §2.3.1 (workspace() signature extension + join()/leave() top-level methods + MissionMutation 3 new kinds + MissionState fields + MissionRepoState interface + MissionParticipant interface + MissionStatePhase reader-side enum extension) |
-| MEDIUM-R1.5 §2.4.1 state-restriction matrix | ⏳ PARTIALLY FLATTENED (matrix below; target-section §2.4.1 not yet inline-edited; v4.3 work-item) |
-| MEDIUM-R1.2 §2.6.5 daemon-watcher body | ⏳ ANCHORED HERE (target-section §2.6.5 not yet inline-edited; v4.3 work-item with R2.1-R2.4 substrate-mechanism fixes) |
-| MEDIUM-R1.6 §2.6.6 coord-remote auth | ⏳ ANCHORED HERE (target-section §2.6.6 not yet inline-edited; v4.3 work-item) |
-| MEDIUM-R1.7 §2.4 OperatorConfigSchema | ⏳ ANCHORED HERE (target-section §2.4 not yet inline-edited; v4.3 work-item) |
-| MEDIUM-R1.8 §2.4.1 reader-side `msn start` flow | ⏳ PARTIALLY FLATTENED (msn join/leave SDK + CLI surface inline; 7-step `joined → reading` transition + state-machine table additions remain anchored; v4.3 work-item) |
-| MEDIUM-R1.9 push-cadence error-handling | ⏳ PARTIALLY FLATTENED (lastPushSuccessAt field inline at §2.5; daemon-watcher body push-outside-lock-cycle remains anchored; v4.3 work-item) |
+| MEDIUM-R1.5 §2.4.1 state-restriction matrix | ✓ INLINE-FLATTENED v4.4 — see §2.4.1.v4 multi-participant state machine extensions sub-section (3 new mutation rows + reader-side ALL-mutation-rejected row) |
+| MEDIUM-R1.2 §2.6.5 daemon-watcher body | ✓ INLINE-FLATTENED v4.4 — see §2.6.5.v4 multi-participant daemon-watcher extensions sub-section (reader-mode 2-loop spec per MEDIUM-R2.1 + writer push-on-cadence-conditional + per-principal lockfile naming + dead-pid 7-step parallel) |
+| MEDIUM-R1.6 §2.6.6 coord-remote auth | ✓ INLINE-FLATTENED v4.4 — see §2.6.6.v4 multi-participant auth extensions sub-section (cross-host = git-native HTTPS-token-helper / SSH-key; same-host = filesystem-permissions; reader credential-helper = operator-side) |
+| MEDIUM-R1.7 §2.4 OperatorConfigSchema | ✓ INLINE-FLATTENED v4.4 — see §2.4 operator.yaml `defaults.workspace-root-by-principal` map + multi-principal-host detection note inline in OperatorConfigSchema YAML example |
+| MEDIUM-R1.8 §2.4.1 reader-side `msn start` flow | ✓ INLINE-FLATTENED v4.4 — see §2.4.1.v4 7-step `joined → reading` transition spec + state-machine cascade-mechanism (refs/tags/missioncraft/<id>/terminated detection per HIGH-R2.3); msn join/leave SDK + CLI surface inline at §2.3.1 + §2.3.2 (v4.2) |
+| MEDIUM-R1.9 push-cadence error-handling | ✓ INLINE-FLATTENED v4.4 — see §2.6.5.v4 writer-side push-on-cadence-conditional (push outside lock-cycle; best-effort retry-on-next-cadence; persistent-failure to .daemon-state.yaml `lastPushAttemptError` field) |
 
 **Per engineer's META-HIGH-R2.1 R3-prediction:** v4.2 partial-flatten + v4.3 completes-flatten + substrate-fixes (R2.1-R2.4) + HIGH-R2.2/R2.3 picks. R3 finding-count predicted to drop substantially as flatten progresses; total close envelope still 5-7 rounds per pattern empirics.
 
@@ -2980,8 +3134,10 @@ Per-principal workspaces (unchanged from v4.0):
 | **MEDIUM-R3.2** MissionStatePhase 10-value enum role-discrimination | **Pick option (a) zod superRefine role-based state-validation**: rejects writer-side config containing `'reading'` enum-value; rejects reader-side config containing `'in-progress'` enum-value. Validation requires "principal-where-this-config-lives" determination (engine knows from config-file path mapping per HIGH-R1.2 partition-spec). Less API surface than discriminator-union split (option b). v4.4 fold inline at §2.5 zod schema | §2.5 v4.4 work-item |
 | **MEDIUM-R3.3** lastPushSuccessAt write-discipline conflicts with daemon-no-config-write invariant | **Pick: persist in NEW `<workspace>/missions/<id>/.daemon-state.yaml` separate file** — keeps mission-config atomic-write discipline intact (no per-cadence config-mutation); engine reads `.daemon-state.yaml` at `msn show <id>` and merges into MissionState response. Trade: lost forensic-history post-terminal (file destroyed with workspace); operator-DX preserves visibility during in-progress lifetime. Lighter-weight than lockfile-JSON (lockfile cleared on every restart). v4.4 fold spec at §2.6.5 + §2.5 + remove from MissionConfig YAML schema | §2.5 + §2.6.5 v4.4 work-item |
 | **MEDIUM-R3.4** abandon-repo-status incidental v3.6-baseline render-gap closure | ✓ ACKNOWLEDGED in v4.3 — see §8 v4.2 status-row addendum below | §8 |
-| **MINOR-R3.1** lastPushSuccessAt lifecycle docstring at §2.3.1 | v4.4 work-item (bundled with M-R3.3 mechanism-pick fold) | §2.3.1 v4.4 |
-| **MINOR-R3.2** msn list 2-positional walk-through | v4.4 work-item (bundled with §2.3.2 fold cleanup) | §2.3.2 v4.4 |
+| **MINOR-R3.1** lastPushSuccessAt lifecycle docstring at §2.3.1 | ✓ INLINE-FLATTENED v4.4 — `MissionState.lastPushSuccessAt` is engine-derived from `<workspace>/missions/<id>/.daemon-state.yaml` (not config-persisted); merged into MissionState response at query-time per §2.6.5.v4 .daemon-state.yaml mechanism. Field-lifecycle: absent until first successful push; persists across daemon-restart (via .daemon-state.yaml file); cleared on workspace-destroy (NOT --purge-config since field never lived in mission-config) | §2.3.1 |
+| **MINOR-R3.2** msn list 2-positional walk-through | ✓ ACKNOWLEDGED v4.4 — `msn list <id> show` 2-positional case: per Rule 6 (post-dispatch arg-count validation), `msn list` accepts 0 OR 1 positional (v4.0 extension); 2nd positional `show` is extra-positional → error `"unexpected positional 'show' for 'list'; coordinate-form for repo-granularity uses colon-notation 'msn list <id>:<repo>' per Rule N"`. Walk-through edge case symmetric with `msn workspace m-foo:design repo` ambiguity case spec'd at §2.3.2 Rule N walk-through | §2.3.2 |
+| **MINOR-R4.1** M-R3.1 comment-block placement (cosmetic) | ✓ ACKNOWLEDGED v4.4 — placement-scope addressed inline via comment-block trailer "Applies to all current-principal-aware methods (get / list / workspace; future: any read-API returning per-principal projection)". Cosmetic; future v1.x can promote to dedicated §2.3.1 sub-section if SDK surface grows | §2.3.1 |
+| **MINOR-R4.2** lastPushSuccessAt v4.4 fold-correctness | ✓ INLINE-FLATTENED v4.4 — REMOVED from §2.5 YAML schema body + zod block; RETAINED on `MissionState` interface at §2.3.1 (engine merges from .daemon-state.yaml); ADDED `.daemon-state.yaml` schema spec at §2.6.5.v4. Single-source-of-truth: `<workspace>/missions/<id>/.daemon-state.yaml` | §2.5 + §2.3.1 + §2.6.5 |
 
 ---
 
@@ -3308,11 +3464,12 @@ Per parent F10 ratification (mandatory calibration #62 audit checklist in `docs/
 | **v4.2 PENDING-ROUND-3** | **2026-05-10** | **engineer round-2 audit fold (thread-513 round 3/20; 14 findings: 1 META-HIGH + 2 HIGH + 8 MEDIUM + 3 MINOR; over architect's predicted 8-12 envelope by ~17% per META-HIGH-R2.1 cascade)** | **STRUCTURAL-FLATTEN PASS per engineer's META-HIGH-R2.1 fix-recommendation. v4.2 commits inline-flatten of HIGHEST-LEVERAGE v4.1 anchored prose into target sections: §2.5 mission-config schema body (zod schema + MissionParticipant + MissionConfig fields + lifecycle-state enum extension to 10 values; HIGH-R2.3 reader-side enum + MEDIUM-R1.1 + MEDIUM-R2.5 + lastPushSuccessAt field per MEDIUM-R2.8); §2.3.2 CLI grammar (Rule 1 reserved-verbs 13→15 with msn join + msn leave; Rule 5 colon-protection; NEW Rule 7 substrate-coordinate parsing per Rule N; CLI table extends with msn join/leave rows + msn workspace/show/list coord-form rows; arg-count grammar table extended; HIGH-R2.2 + MEDIUM-R1.3 + MEDIUM-R2.7 + F-V4.5 inline); §2.3.1 SDK class (workspace() signature accepts coordinate-form; NEW join() + leave() top-level methods per HIGH-R2.2 architect-pick; MissionMutation 3 new kinds: add-participant/remove-participant/set-coordination-remote; NEW MissionParticipant + MissionRepoState interfaces; MissionState extended with participants/coordinationRemote/lastPushSuccessAt; MissionStatePhase enum extended with 4 reader-side states: joined/reading/readonly-completed/leaving; MEDIUM-R1.4 + MEDIUM-R2.6 + MINOR-R1.2 inline). §2.10.10 marked with v4.2 STRUCTURAL-FLATTEN STATUS table — flattened entries annotated; remaining anchored entries (§2.6.5 daemon-watcher body / §2.6.6 commit+push auth / §2.4 OperatorConfigSchema / §2.4.1 state-restriction matrix + reader-side 7-step / push-cadence error-handling daemon-side) flagged as v4.3 work-items per partial-flatten approach. SDK method-count: 14 (v3.0) + 2 (v4.0 join/leave) = 16. **Substrate-mechanism contradictions (HIGH-R2.2 SDK-side surface partially resolved via SDK-top-level join/leave methods; MEDIUM-R2.1 chokidar conflation / MEDIUM-R2.2 0444+pull EACCES / MEDIUM-R2.3 git-clone arg-syntax / MEDIUM-R2.4 lockfile IPC contradiction NOT yet resolved — v4.3 work-items deferred per engineer's structural-flatten-only recommendation).** Pending engineer round-3 audit on thread-513.** |
 | **v4.3 PENDING-ROUND-4** | **2026-05-10** | **engineer round-3 audit fold (thread-513 round 5/20; 6 findings: 0 META + 0 HIGH + 4 MEDIUM + 2 MINOR; within architect's predicted 3-6 envelope; META-HIGH-R2.1 CLOSED at v4.2)** | **R3 architect-picks committed: MEDIUM-R3.1 current-principal SDK context-dependency 4-step precedence chain INLINE-FLATTENED at §2.3.1 (per-call override → Missioncraft constructor → IdentityProvider.resolve email-derived → MSN_PRINCIPAL_ID env-var); MEDIUM-R3.2 picked option (a) zod superRefine role-based state-validation (less API surface than discriminator-union split; v4.4 inline at §2.5 zod schema); MEDIUM-R3.3 picked separate `<workspace>/missions/<id>/.daemon-state.yaml` for `lastPushSuccessAt` field (preserves mission-config atomic-write discipline; trade lost forensic-history post-terminal for lighter-weight write-discipline; v4.4 fold spec at §2.6.5 + §2.5 + remove from MissionConfig YAML schema); MEDIUM-R3.4 fold-provenance acknowledged inline at this status-row (v4.2 §2.5 YAML inline-flatten incidentally closes v3.5-baseline render-gap on `abandon-repo-status` field — was added to MissionState interface in v3.5 MEDIUM-R5.2 fold + §2.4.1 abandon-flow prose but never to §2.5 YAML schema example body in v3.5/v3.6; v4.2 closure improves doc-currency; provenance preserved via this addendum). MINOR-R3.1 lastPushSuccessAt lifecycle docstring at §2.3.1 + MINOR-R3.2 msn list 2-positional walk-through bundled into v4.4 work-items. v4.4 substantial work-items honestly tracked: §2.6.5 daemon-watcher body inline-flatten with substrate-mechanism fixes (R2.1 chokidar 2-loop + R2.2 0444+pull EACCES via git-fetch+checkout-index + R2.3 git-clone arg-syntax + R2.4 lockfile IPC contradiction via writer-daemon polls config on cadence-tick + M-R3.3 daemon-state.yaml mechanism + lastPushSuccessAt write-discipline); §2.6.6 commit+push auth coord-remote case; §2.4 OperatorConfigSchema multi-principal extension; §2.4.1 state-restriction matrix + reader-side 7-step `joined → reading` transition + state-machine cascade-mechanism (refs/tags/missioncraft/<id>/terminated detection); MINOR cleanup (M-R3.1/R3.2/R3.4 already inline; MINOR-R3.1/R3.2 + MINOR-R2.1/R2.2/R2.3 cleanup). Per engineer R3 §5 R4-prediction: v4.4 fold completes flatten + substrate-fixes; R4 finding-count predicted 2-4 (clean residual); v4.4 BILATERAL RATIFIED at R5 likely. Pending engineer round-4 audit on thread-513.** |
 | **v4.4 PENDING-ROUND-5 (PARTIAL — R4 architect-picks only)** | **2026-05-10** | **engineer round-4 audit fold (thread-513 round 7/20; 4 findings: 0 META + 0 HIGH + 2 MEDIUM + 2 MINOR; within architect's predicted 2-4 envelope ✓)** | **R4 architect-picks committed: MEDIUM-R4.1 ResourceMap.mission.getOpts/listOpts extended from `undefined` → `{ principal?: string }` (option (a); per-call current-principal override now type-supported); MEDIUM-R4.2 IdentityProvider.resolve email-verbatim coercion + invocation-context broadening note (full-email used as principal-id; substrate doesn't munge; v4.0 broadens IdentityProvider.resolve() invocation from commit-firing-time to query-time — composability: idempotent + side-effect-free). Both inline-flattened at §2.3.1 SDK class current-principal precedence-chain comment-block. **Substantial v4.4 bundle DEFERRED to subsequent v4.4 commit (architect-side context-budget separation; v4.4 will be 2-commit fold)**: §2.6.5 daemon-watcher body inline-flatten with substrate-mechanism fixes (R2.1 chokidar 2-loop; R2.2 0444+pull EACCES via git-fetch+checkout-index; R2.3 git-clone arg-syntax; R2.4 lockfile IPC contradiction via writer-daemon polls config on cadence-tick; M-R3.3 .daemon-state.yaml mechanism); §2.6.6 commit+push auth coord-remote case (+ M-R4.2 invocation-context broadening fold inline); §2.4 OperatorConfigSchema multi-principal extension; §2.4.1 state-restriction matrix (3 new mutation rows) + reader-side 7-step transition + state-machine cascade-mechanism; MINOR-R3.1 + MINOR-R3.2 + MINOR-R4.1 + MINOR-R4.2 cleanup; §2.10.10 STATUS table closeout to all-rows `INLINE-FLATTENED ✓`. Per engineer R4 §4 R5-prediction: substantial v4.4 fold completes the bundle; R5 finding-count predicted 0-2 (ratify-clean target); v4.x BILATERAL RATIFIED at R5 OR R6 per pattern empirics. Pending engineer round-5 audit on thread-513.** |
-| v4.x BILATERAL RATIFIED (planned) | TBD (predicted v4.x BILATERAL RATIFIED at R5 OR R6 per engineer R4 prediction; tracks original 5-7 round close envelope) | engineer round-N converge-close on thread-513 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger (re-trigger on v4.x close; v3.6 trigger preserved as implementation-target until v4.x close) |
+| **v4.4 PENDING-ROUND-6 (SUBSTANTIAL)** | **2026-05-10** | **architect-side substantial v4.4 fold completion (post engineer R5 picks-correctness clean-pass; 0 findings); 2-commit v4.4 pattern complete** | **SUBSTANTIAL v4.4 fold INLINE-FLATTENS all remaining anchored entries from §2.10.10 STATUS table into target sections: NEW §2.6.5.v4 multi-participant daemon-watcher extensions sub-section (reader-mode 2-loop spec per MEDIUM-R2.1 chokidar fs-watch Loop A + Node setInterval timer-poll Loop B; writer push-on-cadence-conditional outside lock-cycle per MEDIUM-R1.9; writer-daemon polls config on cadence-tick to detect participant-list-change per MEDIUM-R2.4; .daemon-state.yaml mechanism per MEDIUM-R3.3; git-clone --branch arg-syntax fix per MEDIUM-R2.3; git fetch + checkout-index --prefix mechanism per MEDIUM-R2.2 closing 0444+pull EACCES; per-principal lockfile naming per HIGH-R1.3 preserved); NEW §2.6.6.v4 multi-participant auth extensions sub-section (cross-host = git-native HTTPS-token-helper / SSH-key per HIGH-R1.1 substrate-path correction; same-host = filesystem-permissions; reader credential-helper = operator-side; IdentityProvider invocation-context broadening from commit-firing-time to query-time per MEDIUM-R4.2 + idempotent-side-effect-free invariant; full-email-verbatim coercion); §2.4 OperatorConfigSchema extended with `defaults.workspace-root-by-principal` map + multi-principal-host detection note per MEDIUM-R1.7; NEW §2.4.1.v4 multi-participant state machine extensions sub-section (7-step `joined → reading` transition spec per MEDIUM-R1.8; state-machine cascade-mechanism via refs/tags/missioncraft/<id>/terminated per HIGH-R2.3; per-field state-restriction matrix extension with 3 new mutation rows per MEDIUM-R1.5 + reader-side ALL-mutations-rejected); §2.5 lastPushSuccessAt YAML field REMOVED per MINOR-R4.2 (lives in .daemon-state.yaml; field RETAINED on MissionState interface engine-derived); §2.5 NEW zod superRefine role-based state-validation block per MEDIUM-R3.2 (rejects writer-side enum-values in reader-side config + vice versa); §2.10.10 STATUS table closeout — ALL ENTRIES marked `INLINE-FLATTENED ✓` (META-HIGH-R2.1 fold-discipline regression FULLY CLOSED); MINOR-R3.1/R3.2/R4.1 dispositions inline-acknowledged in STATUS table. Substantial-bundle complete; no v4.5 work-items deferred. Per engineer R4 §4 R5-prediction + R5 §1 close-projection: predicted close v4.4 BILATERAL RATIFIED at R6 OR R7 per pattern empirics; R6 finding-count predicted 0-2 (load-bearing fold lands clean OR small-residual fold cycle). Pending engineer round-6 audit on thread-513.** |
+| v4.x BILATERAL RATIFIED (planned) | TBD (predicted v4.4 BILATERAL RATIFIED at R6 OR R7 per pattern empirics; tracks original 5-7 round close envelope) | engineer round-N converge-close on thread-513 + architect label-flip + bilateral-commit close | architect-side commit pin + Phase 5 Manifest entry trigger (re-trigger on v4.x close; v3.6 trigger preserved as implementation-target until v4.x close) |
 
 **Phase 4 dispatch destination (v1.1 cycle):** greg / engineer; new thread (TBD; thread-510 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 6-9 rounds close per thread-509 pattern empirics for substantive reshapes.
 
-**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; v2.5 BILATERAL RATIFIED → `5984334` (preserved as historical artifact); v3.0 PENDING-BILATERAL initial draft → `d534f4e` (6 Round-3 refinements); v3.0 Refinement #7 fold → `3652f65` (SDK API consolidation); v3.0 Refinement #8 fold → `afc56e4`; v3.1 PENDING-ROUND-2 → `b23ded3`; v3.2 PENDING-ROUND-3 → `aa75be4`; v3.3 PENDING-ROUND-4 → `269f226`; v3.4 PENDING-ROUND-5 → `3a2f7df`; v3.5 PENDING-ROUND-6 → `fa2f6b4`; v3.6 PENDING-ROUND-7 → `12408b8`; v3.6 BILATERAL RATIFIED → `e581a21` (architect-side label-flip post engineer round-7 ratify-clean on thread-512; on `agent-lily/m-missioncraft-v3-design` branch); v4.0 PENDING-BILATERAL → `59c7489` (12 scope items rolled up from idea-265 multi-participant Concept; on `agent-lily/m-missioncraft-v4-design` branch off v3.6 RATIFIED); v4.1 PENDING-ROUND-2 → `77bac38` (engineer round-1 fold; 18 findings dispositioned); v4.2 PENDING-ROUND-3 → `fdcf498` (engineer round-2 fold; META-HIGH-R2.1 structural-flatten of HIGHEST-LEVERAGE entries: §2.5 / §2.3.2 / §2.3.1; partial-flatten with v4.3 work-items honestly tracked); v4.3 PENDING-ROUND-4 → `97b9014` (engineer round-3 fold; M-R3.1 inline + M-R3.2/R3.3 architect-picks committed for v4.4 inline + M-R3.4 fold-provenance acknowledged); **v4.4 PENDING-ROUND-5 (PARTIAL) → THIS COMMIT** (engineer round-4 fold; R4 architect-picks committed: M-R4.1 ResourceMap.mission.getOpts/listOpts extension + M-R4.2 IdentityProvider.resolve email-verbatim + invocation-context broadening; substantial v4.4 bundle DEFERRED to subsequent v4.4 commit). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
+**Architect-side commit pins:** v0.1 → `e064f56`; v0.2 → `4d585ad`; v0.3 → `4768ff8`; v0.4 → `f5946b5`; v0.5 → `8cd9afe`; v0.6 → `4ebbc69`; v0.7 → `8bcc789`; v1.0 BILATERAL RATIFIED → `7fb1643` (on `agent-lily/m-branchcraft-v1-survey` branch; historical artifact under former M-Branchcraft-V1 name); v1.1 PENDING-BILATERAL → `aa35be2` (on `agent-lily/m-missioncraft-v1-design` branch); v1.2 → `b27b579`; v1.3 → `5b43351`; v1.4 → `22f1778`; v1.5 → `8663f9e`; v1.6 → `dc24188`; v1.7 → `169b9cf`; v1.8 PENDING-ROUND-8 → `f48ee99`; v1.8 BILATERAL RATIFIED → `226aa46` (on `agent-lily/m-missioncraft-v1-design` branch; preserved as historical artifact); v2.0 PENDING-BILATERAL → `7edd81a` (on `agent-lily/m-missioncraft-v2-design` branch); v2.1 PENDING-ROUND-2 → `94644bc`; v2.2 PENDING-ROUND-3 → `746f011`; v2.3 PENDING-ROUND-4 → `9bb6488`; v2.4 PENDING-ROUND-5 → `fa39830`; v2.5 PENDING-ROUND-6 → `77df359`; v2.5 BILATERAL RATIFIED → `5984334` (preserved as historical artifact); v3.0 PENDING-BILATERAL initial draft → `d534f4e` (6 Round-3 refinements); v3.0 Refinement #7 fold → `3652f65` (SDK API consolidation); v3.0 Refinement #8 fold → `afc56e4`; v3.1 PENDING-ROUND-2 → `b23ded3`; v3.2 PENDING-ROUND-3 → `aa75be4`; v3.3 PENDING-ROUND-4 → `269f226`; v3.4 PENDING-ROUND-5 → `3a2f7df`; v3.5 PENDING-ROUND-6 → `fa2f6b4`; v3.6 PENDING-ROUND-7 → `12408b8`; v3.6 BILATERAL RATIFIED → `e581a21` (architect-side label-flip post engineer round-7 ratify-clean on thread-512; on `agent-lily/m-missioncraft-v3-design` branch); v4.0 PENDING-BILATERAL → `59c7489` (12 scope items rolled up from idea-265 multi-participant Concept; on `agent-lily/m-missioncraft-v4-design` branch off v3.6 RATIFIED); v4.1 PENDING-ROUND-2 → `77bac38` (engineer round-1 fold; 18 findings dispositioned); v4.2 PENDING-ROUND-3 → `fdcf498` (engineer round-2 fold; META-HIGH-R2.1 structural-flatten of HIGHEST-LEVERAGE entries: §2.5 / §2.3.2 / §2.3.1; partial-flatten with v4.3 work-items honestly tracked); v4.3 PENDING-ROUND-4 → `97b9014` (engineer round-3 fold; M-R3.1 inline + M-R3.2/R3.3 architect-picks committed for v4.4 inline + M-R3.4 fold-provenance acknowledged); v4.4 PENDING-ROUND-5 (PARTIAL) → `efa18fd` (engineer round-4 fold; R4 architect-picks committed: M-R4.1 ResourceMap.mission.getOpts/listOpts extension + M-R4.2 IdentityProvider.resolve email-verbatim + invocation-context broadening); **v4.4 PENDING-ROUND-6 (SUBSTANTIAL) → THIS COMMIT** (substantial-bundle commit complete; full structural-flatten of all remaining anchored entries; META-HIGH-R2.1 fully closed; §2.10.10 STATUS table all-rows INLINE-FLATTENED ✓). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
 **Phase 4 dispatch destination (v3.0 cycle):** greg / engineer; new thread (TBD; thread-512 candidate); **maxRounds=20** per Director directive for substantive architectural reshapes; semanticIntent=seek_rigorous_critique. Realistic 5-8 rounds close per pattern empirics — **substantive substrate-shift envelope** (filesystem-watch model + complete-as-publish-flow are NEW substrate; comparable to v1.1 reshape's substrate-introduction surface; expect higher round-1 catch-rate ~15-20). Per `feedback_narrative_artifact_convergence_discipline.md` atomic edit→commit→push→dispatch pattern.
 
