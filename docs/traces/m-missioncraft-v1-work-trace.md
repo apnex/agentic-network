@@ -24,8 +24,9 @@
 | W5b slice (i) | CLOSED 2026-05-10 19:08 AEST | join/leave runtime + 7-step joined→reading transition (`e5863b9`; +12 tests; 178 → 190) |
 | W5b slice (ii) | CLOSED 2026-05-10 19:28 AEST | Writer-side push-flow + refs (items #2+#3+#4); 3 commits `b563990`/`c28264d`/`d3d896d`; +15 tests; 190 → 205 |
 | W5b slice (iii) | CLOSED 2026-05-10 19:33 AEST | W5b-internal integration tests + closing audit; 1 commit `86e6de8`; +5 tests; 205 → 210 |
-| W5c | pending | HTTP-server fixture + real-engine clone integration |
-| W6 | pending | Test surface + closing wave + npm publish v1.0.0 |
+| **W5b WAVE-CLOSE** | **CONVERGED 2026-05-10 19:39 AEST** | **Bilateral converge thread-524 round 8; cascade-actions committed (engineer close_no_action + architect create_task spawning W5c)** |
+| W5c | pending (cascade-spawned `task-400`) | Reader-daemon Loop B + substrate-coordinate + HTTP-server fixture + W5 closing; estimated 4-6 commits |
+| W6 | pending (Director consult) | Test surface + closing wave + npm publish v1.0.0 |
 
 ---
 
@@ -282,3 +283,26 @@ Surfacing for architect SHA-review reply at slice (iii) sign-off + W5c issuance:
 ### Slice (iii) milestone — surface to architect on thread-524
 
 `86e6de8`: 1 file changed, 194 insertions. Slice (iii) CLOSED. W5b cumulative: 4 commits, +32 tests, substrate-currency clean. Convergence-readiness signaled — ready for bilateral converge with `close_no_action` cascade-action upon architect SHA-review sign-off.
+
+### Slice (iii) ratification + W5b wave-close bilateral-converge (2026-05-10 19:39 AEST thread-524 round 7+8)
+
+**Thread-524 status: CONVERGED at round 8.** Architect signed off slice (iii) with all 5 integration tests + audit signals accepted; bilateral-converge handshake completed with cascade actions committed:
+
+| Action | Type | Proposer | Outcome |
+|---|---|---|---|
+| action-1 | `create_task` | architect | Spawns W5c task (mission-77 correlation; final W5 sub-wave; reader-daemon Loop B + substrate-coordinate + HTTP-server fixture + W5 closing) |
+| action-2 | `close_no_action` | engineer | W5b wave-close per thread-524 bilateral-ratify |
+
+**Architect flagged W5b as HISTORIC** — first wave-close this session shipped without drift-catch + spot-fix cycle (W4.3 `adf7ba1` + W4.4 `670b6c5` were corrective precedents; W5a/W5b honored substrate-currency discipline from line-1).
+
+**All 4 W5c entry-prep architecture-questions disposed at thread-524 round 7**:
+- **Q1 HTTP-server fixture**: `node-git-server` ✓ (pure-Node simplicity; engineer-lean accepted)
+- **Q2 Loop B initial-design**: 5s default cadence (configurable via `mission.stateDurability.coordPollMs` 1s-300s bounds) + dedicated `missions/<id>/.coord-mirror/` cached git-dir + 3 ref-detection paths via revparse pre/post fetch + cascade-state writes via `_engineMutate(... sourceLabel: 'cascade-terminated' / 'cascade-config-update')`
+- **Q3 process model**: mode-dispatched single entry-point ✓ (extends `watcher-entry.ts` with per-principal role derivation via W5a `deriveOwningPrincipalRole` at boot)
+- **Q4 `applyReaderRefUpdate(workspace, ref)`**: 5-step sentinel-guarded chmod-discipline ✓ (helper-name confirmed; symmetric to W4.4 slice (iii) `7fb8271`)
+
+### W5c standby
+
+W5c coordination thread will open against the cascade-spawned W5c task. Engineer-side standby for new thread notification per Pattern A discipline (engineer-turn held silently; START SIGNAL ack subsumed into milestone-surface per ratified `feedback_pattern_a_engineer_turn_discipline.md`).
+
+W6 (npm publish v1.0.0 + comprehensive test surface) issuance pending Director consult per established sub-wave authorization pattern.
