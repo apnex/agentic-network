@@ -25,8 +25,11 @@
 | W5b slice (ii) | CLOSED 2026-05-10 19:28 AEST | Writer-side push-flow + refs (items #2+#3+#4); 3 commits `b563990`/`c28264d`/`d3d896d`; +15 tests; 190 → 205 |
 | W5b slice (iii) | CLOSED 2026-05-10 19:33 AEST | W5b-internal integration tests + closing audit; 1 commit `86e6de8`; +5 tests; 205 → 210 |
 | **W5b WAVE-CLOSE** | **CONVERGED 2026-05-10 19:39 AEST** | **Bilateral converge thread-524 round 8; cascade-actions committed (engineer close_no_action + architect create_task spawning W5c)** |
-| W5c | pending (cascade-spawned `task-400`) | Reader-daemon Loop B + substrate-coordinate + HTTP-server fixture + W5 closing; estimated 4-6 commits |
-| W6 | pending (Director consult) | Test surface + closing wave + npm publish v1.0.0 |
+| W5c slice (i) | CLOSED 2026-05-10 19:51 AEST | Reader-daemon mode-dispatch + Loop B + 3 ref-detection paths (`6c9151a`; +11 tests; 210 → 221) |
+| W5c slice (ii) | CLOSED 2026-05-10 19:58 AEST | HTTP-server fixture + substrate-coordinate addressing (`6ea15ea`; +15 tests; 221 → 236) |
+| W5c slice (iii) | CLOSED 2026-05-10 20:03 AEST | Real-engine integration tests + W5 closing audit (`7a5fb52`; +4 tests; 236 → 240; 4 of 6 scenarios end-to-end; 2 deferred to W6) |
+| **W5c WAVE-CLOSE** | **CONVERGING 2026-05-10 20:03 AEST** | engineer-staged close_no_action; awaiting architect bilateral-ratify reciprocation |
+| W6 | pending (Director consult) | Test surface + closing wave + npm publish v1.0.0; carries 5 W4.4-deferred + W5b/W5c-deferred (incl. 2 deferred slice-(iii) scenarios: sync-deletion-handling + real-engine join/leave) |
 
 ---
 
@@ -306,3 +309,71 @@ Surfacing for architect SHA-review reply at slice (iii) sign-off + W5c issuance:
 W5c coordination thread will open against the cascade-spawned W5c task. Engineer-side standby for new thread notification per Pattern A discipline (engineer-turn held silently; START SIGNAL ack subsumed into milestone-surface per ratified `feedback_pattern_a_engineer_turn_discipline.md`).
 
 W6 (npm publish v1.0.0 + comprehensive test surface) issuance pending Director consult per established sub-wave authorization pattern.
+
+---
+
+## Session log — W5c (2026-05-10 19:42-20:03 AEST)
+
+### Thread-525 dispatch + 3-slice plan ratify (rounds 1-3)
+
+Architect dispatched W5c at thread-525 round 1 with all 4 architecture-question dispositions baked in (Q1 node-git-server / Q2 5s cadence + .coord-mirror + 3 ref-detection / Q3 mode-dispatched single entry-point / Q4 5-step applyReaderRefUpdate).
+
+Round-2 engineer reply with 3-slice plan + START SIGNAL subsumed (parallels W5b 3-slice cadence; deliverables #1+#2+#3 / #4+#5 / #6+#7).
+
+Round-3 architect ratify with **light turn-discipline drift-note**: round-2 plan-only consumed engineer-turn → potential turn-lockup at slice (i) commit-time. Refinement: **subsume sub-slice plan AND START SIGNAL AND first-milestone surface into ONE message**. Engineer-side memory `feedback_pattern_a_engineer_turn_discipline.md` updated with refinement (round-3 architect-ratify is first round to unblock engineer-turn for slice (i) milestone-surface; going forward combine plan + milestone).
+
+### Slice (i) — `6c9151a` reader-daemon mode-dispatch + Loop B + ref-detection (deliverables #1+#2+#3)
+
+- New module `core/coord-mirror.ts`: per-mission cached git-dir at `<workspaceRoot>/missions/<missionId>/.coord-mirror/` (symmetric to W5b `.config-mirror/`); `ensureCoordMirrorInit` idempotent + URL-change reconfig; `fetchCoordRemote` via native `git fetch --tags --prune` (Node child_process; isomorphic-git API doesn't expose --tags fetch — surfaced as v4.10 PATCH item #10 candidate); `revparseMirrorRef` + `showMirrorRefFile` for pre/post-fetch comparison + config-blob read; ref-naming canonicals.
+- `applyReaderRefUpdate(workspace, coordMirrorGitDir, ref)` 5-step sentinel-guarded helper; sentinel placed at PARENT dir (mission-level, OUTSIDE chmod-down scope) — engineer-discretion-fold avoids 0555 EACCES race; surfaced as v4.10 PATCH item #11.
+- SDK cascade methods: `cascadeTerminated` (lifecycle 'reading'→'readonly-completed' via `_engineMutate(role: 'reader', sourceLabel: ...)`); `cascadeConfigUpdate` (re-applies mission-config from mirror YAML; **preserves reader's local lifecycleState**); `readerLoopBTick(missionId, principal)` orchestration (5-step ensureMirror → pre-revparse → fetch → post-revparse → 3-path cascade dispatch).
+- Daemon-watcher mode-dispatch (`watcher-entry.ts`): 3rd argv `<principal>` triggers reader-mode boot with Loop B `setInterval(coordPollMs)`; writer-mode default unchanged.
+- Operator-config schema: `mission.stateDurability.coordPollMs` (1000-300_000ms; default 5000ms).
+- Tests +11 (210 → 221): coord-mirror helpers + applyReaderRefUpdate + cascadeTerminated + cascadeConfigUpdate.
+
+### Round-5 architect SHA review — slice (i) sign-off
+
+Architect ratified slice (i) sign-off with both engineer-surfaced v4.10 PATCH candidates ACCEPTED:
+- **Item #10**: native git fetch shell-out — substantive substrate-reality finding parallel to W4.3 slice (iv) isomorphic-git HTTP-only finding
+- **Item #11**: sentinel-at-parent-dir — clean architectural improvement; Design §2.6.5 v3.0 prose-extension required
+
+v4.10 PATCH bundle now at **11 deferred items** (final count for W5).
+
+### Slice (ii) — `6ea15ea` HTTP-server fixture + substrate-coordinate addressing (deliverables #4+#5)
+
+- `node-git-server@1.0.0` pinned to devDependencies (pure-Node MIT; CommonJS API stable).
+- New module `core/coordinate.ts`: `parseSubstrateCoordinate` SDK-level Rule N parser — mirrors CLI's `parseCoordinate` (sovereign-module separation preserved per W3 Refinement #4; ~15-line duplication acceptable trade vs SDK→CLI dep).
+- `Missioncraft.workspace(idOrCoordinate, repoName?)` runtime-resolution: coord-form parsed first; plain-id with auto-pick (single-repo) / explicit repoName (multi-repo) / ConfigValidationError.
+- New `test/fixtures/git-http-fixture.ts`: `createGitHttpFixture(repoBaseDir, { autoCreate? })` wraps node-git-server's `Git` class; port 0 OS-assigned; `{ url, repoBaseDir, close }` per-test isolation.
+- Tests +15 (221 → 236): parseSubstrateCoordinate (4 input shapes + whitespace) + Missioncraft.workspace (8 cases) + fixture smoke-tests (port-binding + clone-then-push roundtrip via real git CLI). Defensive fix: `git symbolic-ref HEAD refs/heads/main` for git 2.25.x compat.
+
+### Round-7 architect SHA review — slice (ii) sign-off + slice (iii) plan-confirmation ratified
+
+Architect ratified slice (ii) sign-off + slice (iii) plan in single combined-surface per refined turn-discipline. Convergence handshake on standby.
+
+### Slice (iii) — `7a5fb52` real-engine integration tests + W5 closing audit (deliverables #6+#7)
+
+- 4 of 6 architect-listed scenarios landed end-to-end via `createGitHttpFixture`:
+  1. Real-engine push roundtrip (pushWipToCoordRemote → ls-remote shows namespaced ref)
+  2. Cascade-terminated end-to-end (writer.emitTerminatedTag → reader Loop B detects → cascadeTerminated)
+  3. Cascade-config-update end-to-end (writer.propagateConfigToCoordRemote → reader Loop B detects → cascadeConfigUpdate; reader lifecycleState preserved)
+  4. Reader-strict-enforce chmod-down (0444/0555 rejects tamper writes with EACCES)
+- 2 deferred to W6 (sync-deletion-handling + real-engine join/leave) — scenario-additive, not substrate-additive.
+- Defensive fix: regex `/lifecycle-state: \w+/` doesn't match hyphens — corrupted `in-progress` substitution; updated globally to `[\w-]+`.
+
+### W5 closing-audit signals (captured at SHA `7a5fb52`)
+
+| Signal | Result |
+|---|---|
+| `grep -r "W4.4-GRAFT" src/` | **0 hits ✓** (preserved since W4.4 close) |
+| `npm run build` | clean (tsc) |
+| `npm test` | **240/240 passing locally** |
+| W5 cumulative SHAs | **11 commits** — W5a (3): `55fe0b4` + `84687bf` + `4da7fa6`; W5b (5): `e5863b9` + `b563990` + `c28264d` + `d3d896d` + `86e6de8`; W5c (3): `6c9151a` + `6ea15ea` + `7a5fb52` |
+| W5b+W5c cumulative tests | **178 → 240 = +62 net** (W5b: +32; W5c: +30 — slice i: +11 / slice ii: +15 / slice iii: +4) |
+| Substrate-currency | **3 consecutive waves clean-shipping** (W5a + W5b + W5c); first sustained pattern this session |
+| v4.10 PATCH bundle | **11 deferred items** (final count for W5; carries to W6 architect-side prose folds) |
+| Real-engine integration | **wired end-to-end via node-git-server@1.0.0 fixture**; 4 cross-host scenarios passing locally |
+
+### Round-8 engineer convergence handshake — bilateral-ratify with engineer-staged close_no_action
+
+W5c wave-close converging at thread-525 round 8 with `converged=true` + engineer-staged `close_no_action` cascade-action; awaiting architect bilateral-ratify reciprocation. W5c → W5 wave-close. W6 issuance pending Director consult (no auto-cascade per established sub-wave pattern).
