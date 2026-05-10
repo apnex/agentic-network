@@ -417,3 +417,27 @@ W5c wave-close converging at thread-525 round 8 with `converged=true` + engineer
 - thread-529 reply at 2026-05-10 22:04 UTC: outstanding intent `decision_needed` + semanticIntent `seek_approval`; turn returned to architect for disposition on (corrected root-cause + (i) mechanism, item #16 revision, green-light to execute)
 - **Pattern A turn-discipline**: this reply is substantive root-cause refutation, NOT START SIGNAL ack — holding first-milestone commit pending architect disposition (avoids shipping fix that diverges from architect mental-model framing)
 - **Methodology surface**: textbook "architect spec-level recall vs engineer-side code-verification" event per `feedback_architect_abstraction_level.md` + `feedback_substrate_currency_audit_rubric.md`; diagnostic data was correct (5-row repro table is dispositive), spec-level mechanism-hypothesis was off by one frame (guard-eval, not import-eval); engineer-side dynamic-import test is the bisector
+
+### 2026-05-11 08:15-08:30 AEST — v1.0.1 PATCH execution + ship trail
+
+- Architect round-3 disposition (2026-05-10 22:05Z): root-cause refutation ACCEPT + item #16 revision ACCEPT + green-light for (i)-(iv) autonomous bundle; Director ran `npm deprecate @apnex/missioncraft@1.0.0` ~22:03Z
+- Ship trail — 4 commits on apnex/missioncraft main:
+
+| Slice | SHA | Description | Tests | Verification |
+|---|---|---|---|---|
+| (i) | `87bf370` | `bin.ts:341` realpath-aware `isMainModule` guard fix (fileURLToPath + realpathSync) + version bump 1.0.0 → 1.0.1 (package.json + SDK VERSION const + version.test.ts) | 258 → 258 | `/tmp` install + symlink invoke → full help output ✓ |
+| (ii) | `2721f19` | `test/missioncraft-cli/bin-shim-bootstrap.test.ts` regression test — creates sibling symlink → bin.js, spawns `node $SYMLINK_PATH --help`/`--version`, asserts stdout matches help-text + version regex; 3 tests | 258 → 261 | suite passing locally |
+| (iii) | `23a2336` | Closing-audit `docs/audits/m-missioncraft-v1-closing-audit.md` §9 v1.0.1 patch trail (67 lines) + v4.10 PATCH item #16 revised to narrower main-module-guard mechanism statement | — | — |
+| (iv') | `5d4b8fd` | Lockfile @emnapi top-level entries restored (replay slice vii 0c87290 approach) — release.yml `npm ci` strict-validate spot-fix | — | `rm -rf node_modules && npm ci` clean |
+
+- release.yml run 25641318076 (first v1.0.1 tag) FAILED at `npm ci` step: "Missing: @emnapi/core@1.10.0 from lock file / Missing: @emnapi/runtime@1.10.0 from lock file"
+- Root cause: local `npm install` during slice (i) version-bump regenerated lockfile WITHOUT top-level `node_modules/@emnapi/core` + `node_modules/@emnapi/runtime` entries (local-arch optional-peer-dep skip — Linux fc31 arch detects them as not-required); CI runner's strict `npm ci` requires them because inline `dependencies:` blocks reference them
+- Same defect class as v1.0.0 slice (vii) commit `0c87290`; slice (iv') replays the fix approach
+- v1.0.1 tag force-updated 23a2336 → 5d4b8fd (acceptable per slice vii carry-forward — npm publish never landed on first attempt; tag was in transit-state)
+- release.yml run 25641504139 (v1.0.1 tag re-pushed): ✓ Install → ✓ tsc-build → ✓ vitest → **✓ npm publish (OIDC-signed provenance)** → ✓ Generate TypeDoc → ✗ Setup Pages (trailing item #15 non-blocking; same as v1.0.0)
+- **`@apnex/missioncraft@1.0.1` PUBLISHED** at shasum `8f2acb69cd8c0e229fb4d8e2de93da36b6505833`; .unpackedSize 640.8 kB; OIDC-signed provenance attestation landed
+- **Operator-UX end-to-end verified**: clean `/tmp` dir + `npm install @apnex/missioncraft@1.0.1` + `./node_modules/.bin/msn --help` → "missioncraft 1.0.1 — sovereign mission-orchestration substrate" + full Usage block + exit 0; silent-failure defeated ✓
+- thread-529 round 4 closing-bundle: `converged=true` + stagedActions `close_no_action` + non-empty summary narrating ship outcome; awaiting architect bilateral-ratify
+- **v4.10 PATCH item #2 evolution** (recurring substrate-defect): lockfile-generation pre-tag-push verification step now has TWO instances (v1.0.0 + v1.0.1); design-prose §2.9.1 should mandate `rm -rf node_modules && npm ci` (strict-validate dry-run) as release-prep checklist gate
+- **Memory-capture candidates** surfaced to architect: `feedback_dynamic_import_bisector_for_silent_failure.md` + `feedback_isMainModule_guard_symlink_safety.md` + `feedback_lockfile_optional_peer_dep_ci_strict_validate.md`
+- **Director-request unblocked**: `docs/scenarios/01-readonly-single-repo.md` engineer-side draft (untracked) — v1.0.1 ship unblocks operator-UX scenario-test capture; scope-disposition (α direct-commit / β Director-defer / γ separate-repo) surfaced to architect, not blocking thread-529 convergence
