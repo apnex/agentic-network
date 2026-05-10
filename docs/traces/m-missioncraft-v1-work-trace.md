@@ -28,8 +28,15 @@
 | W5c slice (i) | CLOSED 2026-05-10 19:51 AEST | Reader-daemon mode-dispatch + Loop B + 3 ref-detection paths (`6c9151a`; +11 tests; 210 → 221) |
 | W5c slice (ii) | CLOSED 2026-05-10 19:58 AEST | HTTP-server fixture + substrate-coordinate addressing (`6ea15ea`; +15 tests; 221 → 236) |
 | W5c slice (iii) | CLOSED 2026-05-10 20:03 AEST | Real-engine integration tests + W5 closing audit (`7a5fb52`; +4 tests; 236 → 240; 4 of 6 scenarios end-to-end; 2 deferred to W6) |
-| **W5c WAVE-CLOSE** | **CONVERGING 2026-05-10 20:03 AEST** | engineer-staged close_no_action; awaiting architect bilateral-ratify reciprocation |
-| W6 | pending (Director consult) | Test surface + closing wave + npm publish v1.0.0; carries 5 W4.4-deferred + W5b/W5c-deferred (incl. 2 deferred slice-(iii) scenarios: sync-deletion-handling + real-engine join/leave) |
+| **W5c WAVE-CLOSE** | **CONVERGED 2026-05-10 20:03 AEST** | engineer-staged close_no_action + architect-staged W5c→W6 cascade |
+| W6 slice (i) | CLOSED 2026-05-10 20:12 AEST | Real-engine start() happy-path (`d07c44d`; +2 tests; 240 → 242); 4 W4.4-deferred carry-overs dispositioned as Q5=b boundary doc-markers + slice (iii) fold |
+| W6 slice (ii) | CLOSED 2026-05-10 20:18 AEST | Step 5 join() impl-extension + sync-deletion-handling + real-engine join/leave + storage.list hidden-dir filter (`781dc0d`; +3 tests; 242 → 245) |
+| W6 slice (iii)+(iv) bundled | CLOSED 2026-05-10 20:24 AEST | Network-partition resilience + mission-class signature audit-pass coverage map + closing audit doc + npm publish-prep + Director pre-publish artifact (`b306c6d`; +2 tests; 245 → 247) |
+| **W6 WAVE-CLOSE** | **CONVERGING 2026-05-10 20:24 AEST** | engineer-staged close_no_action; awaiting architect bilateral-ratify; engineer-side publish-ready at `b306c6d` |
+| **MISSION-77 SUBSTRATE-IMPL ARC** | **COMPLETE** | 4 consecutive waves (W5a + W5b + W5c + W6) substrate-currency-clean; 162 baseline → 247 = +85 net tests; ~38 commits W0→W6; v4.10 PATCH bundle FINAL = 12 items |
+| Director-direct npm publish | pending | Director executes `git tag v1.0.0` + `git push origin v1.0.0` + `npm publish --access public` from their machine per Q1 (γ) ratification |
+| Phase 9 (Audit) | LANDED | `docs/audits/m-missioncraft-v1-closing-audit.md` at `b306c6d` |
+| Phase 10 (Retrospective) | pending | mission-77.status advance to `completed` on Hub side post-Director-publish |
 
 ---
 
