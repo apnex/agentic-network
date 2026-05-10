@@ -22,7 +22,7 @@
 | W4.4 | CLOSED | Daemon-Watcher + State Durability (6 commits; +24 tests; 5 W4.4-GRAFT graft) |
 | W5a | CLOSED | Multi-participant primitives — principal-resolution + role-derivation + canonicalization + join/leave input-validation (3 commits + Q2 substrate-confirmation) |
 | W5b slice (i) | CLOSED 2026-05-10 19:08 AEST | join/leave runtime + 7-step joined→reading transition (`e5863b9`; +12 tests; 178 → 190) |
-| W5b slice (ii) | pending | Writer-side push-flow + refs (items #2+#3+#4) |
+| W5b slice (ii) | CLOSED 2026-05-10 19:28 AEST | Writer-side push-flow + refs (items #2+#3+#4); 3 commits `b563990`/`c28264d`/`d3d896d`; +15 tests; 190 → 205 |
 | W5b slice (iii) | pending | Closing audit + W5b-internal integration tests + cumulative SHA surface |
 | W5c | pending | HTTP-server fixture + real-engine clone integration |
 | W6 | pending | Test surface + closing wave + npm publish v1.0.0 |
@@ -169,3 +169,60 @@ Cold-context loaded fresh from `apnex/missioncraft:main` HEAD `4da7fa6` + git lo
 ### Slice (i) milestone — surface to architect on thread-524
 
 `e5863b9`: 4 files changed, 388 insertions, 32 deletions. Slice (i) CLOSED. Standby for architect ratification + slice (ii) authorization (writer-side push-flow + refs; items #2+#3+#4).
+
+### Slice (i) ratification + slice (ii) clearance (2026-05-10 19:13 AEST architect SHA-review on thread-524 round 3)
+
+Architect-side post-merge SHA review per Pattern A discipline: slice (i) sign-off "HISTORIC: substrate-currency clean start-to-finish" — first wave this session shipped without drift-catch + spot-fix cycle (precedents: W4.3 spot-fix `adf7ba1` + W4.4 spot-fix `670b6c5`). Slice (i) `'auto'` role mode in `parseMissionConfig` ratified as substantive design improvement — added to v4.10 PATCH bundle as item #8 (Design v4.9 §2.5.1 zod superRefine schema-factory prose-extension for cross-partition transition semantic).
+
+Architect-side note re milestone-surface delta: framed as "session went online_idle post-commit before surfacing"; ROOT CAUSE was turn-state lockup (engineer-turn consumed at thread-524 round 2 by START SIGNAL ack-only; architect-turn pending until SHA review at round 3). Captured as memory `feedback_pattern_a_engineer_turn_discipline.md` — distinct from `feedback_bilateral_audit_round_budget_discipline.md` (audit-thread budget) but shares "skip ack-only" pattern. Going forward: hold engineer-turn for milestone surface.
+
+Slice (ii) cleared: writer-side push-flow + refs (items #2+#3+#4); estimated 2-3 commits.
+
+---
+
+## Session log — W5b slice (ii) (2026-05-10 19:20-19:28 AEST)
+
+### Slice (ii) commit 1 — writer-side push-on-cadence-conditional (`b563990`)
+
+**Item #2 implementation** — daemon-watcher pushes wip-branch to coord-remote per-repo refspec after debounce-cycle wip-commit:
+
+- **GitEngine.PushOptions extension** (`pluggables/git-engine.ts` + `defaults/isomorphic-git-engine.ts`): adds `url?` (direct URL push) + `remoteRef?` (destination ref for refspec push when source !== destination).
+- **SDK helper `pushWipToCoordRemote(missionId)`**: conditional gating (no-op IF coordinationRemote unset OR no reader participants); per-repo refspec push `refs/heads/wip/<id>` → `refs/heads/<repoName>/wip/<id>` per MEDIUM-R6.1; reuses extended `pushWithRetry` (string-arg form preserved for backwards-compat).
+- **`.daemon-state.yaml` mechanism** (`core/daemon/daemon-state.ts`): per MEDIUM-R3.3 separate-file discipline (engine-derived runtime-state; NOT mission-config-persisted; preserves config atomic-write integrity); schema `{ daemonStateSchemaVersion: 1, lastPushSuccessAt?, perRepoLastPushAt? }`; `recordPushSuccess` atomic write-temp + rename.
+- **Daemon-watcher integration** (`core/daemon/watcher-entry.ts`): post wip-commit-on-debounce loop, calls `mcSdk.pushWipToCoordRemote(missionId)`; best-effort failure non-aborting.
+
+Tests: +7 (190 → 197) — conditional gating + happy-path refspec call-args via `gitEngine.push` spy + per-repo failure non-aborting + daemon-state.yaml read/write helpers.
+
+### Slice (ii) commit 2 — terminated-tag emission state-machine cascade (`c28264d`)
+
+**Item #3 implementation** — writer-side terminal-state cascade-signal:
+
+- **SDK helper `emitTerminatedTag(missionId)`**: conditional gating; per-repo lightweight tag against current HEAD (force=true for idempotent re-emit); refspec push `refs/tags/missioncraft/<id>/terminated:refs/tags/missioncraft/<id>/terminated`; best-effort per-repo failure non-aborting.
+- **complete() integration** (post Step 3 lifecycle 'completed' write; between Step 4 SIGTERM + Step 6 mission-branch cleanup).
+- **abandon() integration** (post Step 6 atomic-advance to 'abandoned'; precedes Step 7 --purge-config so coordinationRemote source-of-truth still readable).
+
+Tests: +4 (197 → 201) — conditional gating + happy-path tag + refspec push call-args via gitEngine spies.
+
+### Slice (ii) commit 3 — config-mutation propagation (`d3d896d`)
+
+**Item #4 implementation** — writer-side config-branch propagation per MINOR-R6.2 + MINOR-R6.4:
+
+- **New module `core/config-mirror.ts`**: per-mission dedicated git repo at `<workspaceRoot>/missions/<missionId>/.config-mirror/` preserves single-writer-per-mission discipline for coord-remote `refs/heads/config/<id>` (mission-scoped ref; per-repo-workspace race avoided). `commitConfigToMirror` idempotent init + copy YAML + commitToRef. Helpers: `configBranchRef`, `configUpdateTagName`, `configUpdateTagRef`, `recordPropagationTimestamp`.
+- **SDK helper `propagateConfigToCoordRemote(missionId)`**: conditional gating; 3-step (1) commit YAML to mirror's `refs/heads/config/<id>` (2) push branch to coord-remote (3) create + push `refs/tags/missioncraft/<id>/config-update` cascade-tag; best-effort failure non-aborting.
+- **`applyMissionMutation` hook**: post `_engineMutate` apply, propagation fires (best-effort).
+- **Daemon-watcher mtime-watch** (`core/daemon/watcher-entry.ts`): adds chokidar watcher on `<workspaceRoot>/config/<missionId>.yaml` with separate debounce-timer; on config mtime-change, fires propagation — catches non-participant config mutations per MINOR-R6.4. Extended SIGTERM/SIGINT handler closes config-watcher + clears its debounce timer.
+
+Tests: +4 (201 → 205) — conditional gating + happy-path 2 pushes (branch + tag) + mirror repo + sentinel verification.
+
+### Slice (ii) cumulative substrate
+
+| Aspect | Status |
+|---|---|
+| Build | clean (tsc) |
+| Tests | 205/205 passing locally |
+| Net new | +15 tests for slice (ii) (190 → 205) |
+| Substrate-currency discipline | upheld start-to-finish; state-machine writes via `_engineMutate`; ref-creation gitEngine-pure |
+| Real-engine integration | deferred to W5c HTTP-server fixture per (α); slice (ii) tests use `vi.fn()` mocks |
+| Pushed to `apnex/missioncraft:main` | HEAD `d3d896d` |
+
+Standby for slice (ii) architect SHA-review + slice (iii) authorization (closing audit + W5b-internal integration tests + cumulative SHA surface).
