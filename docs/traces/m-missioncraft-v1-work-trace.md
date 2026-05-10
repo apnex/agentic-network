@@ -389,3 +389,31 @@ Architect ratified slice (ii) sign-off + slice (iii) plan in single combined-sur
 ### Round-8 engineer convergence handshake — bilateral-ratify with engineer-staged close_no_action
 
 W5c wave-close converging at thread-525 round 8 with `converged=true` + engineer-staged `close_no_action` cascade-action; awaiting architect bilateral-ratify reciprocation. W5c → W5 wave-close. W6 issuance pending Director consult (no auto-cascade per established sub-wave pattern).
+
+---
+
+### 2026-05-11 08:00 AEST — v1.0.1 PATCH directive — CLI bin-shim silent-failure (post-ship)
+
+- thread-529 opened by architect (correlationId task-402); Director-authorized "Fix it" 2026-05-10
+- Shipped-defect surfaced during Director-initiated CLI test: `msn --help` via npm-global-install symlink exits 0 with 0 bytes stdout+stderr; library/SDK API fine
+- Architect spec-level hypothesis P1: ESM relative-imports break under symlinked-bin shebang invocation (Node 24 `--preserve-symlinks-main=false`); fix via package-exports subpath imports
+- **Engineer-side verification REFUTES P1**:
+  - Reproduced silent-failure locally via `npm install /home/apnex/taceng/missioncraft` into `/tmp/msn-repro` + `./node_modules/.bin/msn --help`
+  - Dispositive: `node -e "import('./node_modules/@apnex/missioncraft/dist/missioncraft-cli/bin.js').then(m => console.log(Object.keys(m)))"` → **prints `[ 'main' ]`** — imports DO resolve through the real-path that silent-fails when invoked via symlink shebang
+  - If P1 were correct, dynamic-import would throw `ERR_MODULE_NOT_FOUND` for `./grammar/parser.js` — it doesn't
+- **Actual root cause** at `src/missioncraft-cli/bin.ts:341` — `isMainModule` guard:
+  ```ts
+  const isMainModule = import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('/bin.js') === true;
+  ```
+  - Under symlinked-bin: `import.meta.url` resolves to realpath (Node 24 default); `process.argv[1]` retains symlink path
+  - First comparison: real ≠ symlink → false; fallback `argv[1].endsWith('/bin.js')`: argv[1] ends with `/msn` → false
+  - Result: `isMainModule = false` → `main()` never invoked → silent exit 0
+  - Consistent with all 5 architect-diagnosis repro rows including the `--preserve-symlinks-main` "fix" (that flag preserves symlink path on `import.meta.url` side, making first comparison true)
+- **Corrected fix sub-slice** (3 commits, down from 3-5):
+  - (i) `bin.ts:341` `isMainModule` realpath-aware guard (`fileURLToPath(import.meta.url) === realpathSync(process.argv[1])` with try/catch) + version bump `1.0.0 → 1.0.1` (NO package.json exports edit needed)
+  - (ii) `test/missioncraft-cli/bin-shim-bootstrap.test.ts` regression test (unchanged scope: `npm pack --dry-run` → sandbox install → spawn `msn --help` via symlink → assert stdout)
+  - (iii) Closing-audit §9 v1.0.1 patch trail + v4.10 PATCH item #16 revision request (mechanism narrowed from "import-resolution" to "main-module guard")
+  - (iv) Tag `v1.0.1` + push → release.yml fires (NPM_TOKEN Granular Access Token Bypass-2FA already configured)
+- thread-529 reply at 2026-05-10 22:04 UTC: outstanding intent `decision_needed` + semanticIntent `seek_approval`; turn returned to architect for disposition on (corrected root-cause + (i) mechanism, item #16 revision, green-light to execute)
+- **Pattern A turn-discipline**: this reply is substantive root-cause refutation, NOT START SIGNAL ack — holding first-milestone commit pending architect disposition (avoids shipping fix that diverges from architect mental-model framing)
+- **Methodology surface**: textbook "architect spec-level recall vs engineer-side code-verification" event per `feedback_architect_abstraction_level.md` + `feedback_substrate_currency_audit_rubric.md`; diagnostic data was correct (5-row repro table is dispositive), spec-level mechanism-hypothesis was off by one frame (guard-eval, not import-eval); engineer-side dynamic-import test is the bisector
