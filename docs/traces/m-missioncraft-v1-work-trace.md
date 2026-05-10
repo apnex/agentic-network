@@ -23,7 +23,7 @@
 | W5a | CLOSED | Multi-participant primitives — principal-resolution + role-derivation + canonicalization + join/leave input-validation (3 commits + Q2 substrate-confirmation) |
 | W5b slice (i) | CLOSED 2026-05-10 19:08 AEST | join/leave runtime + 7-step joined→reading transition (`e5863b9`; +12 tests; 178 → 190) |
 | W5b slice (ii) | CLOSED 2026-05-10 19:28 AEST | Writer-side push-flow + refs (items #2+#3+#4); 3 commits `b563990`/`c28264d`/`d3d896d`; +15 tests; 190 → 205 |
-| W5b slice (iii) | pending | Closing audit + W5b-internal integration tests + cumulative SHA surface |
+| W5b slice (iii) | CLOSED 2026-05-10 19:33 AEST | W5b-internal integration tests + closing audit; 1 commit `86e6de8`; +5 tests; 205 → 210 |
 | W5c | pending | HTTP-server fixture + real-engine clone integration |
 | W6 | pending | Test surface + closing wave + npm publish v1.0.0 |
 
@@ -226,3 +226,59 @@ Tests: +4 (201 → 205) — conditional gating + happy-path 2 pushes (branch + t
 | Pushed to `apnex/missioncraft:main` | HEAD `d3d896d` |
 
 Standby for slice (ii) architect SHA-review + slice (iii) authorization (closing audit + W5b-internal integration tests + cumulative SHA surface).
+
+### Slice (ii) ratification + slice (iii) clearance (2026-05-10 19:31 AEST architect SHA-review on thread-524 round 5)
+
+Architect-side post-merge SHA review: slice (ii) signed off across all 3 commits with architect-aligned ref-creation/state-machine boundary preserved. **Two waves consecutive without drift-catch + spot-fix cycle (W5a + W5b slice i + W5b slice ii); substrate-currency discipline pattern stabilized.**
+
+v4.10 PATCH bundle now at **9 deferred items** — added item #9: Design §2.4 workspace-contract should consolidate per-mission engine-internal artifacts under explicit prose (`.daemon.log` + `.daemon-state.yaml` + `.daemon-tx-active` sentinel + `.config-mirror/`).
+
+Pattern-A engineer-turn-discipline insight (memory `feedback_pattern_a_engineer_turn_discipline.md`) ratified bilaterally — both sides going forward will subsume START SIGNAL ack into milestone-surface message.
+
+Slice (iii) cleared: closing audit + W5b-internal integration tests + cumulative SHA surface. Convergence-plan: slice (iii) milestone landing → architect sign-off → bilateral-converge thread-524 with `close_no_action` cascade-action; W5c issuance happens via separate `create_task` post-W5b-convergence per established pattern.
+
+---
+
+## Session log — W5b slice (iii) (2026-05-10 19:32-19:34 AEST)
+
+### Closing-wave integration tests (`86e6de8`)
+
+New `test/missioncraft-sdk/w5b-integration.test.ts` (+5 tests; 205 → 210):
+
+1. **Full join/leave lifecycle**: writer creates mission → reader joins (configured → joined → reading) → reader leaves with `--purge-workspace` → workspace + config destroyed. Step 6 chmod-down stat-verified (mode & 0o777 === 0o444).
+2. **update<mission> set-tag triggers config-propagation** (multi-participant): verifies `applyMissionMutation` hook fires propagateConfigToCoordRemote — 1 branch-push + 1 tag-create + 1 tag-push captured via gitEngine spies.
+3. **update<mission> on solo-writer NO propagation**: verifies conditional gating per v3.6 baseline preservation (push/tag spies not called).
+4. **abandon-flow triggers terminated-tag emission**: verifies abandon() hook fires emitTerminatedTag — tag-create for `missioncraft/<id>/terminated` + refspec push to coord-remote.
+5. **pushWipToCoordRemote daemon-state telemetry roundtrip**: successful push records lastPushSuccessAt + perRepoLastPushAt with timestamp-correctness (verifies `.daemon-state.yaml` separate-file MEDIUM-R3.3 mechanism end-to-end).
+
+### Closing-audit signals
+
+| Audit signal | Result |
+|---|---|
+| `grep -r "W4.4-GRAFT" src/` | 0 hits ✓ (preserved since W4.4 close) |
+| `npm run build` | clean (tsc) |
+| `npm test` | 210/210 passing locally |
+| Cumulative W5b SHAs | 4 commits: slice i `e5863b9` + slice ii `b563990`/`c28264d`/`d3d896d` + slice iii `86e6de8` |
+| Cumulative W5b test additions | 178 → 210 = **+32 net** (slice i: +12; slice ii: +15; slice iii: +5) |
+| Substrate-currency | upheld start-to-finish across all 3 slices — state-machine writes via `_engineMutate`; ref-creation gitEngine-pure |
+| Real-engine integration | deferred to W5c HTTP-server fixture per (α); slice (i)+(ii)+(iii) tests use `vi.fn()` mocks for `gitEngine.push`/`gitEngine.tag` |
+
+### W5c entry-prep architecture-questions surface
+
+Surfacing for architect SHA-review reply at slice (iii) sign-off + W5c issuance:
+
+1. **HTTP-server fixture pick** — `node-git-server` vs `git-http-backend` (or alternative). node-git-server is pure-Node; git-http-backend shells out to git. Test-only dev-dep; minimum-viable fixture for slice (i) Step 5 clone-step + slice (ii) push verification.
+
+2. **Reader-daemon Loop B initial-design** — Loop B is `setInterval` timer-poll for `git fetch --tags <coord-remote>` with cached git-dir per spec. Open questions:
+   - Cadence (default 5s? configurable per mission?)
+   - Cached git-dir layout: per-repo `<workspace>/.git-bare/` or shared?
+   - Detection logic: ref-revparse comparison pre/post fetch to identify changed refs
+   - Cascade application: `refs/tags/missioncraft/<id>/terminated` → reader's lifecycleState 'reading' → 'readonly-completed'; `refs/heads/config/<id>` mtime → re-apply mission-config; `refs/heads/<repoName>/wip/<id>` HEAD-move → checkout into reader workspace
+
+3. **Reader-daemon process model** — reader-daemon spawns from same daemon-watcher entry-point as writer-daemon, mode-dispatched on principal-role at boot? OR separate entry-point reader-watcher.ts?
+
+4. **Reader-side workspace-mode at fetch-then-checkout** — Loop B applies updates via git-native checkout into chmod-down workspace. Per W4.2 setReaderWorkspaceWritable + setReaderWorkspaceMode pair, the daemon mtime-watch needs to chmod-up before checkout + chmod-down after. Spec mentions "function-form ignored predicate per v4.6 MEDIUM-R7.2 (.daemon-tx-active sentinel-file)" — sentinel ensures self-events from chmod/checkout don't re-trigger Loop A debounce.
+
+### Slice (iii) milestone — surface to architect on thread-524
+
+`86e6de8`: 1 file changed, 194 insertions. Slice (iii) CLOSED. W5b cumulative: 4 commits, +32 tests, substrate-currency clean. Convergence-readiness signaled — ready for bilateral converge with `close_no_action` cascade-action upon architect SHA-review sign-off.
