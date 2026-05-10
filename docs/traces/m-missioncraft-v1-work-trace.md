@@ -35,11 +35,13 @@
 | **DIRECTOR (Y) DIRECTIVE** | **2026-05-10 20:26 AEST** | "Extend W6. Proceed to publish when everything is good to go." — bundle-ops disk-failure recovery becomes W6 in-scope; substrate-completeness restored at v1.0.0 |
 | W6 slice (v) ▶ Director (Y) | CLOSED 2026-05-10 20:30 AEST | **Bundle-ops substrate-extension** (`df5b8ae`; +11 tests; 247 → 258); GitEngine.createBundle?/restoreBundle? F13-capability-gated (preserves 5-pluggable frozen API per architect (p) lean) + IsomorphicGitEngine native-git shell-out + new core/snapshot.ts module with sibling-snapshot OUT-OF-BAND-from-workspace + SDK snapshotWipBranches/restoreFromSnapshot + daemon-watcher post-wip-commit hook + end-to-end disk-failure recovery integration test |
 | W6 slice (vi) | CLOSED 2026-05-10 20:35 AEST | Closing-audit revision + npm pack --dry-run artifact refresh post bundle-ops (`7f28274`; +0 tests doc-only) |
-| **W6 WAVE-CLOSE** | **CONVERGING 2026-05-10 20:35 AEST** | retract action-1 + new action-2 close_no_action; engineer-side publish-ready at `7f28274`; awaiting architect bilateral-ratify |
-| **MISSION-77 SUBSTRATE-IMPL ARC** | **COMPLETE (3 of 3 durability-modes)** | 4 consecutive waves substrate-currency-clean; 162 baseline → 258 = +96 net tests; ~40 commits W0→W6; 3 of 3 durability-modes shipped (process-crash + network-partition + disk-failure via bundle-ops) |
-| Director-direct npm publish | pending | Director executes `git tag v1.0.0` + `git push origin v1.0.0` + `npm publish --access public` from their machine per Q1 (γ) ratification |
-| Phase 9 (Audit) | LANDED REVISED | `docs/audits/m-missioncraft-v1-closing-audit.md` at `7f28274` (post-bundle-ops revision; substrate-completeness restored; #12 evolved to design-prose-update) |
-| Phase 10 (Retrospective) | pending | mission-77.status advance to `completed` on Hub side post-Director-publish |
+| W6 slice (vii) | CLOSED 2026-05-10 21:30 AEST | Publish-block resolution: lock-file sync (`0c87290`) + git-config-global step in release.yml (`4166d38`); tag-flip v1.0.0 to `4166d38`; Director auth-evolution to Granular Access Token "Bypass 2FA on writes" resolved E403; **release.yml run `25626931701` re-trigger 2 → npm publish (OIDC-signed provenance) ✓** |
+| **`@apnex/missioncraft@1.0.0` PUBLISHED** | **2026-05-10 21:27 AEST (npm registry)** | shasum `ff1767caa18b7d4da69fff8e54b09c65d776e834` matches engineer prep artifact; OIDC provenance attestation landed per §2.9.3 strict-1.0 commitment |
+| **MISSION-77 SHIPPED** | **CONVERGING 2026-05-10 21:30 AEST** | thread-528 bilateral-ratify with engineer-staged close_no_action + update_mission_status (mission-77 → completed); thread-527 slice (vii) loop bilateral-ratify with close_no_action; awaiting architect reciprocation on both |
+| **Phase 8 (Engineering)** | **COMPLETE** | 4 consecutive waves substrate-currency-clean; ~42 commits W0→W6 slice (vii); 162 baseline → 258 = +96 net tests; v4.10 PATCH bundle FINAL = 15 items |
+| **Phase 9 (Audit)** | **LANDED** | `docs/audits/m-missioncraft-v1-closing-audit.md` at `7f28274` (revised post-bundle-ops) |
+| **Phase 10 (Retrospective)** | scheduled per `mission-lifecycle.md` v1.2 §1.x RACI | architect-Director-bilateral surface forward post-mission-status-advance |
+| TypeDoc deploy trailing | non-blocking | v4.10 PATCH item #15 (GitHub Pages enablement at repo-Pages settings); housekeeping; v1.0.x or follow-on |
 
 ---
 
