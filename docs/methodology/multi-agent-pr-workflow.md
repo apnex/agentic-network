@@ -387,28 +387,30 @@ PR-land doesn't automatically advance Hub task state. The transition sequence is
 
 ---
 
-## Adapter-restart rebuild protocol (Pass 10)
+## Adapter-Restart Protocol
 
-When a PR lands on main that touches Hub source, SDK source, or persisted-state schema, the running adapter+Hub installation does NOT auto-pick-up the change. A coordinated rebuild + restart sequence is required before any agent process resumes work post-merge. This protocol is the codification of the **Pass 10 rebuild sequence** referenced in mission-62 PRs #112 + #114 and mission-63 PRs #118 + #119.
+> **Naming history**: previously known as "Pass 10" (mission-62 + mission-63 era). Renamed 2026-05-11 to be self-documenting. The cryptic "10" had no documented origin; rename eliminates the friction. Historical documents (closing-audits, retrospectives, ADRs 028/029/030/031, etc.) retain the original "Pass 10" terminology — those are point-in-time records.
+
+When a PR lands on main that touches Hub source, SDK source, or persisted-state schema, the running adapter+Hub installation does NOT auto-pick-up the change. A coordinated rebuild + restart sequence is required before any agent process resumes work post-merge. This protocol is the codification of the **adapter-restart rebuild sequence** referenced in mission-62 PRs #112 + #114 and mission-63 PRs #118 + #119 (originally documented as "Pass 10").
 
 The protocol is **adapter-restart-gating**: the next adapter restart after a covered PR merge MUST execute the steps below in order, OR the restart will fail (parse_failed, `agent_thrashing_detected`, or stalled CallTool gate).
 
 ### When this protocol applies
 
-A PR triggers Pass 10 if **any** of the following are true:
+A PR triggers the Adapter-Restart Protocol if **any** of the following are true:
 
-| PR touches | Pass 10 step required | Mission-of-record |
+| PR touches | Step required | Mission-of-record |
 |---|---|---|
 | `hub/src/**` (Hub source) | **§A — Hub container rebuild** (calibration #17) | mission-62 W4 P0 |
 | `packages/*/src/**` (SDK source — `@apnex/network-adapter`, `@apnex/cognitive-layer`, `@apnex/message-router`) | **§B — npm package republish + consumer `./scripts/local/update-adapter.sh`** (mission-64 W4 deprecation: manual recipe removed; npm package + script is canonical; closes calibration #25) | mission-63 W3 P0 (origin); mission-64 W4 (closed) |
 | Persisted Agent / Mission / Thread schema (code-only renames) | **§C — State-migration script run** (calibration #19) | mission-62 W4 P0 |
 | `adapters/*/src/**` (claude-plugin / vertex-cloudrun) | **§D — bundled in npm package `install.sh` path; consumer runs `./scripts/local/update-adapter.sh`** (mission-64 W4 deprecation: bundled in §B flow) | mission-61 Layer-3 (origin); mission-64 W4 (closed) |
 
-PRs that touch ONLY documentation, methodology, audits, ADRs, or non-code surfaces do NOT need Pass 10.
+PRs that touch ONLY documentation, methodology, audits, ADRs, or non-code surfaces do NOT need the Adapter-Restart Protocol.
 
-**Forward-pointer — idea-221 (Pass 10 cross-§ orchestration runner; OPEN):** mission-64 mechanises §B + §D consumer-side. §A + §C remain operator-side (Hub rebuild + state-migration). idea-221 is the companion future mission scope: an operator-side runner that auto-detects affected §s + sequences §A→§B→§C→§D in a single call, consuming mission-64's CLI contract (`./scripts/local/update-adapter.sh` exit codes 0/1/2/3 + structured stdout final-line + `--pin <version>` + `--dry-run` flags). Until idea-221 ships, §A + §C remain manual operator steps.
+**Forward-pointer — idea-221 (Adapter-Restart Protocol cross-§ orchestration runner; OPEN):** mission-64 mechanises §B + §D consumer-side. §A + §C remain operator-side (Hub rebuild + state-migration). idea-221 is the companion future mission scope: an operator-side runner that auto-detects affected §s + sequences §A→§B→§C→§D in a single call, consuming mission-64's CLI contract (`./scripts/local/update-adapter.sh` exit codes 0/1/2/3 + structured stdout final-line + `--pin <version>` + `--dry-run` flags). Until idea-221 ships, §A + §C remain manual operator steps.
 
-**Out of scope for Pass 10:** PR-rebase hygiene (stale-branch-against-current-main) is a separate concern not covered by §A–§D. Pass 10 protocol assumes the merging branch is rebased onto current `origin/main` (mergeStateStatus=CLEAN); a DIRTY/CONFLICTING merge state is a per-PR pre-merge concern handled by the standard rebase + force-push-with-lease sequence (Step 4 merge-queue failure recovery above), not by Pass 10's adapter-restart sequencing.
+**Out of scope for the Adapter-Restart Protocol:** PR-rebase hygiene (stale-branch-against-current-main) is a separate concern not covered by §A–§D. The protocol assumes the merging branch is rebased onto current `origin/main` (mergeStateStatus=CLEAN); a DIRTY/CONFLICTING merge state is a per-PR pre-merge concern handled by the standard rebase + force-push-with-lease sequence (Step 4 merge-queue failure recovery above), not by the adapter-restart sequencing.
 
 ### §A — Hub container rebuild (calibration #17)
 
@@ -484,9 +486,9 @@ This regenerates redaction + rotation test fixtures. Commit fixture diffs alongs
 
 **Companion:** ADR-031 (shim observability event taxonomy v1) + `docs/specs/shim-observability-events.md` (canonical event taxonomy spec).
 
-### Coordination — who runs Pass 10
+### Coordination — who runs the Adapter-Restart Protocol
 
-| Pass 10 step | Driven by | When |
+| Step | Driven by | When |
 |---|---|---|
 | §A Hub rebuild | Whoever merged the Hub-source PR (architect or engineer) | Immediately after merge; before notifying peer agents to restart |
 | §B SDK rebuild + tgz repack | Whoever merged the SDK-source PR | Immediately after merge; before notifying peer agents to restart |
@@ -494,9 +496,9 @@ This regenerates redaction + rotation test fixtures. Commit fixture diffs alongs
 | §D claude-plugin reinstall | Each agent in their own session, OR operator coordinating restart | After §A/§B/§C complete |
 | §F Shim observability fixture regeneration | Whoever ships the observability-source PR (engineer typically; mission-66 W1+W2 commit 4) | In same PR as source change; CI verifies fixtures-current |
 
-**Bilateral coordination pattern:** for missions where both agents need to restart (substrate-affecting PRs), open a coordination thread with sub-status updates per Pass 10 step (`§A complete; §B complete; §C complete; safe to restart`). Director-coordinated full-restart cycle is the typical recovery posture.
+**Bilateral coordination pattern:** for missions where both agents need to restart (substrate-affecting PRs), open a coordination thread with sub-status updates per Adapter-Restart Protocol step (`§A complete; §B complete; §C complete; safe to restart`). Director-coordinated full-restart cycle is the typical recovery posture.
 
-### Verification post-Pass 10
+### Verification post-protocol
 
 After all applicable steps complete + adapter restart:
 1. **Handshake parses cleanly** — no `agent.handshake.parse_failed` events in `.ois/shim-events.ndjson`
@@ -504,15 +506,15 @@ After all applicable steps complete + adapter restart:
 3. **First LLM-driven tool call lands** — typical Hub-side log shows `[Dispatch]` event for the call response
 4. **Self-dogfood test** — for substrate-affecting PRs, run a substrate-self-dogfood verification thread (mission-lifecycle.md §6.1; mission-63 W4 thread-403 is the canonical second-execution example)
 
-If any step fails, do NOT proceed with mission work. Hold-on-failure is the discipline; investigate via shim observability (`.ois/shim.log` + `.ois/shim-events.ndjson`); fix-forward; re-run Pass 10 from the failed step.
+If any step fails, do NOT proceed with mission work. Hold-on-failure is the discipline; investigate via shim observability (`.ois/shim.log` + `.ois/shim-events.ndjson`); fix-forward; re-run the Adapter-Restart Protocol from the failed step.
 
 ### Forward-pointer: thread_message truncation marker (calibration #26 NEW from mission-63 W4)
 
 Mission-63 W4 substrate-self-dogfood surfaced a Hub-side gap: `thread_message` event envelopes are silently truncated at ~250 chars with no marker. Other event types (`message_arrived` pulse + `thread_convergence_finalized`) render full body verbatim — the truncation is `thread_message`-event-type-specific.
 
-This is **not a Pass 10 step** (it's not a deployment-skew or rebuild concern); it's a low-priority Hub-side envelope-builder design gap. **Future fix surface:** Hub-side `thread_message` envelope-builder either (a) embeds marker token at truncation boundary OR (b) adds `<channel>` attribute `truncated="true" fullBytes="<n>"`. Design + implementation deferred to **idea-220 Phase 2**; tracking via `docs/audits/m-wire-entity-convergence-w4-validation.md` calibration #26 narrative.
+This is **not an Adapter-Restart Protocol step** (it's not a deployment-skew or rebuild concern); it's a low-priority Hub-side envelope-builder design gap. **Future fix surface:** Hub-side `thread_message` envelope-builder either (a) embeds marker token at truncation boundary OR (b) adds `<channel>` attribute `truncated="true" fullBytes="<n>"`. Design + implementation deferred to **idea-220 Phase 2**; tracking via `docs/audits/m-wire-entity-convergence-w4-validation.md` calibration #26 narrative.
 
-Pass 10 protocol does NOT require operator action for this gap; it's documented here as a forward-pointer so future PR work touching `thread_message` envelope generation knows to address marker-spec design.
+The Adapter-Restart Protocol does NOT require operator action for this gap; it's documented here as a forward-pointer so future PR work touching `thread_message` envelope generation knows to address marker-spec design.
 
 ---
 

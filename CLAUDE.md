@@ -34,7 +34,7 @@ Project-level context binding all Claude Code instances on this repository.
 
 **How to apply** (cold-pickup load-order):
 - Work-trace location: `docs/traces/trace-management.md` — canonical how-to; engineer-owned `docs/traces/<task-or-mission>-work-trace.md` per task
-- Engineer-runtime overlay: `docs/methodology/engineer-runtime.md` — INDEX of engineer-runtime concerns (Pass 10 rebuild, schema-rename migration, thread-vs-GitHub approval, commit-push heartbeat, work-trace discipline, etc.)
+- Engineer-runtime overlay: `docs/methodology/engineer-runtime.md` — INDEX of engineer-runtime concerns (Adapter-Restart Protocol, schema-rename migration, thread-vs-GitHub approval, commit-push heartbeat, work-trace discipline, etc.)
 - Architect-runtime overlay: `docs/methodology/architect-runtime.md` — INDEX of architect-runtime concerns (mission-driving authority, categorised-concerns surface, Idea Triage Protocol, pulse coordination, substrate-self-dogfood, etc.)
 - Tele glossary: `docs/methodology/tele-glossary.md` — tele-N → short-name → mandate lookup (load-bearing decoder for inline tele references)
 
@@ -45,7 +45,7 @@ Methodology + role-runtime + glossary docs (load when phase-engaged or role-enga
 - `docs/methodology/mission-lifecycle.md` — formal lifecycle phases (Concept → Retrospective) + RACI matrix + decision-routing rules
 - `docs/methodology/idea-survey.md` — Director-intent Survey methodology (3+3 pick-list); canonical for Idea→Design transition
 - `docs/methodology/strategic-review.md` — backlog triage + mission prioritization; Idea Triage Protocol (per-idea routing)
-- `docs/methodology/multi-agent-pr-workflow.md` — per-PR integration gate; cross-approval pattern; Pass 10 rebuild + schema-rename state-migration disciplines
+- `docs/methodology/multi-agent-pr-workflow.md` — per-PR integration gate; cross-approval pattern; Adapter-Restart Protocol + schema-rename state-migration disciplines
 - `docs/methodology/mission-preflight.md` — activation gate (proposed → active); 6-category audit + verdict
 - `docs/methodology/entity-mechanics.md` — per-entity FSM + status transitions + cascade behaviors
 - `docs/methodology/engineer-runtime.md` — engineer-runtime concerns INDEX

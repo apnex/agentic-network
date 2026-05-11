@@ -196,14 +196,14 @@ calibrations:
     origin: mission-62-W5
     status: closed-folded
     closure_mechanism: |
-      Pass 10 rebuild protocol covered worktree-side npm run build, but the running
+      Adapter-Restart Protocol rebuild protocol covered worktree-side npm run build, but the running
       plugin loads its shim only from the canonical-tree dist
       (~/.claude/plugins/cache/agentic-network/agent-adapter). Worktree builds produced
       dist files the runtime never saw. Discovered 2026-04-28 ~08:00 AEST when
       fresh-lily-#1 hit agent_thrashing_detected because both lily + greg resolved to
       the same Agent identity (pre-fix shim missing per-OIS_INSTANCE_ID isolation).
       Director-approved canonical-tree shim rebuild + reinstall ~08:18 AEST. Clustered
-      with calibration #6 under "rebuild protocol shipping gaps". Pass 10 protocol
+      with calibration #6 under "rebuild protocol shipping gaps". Adapter-Restart Protocol protocol
       extended; folded into idea-217.
     cross_refs:
       - idea-217
@@ -247,24 +247,24 @@ calibrations:
 
   - id: 17
     class: substrate
-    title: "Hub-rebuild gap in Pass 10 protocol"
+    title: "Hub-rebuild gap in Adapter-Restart Protocol protocol"
     origin: mission-62-W5
     surfaced_at: P0-triage-2026-04-28
     status: retired
     closure_mechanism: |
-      P0 smoking gun layer 1: Pass 10 rebuild protocol covers SDK pkg + claude-plugin
+      P0 smoking gun layer 1: Adapter-Restart Protocol rebuild protocol covers SDK pkg + claude-plugin
       canonical-tree but does NOT extend to Hub container rebuild when Hub source
       changes. 2026-04-28 ~07:49 AEST Hub container restarted on stale image (created
       ~8h before PR #112 merged), causing handshake parse_failed because Hub still
       emitted engineerId. Recovery action: Hub rebuild via scripts/local/build-hub.sh +
       restart at ~10:25 AEST. Memory feedback_pass10_rebuild_hub_container.md captured
-      for future-session discipline. Fix-forward: Pass 10 protocol extension mandates
+      for future-session discipline. Fix-forward: Adapter-Restart Protocol protocol extension mandates
       build-hub.sh + restart for any PR touching hub/src/**. Folded into idea-219
       Schema-Migration Discipline companion.
 
       Retired by mission-63 W4 (thread-403 converged 2026-04-28T05:08Z): build-hub.sh
       discipline executed throughout M63 (W0/W1+W2/W3) with zero deployment-skew
-      parse_failed events. Subsequently codified into Pass 10 §A by mission-63 W5
+      parse_failed events. Subsequently codified into Adapter-Restart Protocol §A by mission-63 W5
       closing PR #120.
     closure_pr: 120
     cross_refs:
@@ -326,7 +326,7 @@ calibrations:
       ECONNREFUSED, idempotent, backup-before-mutation tarball, name=id fallback for
       legacy records, clientMetadata/advisoryTags malformed-default) — first canonical
       execution of state-migration script discipline. Migration scanned 8 records /
-      mutated 4. Subsequently codified into Pass 10 §C protocol step by mission-63 W5
+      mutated 4. Subsequently codified into Adapter-Restart Protocol §C protocol step by mission-63 W5
       closing PR #120.
     closure_pr: 119
     cross_refs:
@@ -436,7 +436,7 @@ calibrations:
 
   - id: 25
     class: substrate
-    title: "Pass 10 protocol gap on SDK tgz rebuild"
+    title: "Adapter-Restart Protocol protocol gap on SDK tgz rebuild"
     origin: mission-63-W3
     surfaced_at: thread-403-round0
     status: retired
@@ -449,10 +449,10 @@ calibrations:
       restart on stale SDK tgz ran old flat-field parseHandshakeResponse. Recovery
       sequence (~17min total time-to-recovery, ~10x faster than mission-62 P0):
       rebuild SDK + npm pack + cp tgz + reinstall + adapter restart. Closed by
-      mission-63 W5 PR #120 codifying Pass 10 §B (SDK rebuild step) — symmetric
+      mission-63 W5 PR #120 codifying Adapter-Restart Protocol §B (SDK rebuild step) — symmetric
       extension mirroring Hub-source rebuild.
 
-      Retired structurally by mission-64 W4 (PR #127) ADR-029 RATIFIED + Pass 10 §B/§D
+      Retired structurally by mission-64 W4 (PR #127) ADR-029 RATIFIED + Adapter-Restart Protocol §B/§D
       deprecation to "Removed; npm package + script is canonical" + .mcp.json bundling
       (PR #125). Manual-recipe step-skip-class regression source closed at substrate
       boundary — consumer can't skip steps because there are no manual steps to skip.
@@ -510,7 +510,7 @@ calibrations:
     surfaced_at: mission-64-W0-publish-flow-spike
     status: closed-folded
     closure_mechanism: |
-      Folded into multi-agent-pr-workflow.md Pass 10 §B doc note: "use placeholder
+      Folded into multi-agent-pr-workflow.md Adapter-Restart Protocol §B doc note: "use placeholder
       workspace:* + version-rewrite.js script; do NOT assume workspace: semver-protocol".
       R2 fallback path executed at design-time; M sizing held without L upsize.
     closure_pr: 122
@@ -590,7 +590,7 @@ calibrations:
     status: closed-folded
     closure_mechanism: |
       Mission-lifecycle methodology callout; substrate-introduction-class signature
-      note (W3 collapse pattern). Folded into Pass 10 protocol substrate-introduction
+      note (W3 collapse pattern). Folded into Adapter-Restart Protocol protocol substrate-introduction
       mission-class signature subsection in multi-agent-pr-workflow.md. When
       active-session 6-step protocol surfaces a substrate defect during Step 5 install,
       the retry IS the dogfood gate. Extended to 5-cycle iteration in mission-64
@@ -1633,14 +1633,14 @@ calibrations:
         cluster). Workflow YAML bash-linted clean; runtime gate (actually
         running the workflow) caught it.
       11. M-Build-Identity canonical-main-stale fault chain (post PR #190
-        deploy-verify) — architect's Pass 10 from canonical when canonical's
+        deploy-verify) — architect's Adapter-Restart Protocol from canonical when canonical's
         local main was 6 commits behind origin/main; rebuilt adapter against
         stale source; ADAPTER=0.1.2 in get-agents output gave no runtime signal
-        of the staleness. Resolved via Pass 10 from canonical post-pull-main.
+        of the staleness. Resolved via Adapter-Restart Protocol from canonical post-pull-main.
       12. (gap; not separately ledger-identified during cycle narration)
       13. M-Build-Identity prepack-vs-build hook (PR #194 hot-fix) — prepack
         script fires only on `npm pack`/`npm publish`, NOT on `npm run build`
-        (operator's typical Pass 10 path). Tests passed at script-level unit
+        (operator's typical Adapter-Restart Protocol path). Tests passed at script-level unit
         scope; runtime gate at operator-build-invocation boundary not exercised.
       14. M-Build-Identity Hub zod schema strip (PR #195 hot-fix) — register_role
         zod schema didn't accept the 4 new clientMetadata fields; zod's strip

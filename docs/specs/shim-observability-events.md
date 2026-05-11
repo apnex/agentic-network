@@ -181,7 +181,7 @@ When event-taxonomy changes ship:
 ## §8 References
 
 - ADR-031 (`docs/decisions/031-shim-observability.md`) — architectural commitments
-- `docs/methodology/multi-agent-pr-workflow.md` Pass 10 §F — dirty-state regeneration discipline
+- `docs/methodology/multi-agent-pr-workflow.md` Adapter-Restart Protocol §F — dirty-state regeneration discipline
 - `reference_shim_observability.md` memory — Phase 1 paths + env vars (`OIS_SHIM_LOG_FILE`, `OIS_SHIM_EVENTS_FILE`, `OIS_SHIM_LOG_ROTATE_BYTES`, `OIS_SHIM_LOG_LEVEL` NEW M6)
 - ADR-028 — canonical wire envelope (related: `<channel>` envelope element host for #26 marker-protocol)
 
