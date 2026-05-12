@@ -38,20 +38,20 @@
 
 ## In-flight
 
-(W1 slice (ii) shipped; awaiting per-slice surface ack from architect on thread-540 before claiming slice (iii))
+(W1 slice (iii) shipped; awaiting per-slice surface ack from architect on thread-540 before claiming slice (iv) wave-close)
 
 ## Queued / filed
 
-- ▶ **W1 slice (iii)** — advanced ops: merge / squashCommit + capability-gated bundle ops (createBundle / restoreBundle); the bug-75-was-here site (architect-spec) — verify argv-array discipline + git stderr passthrough — claim post-architect-ack on slice (ii)
-- ○ **W1 slice (iv)** — PROVIDER_REGISTRY entry `'native-git'` + integration test suite (full GitEngine contract coverage; wave-close audit)
+- ▶ **W1 slice (iv)** — PROVIDER_REGISTRY entry `'native-git'` registration in `src/missioncraft-sdk/core/provider-registry.ts` + full-contract integration test suite + W1 wave-close audit — claim post-architect-ack on slice (iii)
 - ○ **bug-74** — partial-state-write at complete(); deferred → W3
 - ○ **W2-W5** — unissued; cascade-spawned post-W1 wave-close
-- ○ **scope-question for architect** — slice (ii) architect-spec mentioned `reset` / `diff` / `ls-remote` ops that aren't on the GitEngine contract (no IsomorphicGitEngine impl either). Surfaced on thread-540: contract-extension Y/N for slice (iii) inclusion?
+- ○ **idea-N (architect to file inline)** — GitEngine contract extension for `reset` / `diff` / `lsRemote`; deferred per (γ) disposition; post-mission-78 follow-on
 
 ## Done this session
 
 - ✅ **W1 slice (i)** — `defaults/native-git-engine.ts` (NativeGitEngine class + `gitExec(workspace, args, options)` helper) + 6 ops (clone/branch/checkout/log/status/revparse) + 21 tests across 8 describe-blocks. Pushed `e65864e` to apnex/missioncraft main. 414 tests pass (was 393; +21). Path D2 argv-only discipline + git-stderr-surfacing + WeakMap identity-storage forward-compat for slice (ii).
-- ✅ **W1 slice (ii)** — flipped 13 contract methods from UnsupportedOperationError stub-throws to argv-only impls: init / getCurrentBranch / tag / stage / commit / commitToRef (bypass-INDEX via temp GIT_INDEX_FILE) / deleteBranch / fetch / push / pull / addRemote / removeRemote / listRemotes. Identity threaded via `GIT_AUTHOR_*`/`GIT_COMMITTER_*` env vars at commit-firing-time. 27 new tests (HTTP-fixture push/fetch/pull integration; commitToRef end-to-end bypass-INDEX semantic verification — operator INDEX UNTOUCHED + HEAD UNCHANGED + wip-tree captures working-tree state; multi-word commit-message assertions per `feedback_test_assertion_too_permissive_regex.md`). Mid-slice push-impl bug surfaced + fixed: when `branch` given without explicit `remote`/`url`, default remote to `'origin'` so the branch arg lands in the refspec slot (parallel to isomorphic-git internal default). Slice (i) test obsolescence: 2 stub-throw tests removed (init + commit no longer throw); slice-progression contract narrows to merge / squashCommit / bundle ops. Pushed `95d65b6` to apnex/missioncraft main. **439 tests pass (was 414; +27 new, -2 obsolete = +25 net)**.
+- ✅ **W1 slice (ii)** — flipped 13 contract methods from UnsupportedOperationError stub-throws to argv-only impls: init / getCurrentBranch / tag / stage / commit / commitToRef (bypass-INDEX via temp GIT_INDEX_FILE) / deleteBranch / fetch / push / pull / addRemote / removeRemote / listRemotes. Identity threaded via `GIT_AUTHOR_*`/`GIT_COMMITTER_*` env vars at commit-firing-time. 27 new tests. Mid-slice push-impl bug surfaced + fixed (default remote to `'origin'` when branch given without explicit remote). Pushed `95d65b6`. **439 tests pass (was 414; +27 new, -2 obsolete = +25 net)**.
+- ✅ **W1 slice (iii)** — advanced ops: `merge` (ff/no-ff strategy mapping per IsoEng §BBBBBB), `squashCommit` (Native-canonical NOT capability-gated; identity env-injected), `createBundle` (mkdir -p + git bundle create; returns path), `restoreBundle` (parses git bundle unbundle output; ref-name match wins over first-line fallback; git update-ref to set local ref). 9 new tests across 4 describe-blocks (merge default-no-ff merge-commit + ff fast-forward + ff-fails-on-divergence; squashCommit single-parent collapse with caller-message + caller-identity; createBundle+restoreBundle round-trip + multi-line parsing; W2 canonical-switch verification: squash-tree parity with IsoEng — IsoEng's squashCommit/createBundle/restoreBundle ALREADY shell out to native git per §2.6.2 v0.4 §AAA + §BBBBBB folds, so semantics match exactly). Slice-progression contract RETIRED (slice (i) + slice (ii) test files dropped obsolete merge-throws assertions). Pushed `32ef215`. **446 tests pass (was 439; +9 new, -2 obsolete = +7 net)**.
 
 ## Edges (dependency chains)
 
@@ -87,6 +87,20 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 12:55 AEST — W1 slice (iii) SHIPPED — advanced ops; slice-progression contract RETIRED
+
+- Architect ratified slice (ii) at 2026-05-12T02:44Z UTC; (α) approved + architect to file (γ) idea inline (`reset` / `diff` / `lsRemote` GitEngine contract extension as post-mission-78 follow-on); slice (iii) green-lit; 5th architect-claim-vs-code drift this session captured (architect's slice (ii) dispatch listed reset/diff/ls-remote which aren't on contract — calibration discipline pattern reinforced)
+- Did NOT burn thread-540 round on ack-only (per `feedback_pattern_a_engineer_turn_discipline.md`); silent into slice (iii) execution
+- Implemented 4 advanced ops: `merge` (ff/no-ff strategy mapping; identity env-injected for merge-commit case), `squashCommit` (Native-canonical NOT capability-gated; checkout + merge --squash + commit -m + rev-parse HEAD pattern), `createBundle` (mkdir -p + git bundle create), `restoreBundle` (parses git bundle unbundle stdout for `<sha> <ref>` lines + git update-ref to set local ref)
+- Strategy mapping for `merge` parallel to IsoEng §BBBBBB micro-fold: `'ff'` → `--ff-only` (require-fast-forward; fail-otherwise); `'no-ff'` → `--no-ff` (always merge-commit; default)
+- W2 canonical-switch verification target: IsoEng's squashCommit / createBundle / restoreBundle ALREADY shell out to native git per §2.6.2 v0.4 §AAA bundle-ops native-shell-out + §BBBBBB squash-shell-out fold; semantics match EXACTLY between IsoEng (shell-out) and NativeGitEngine (native). Test "Native squash-merge produces same commit-tree as Isomorphic squash-merge" pins this verification publicly for W2 confidence
+- 9 new tests across 4 describe-blocks: merge (3) / squashCommit (2) / createBundle+restoreBundle (3) / squash-parity (1)
+- Slice (i) + slice (ii) test files dropped obsolete `merge throws UnsupportedOperationError pointing at slice (iii)` assertions (merge now implemented); slice-progression contract RETIRED — all GitEngine contract methods now implemented in NativeGitEngine
+- `npm run build` clean; `npm test` **446/446** (was 439; +9 new, -2 obsolete = **+7 net**); 94s
+- Pushed `32ef215` to apnex/missioncraft main (Pattern A direct-commit)
+- Slice (iv) ahead (W1 wave-close): PROVIDER_REGISTRY `'native-git'` entry registration in `src/missioncraft-sdk/core/provider-registry.ts` + full-contract integration test suite + W1 wave-close audit
+- Pulse-fire count this session: 5 fires (10min cadence; all answered via thread-540 surfaces — none via separate `kind=note` short_status)
 
 ### 2026-05-12 12:40 AEST — W1 slice (ii) SHIPPED — write-ops + lifecycle + remote-management
 
