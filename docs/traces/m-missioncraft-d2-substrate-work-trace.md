@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W3-new shipped at `8cab0aa`; awaiting architect re-dogfood verification + bilateral-converge thread-545 + W4-new cascade)
+(W3-new extension shipped at `32ca5a3` — 4 substrate-fixes from architect dogfood: #6 chokidar add/unlink + #7 INDEX-refresh post-commitToRef + #8 squashCommit target-ref BLOCKER + #9 transparency-gate SHAPE assertions; awaiting architect re-re-dogfood verification + bilateral-converge thread-545 + W4-new cascade)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -91,6 +91,20 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 19:15 AEST — W3-new extension SHIPPED — 4 substrate-fixes (#6 + #7 + #8-BLOCKER + #9) from architect dogfood
+
+- Architect-side scenario-02 dogfood vs `apnex/missioncraft-sandbox` real upstream confirmed W3-new architectural-class-elimination LANDED ✓ (HEAD-stability + no wip/<id> refs + daemon-commits-on-mission-branch + content end-to-end) BUT surfaced 3 substrate-defects + 1 test-quality gap. Cascade-gated on extension landing per `feedback_substrate_extension_wire_flow_integration_test.md`
+- Recursive-defect-activation pattern (calibration #71 candidate): "substrate-redesign collapses symptoms but doesn't auto-fix root-cause defects exposed by the collapse" — composes with #70
+- **Fix #8 BLOCKER**: squashCommit step-(4) update-ref pointing at baseRef instead of headRef in both engines. Semantic contract inverted pre-Fix-#8: baseRef IS the merge-target-parent; headRef IS the publish-artifact-branch (update-ref target). Hidden pre-W3-new because mission-branch had empty tree (daemon → wip-branch); local main got orphan squash. W3-new makes mission-branch non-empty → push silently shipped DAEMON commits not squash. Fix: update-ref refs/heads/${headRef} not refs/heads/${baseRef} in both engines.
+- **Fix #7**: INDEX-refresh post-commitToRef when target ref == HEAD's symbolic ref. `commitToRef` advances branch tip but operator's main INDEX still reflects pre-advance state → `git status` double-counts the diff (worktree↔INDEX modified + INDEX↔HEAD modified; worktree↔HEAD clean). Flow B canonical operator-DX promise VIOLATED. Fix: post-update-ref, if `git symbolic-ref HEAD` matches target ref, run `git read-tree HEAD` against operator's main INDEX. Non-aborting (try/catch).
+- **Fix #6**: chokidar add/unlink subscriptions. watcher-entry.ts:162 subscribed only to `change` event; operator's new-file-creation workflow silently dropped. Fix: extract debounce-handler as `fireDebouncedCommit` function; subscribe to `change` + `add` + `unlink` with same handler.
+- **Fix #9**: 6 SHAPE assertions added to W3-new transparency-gate test (`v1.2.0-w3-new-single-branch-e2e.test.ts`): tip commit-message === publishMessage; tip parent === upstream main; exactly 1 commit ahead; local main UNCHANGED; upstream main UNCHANGED; no wip/<id> ref anywhere. Composes with `feedback_test_assertion_too_permissive_regex.md`.
+- Test updates for Fix #8 corrected semantic: `v1.1.0-slice-iii-native-git-engine.test.ts` squashCommit test (assert headRef gets squashedSha; baseRef UNCHANGED) + `v1.1.0-w2-extension-commitToRef-parent-linkage.test.ts` §3 (v5.0 single-branch flow: daemon commits to mission-branch directly; squashCommit(main, mission/m-test) under Fix #8 updates mission/m-test)
+- `npm run build` clean; `npm test` **467/467** (unchanged — no new tests; existing transparency-gate + retargeted slice-iii + W2-ext §3 cover the fixes); 98s
+- Pushed `32ca5a3` to apnex/missioncraft main
+- Out-of-scope filings deferred to post-converge: bug-N (CLI parser whitespace) + bug-N+1 (publishStatus pure-git mode misleading)
+- Awaiting architect re-re-dogfood verification per `feedback_substrate_extension_wire_flow_integration_test.md`
 
 ### 2026-05-12 18:50 AEST — W3-new SHIPPED — Single-branch refactor (daemon commits direct to mission/<id>; drop wip/<id> sidecar)
 
