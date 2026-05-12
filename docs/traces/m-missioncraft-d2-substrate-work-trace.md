@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W5-new wave slice (iii) shipped at `0758200` — writer-daemon push-cadence integration: pushMissionBranchToUpstream SDK method + detectWriterPushCadence dispatch-layer helper (calibration #74) + watcher-entry.ts fire-and-forget setInterval; 488/488 tests (+12 net); 3/7 W5-new slices SHIPPED)
+(W5-new wave slice (iv) shipped at `0a8b459` — reader-daemon Loop B pullCadence integration: detectReaderPullCadence helper + watcher-entry.ts setInterval pull from helper (v5.0 30s default; v4.x coordPollMs fallback through W7-new); 495/495 tests (+7 net); 4/7 W5-new slices SHIPPED)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,17 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 09:24 AEST — W5-new slice (iv) SHIPPED — Reader-daemon Loop B pullCadence integration
+
+- Architect ack'd slice (iii) on thread-548 round 7 + captured calibration #75 candidate (orphan-daemon-accumulation pattern; composes with #62/#67/#68 at test-infrastructure layer) + green-lit slice (iv) standard sister-shape
+- Did NOT burn engineer-turn on ack-only; silent into slice (iv) execution per Pattern A
+- **Daemon-dispatch helper**: extracted `detectReaderPullCadence(workspaceRoot, missionId)` in `daemon-mode-detect.ts` (sister to `detectWriterPushCadence`); returns `{intervalMs}` (no enabled-gate; reader Loop B always-on); v5.0 missions prefer `stateDurability.pullIntervalSeconds * 1000`; v4.x missions fall back to `stateDurability.coordPollMs` (back-compat through W7-new); both fields set → v5.0 wins; default 30000ms (Design v5.0 §10.5 asymmetric defaults — pull 30s)
+- **watcher-entry.ts integration**: reader-mode dispatch uses new helper for Loop B setInterval; removed `coordPollMs` const binding (was duplicating COORD_POLL_DEFAULT_MS fallback). COORD_POLL_DEFAULT_MS const retained as detectDaemonMode's default-fallback for v4.x participant-role-detection (deferred W7-new cleanup)
+- 7 SHAPE-assertion tests in new `v1.2.0-w5-new-slice-iv-reader-pull-cadence.test.ts` covering all paths: default + override + boundary-inclusive 5s min + v4.x coordPollMs fallback + BOTH-set-pullInterval-wins + non-existent + writer-mission (helper not role-conditional)
+- `npm run build` clean; `npm test` **495/495** (was 488 post-slice-iii; **+7 net**); 98s
+- Pushed `0a8b459` to apnex/missioncraft main
+- Surface to architect on thread-548 with slice (iv) milestone + slice (v) transparency-gate test green-light request
 
 ### 2026-05-13 09:15 AEST — W5-new slice (iii) SHIPPED — Writer-daemon push-cadence integration
 
