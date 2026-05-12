@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new slice (v) CORE shipped at `2a6f0fc` — Reader-daemon Loop B v5.0 fetch+reset; PARTIAL slice (workspace 0444 + auto-close + reader-start-flow DEFERRED); 489/489 tests pass; slice (iv) PAUSED pending Director-consult on Hub-policy locus; awaiting architect-disposition on slice-(v)-extension scope)
+(W4-new slice (v) CORE shipped at `2a6f0fc` + slice (vi) Multi-repo scope-inheritance test-coverage shipped at `5ba2132` — 493/493 tests pass; slice (iv) PAUSED pending Director-consult on Hub-policy locus; thread-546 architect's-turn 8/10; slice (v) CORE + slice (vi) milestone surface BUNDLED on next architect-turn-flip; awaiting architect-disposition on slice-(v)-extension scope)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,20 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-12 20:18 AEST — W4-new slice (vi) Multi-repo scope-inheritance test-coverage SHIPPED — silent into next slice per architect-explicit-approval
+
+- Thread-546 turn-state: architect's turn 8/10 (engaged Director-consult on slice (iv) Hub-policy locus); slice (v) CORE milestone surface BLOCKED by turn-lockup per `feedback_pattern_a_engineer_turn_discipline.md`
+- Per architect round-7 explicit-approval ("(vi) Multi-repo scope-inheritance — independent; can proceed"), proceeded silently to slice (vi) test-coverage
+- SDK substrate at `missioncraft.ts:2078` already supports multi-repo writer-inheritance via `writerConfig.repos.map((r) => ({ ...r }))`; slice (iii) tested single-repo only — slice (vi) is test-extension to multi-repo + Loop B v5.0 graceful multi-repo iteration
+- 4 SHAPE-assertion tests in `v1.2.0-w4-new-multi-repo-scope-inheritance.test.ts`: 3-repo-writer→reader-inherits-all-3 + Loop B v5.0 multi-repo-graceful-iteration + empty-writer-repos-edge regression net + named-multi-repo-reader independence
+- Architectural observations captured inline:
+  - v5.0 single-branch-per-repo architecture: each repo in reader scope mirrors corresponding `mission/<writer-id>` branch in writer's matching repo; per-repo writer-to-reader URL-mapping is slice-(v)-extension territory
+  - `msn watch` (PERSISTENT-TRACKER) is single-repo by architect-spec; not exercised this slice
+  - **CLI parser `--repo` repeatable-flag gap**: parser uses `Map.set(token, value)` which OVERWRITES on repeat → only SDK array-form `repo: [url1, url2]` supports multi-repo writer creation; separable W6-new grammar-refactor concern (test docstring forward-flag)
+- `npm run build` clean; `npm test` **493/493** (was 489; **+4 net**); 98s
+- Pushed `5ba2132` to apnex/missioncraft main
+- Slice (v) CORE + slice (vi) BUNDLED for surface on thread-546 when architect-turn flips back (likely with Director-disposition on slice (iv) locus)
 
 ### 2026-05-12 12:00 AEST — mission-78 W1 cold-pickup post-Director-context-clear
 
