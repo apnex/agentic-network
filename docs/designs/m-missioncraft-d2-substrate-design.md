@@ -78,7 +78,7 @@ From operator-channel conversation 2026-05-12 (architect-Director bilateral subs
 | W2 — Canonical-switch default | ✓ shipped | gitEngineProviderName 'native-git' default |
 | W2-extension — Fix #3 + Fix #4 | ✓ shipped | commitToRef parent-linkage + squashCommit bypass-INDEX. Fix #5 ABANDONED (re-scope moots) |
 | **W3-new** — Single-branch refactor | unissued | daemon commits to `mission/<id>`; drop `wip/<id>` |
-| **W4-new** — Independent missions + two reader flavors + Hub single-writer-per-scope policy | unissued | drop `msn join` v4.x multi-participant; introduce `msn join` (coupled) + `msn watch` (persistent); Hub-mediated single-writer-per-scope at mission-entity layer |
+| **W4-new** — Independent missions + two reader flavors | unissued | drop `msn join` v4.x multi-participant; introduce `msn join` (coupled) + `msn watch` (persistent). **Hub-policy single-writer-per-scope enforcement DEFERRED post-v1.2.0** per Director-direct 2026-05-13 (was wave-component; now forward-pointer — see §10.1 + §13). |
 | **W5-new** — Drop coord-remote + push/pull cadence config | unissued | single repo URL + `pushCadence` + `pullCadence` mission-config; delete coord-remote code paths |
 | **W6-new** — CLI verb grammar refactor + no-backward-compat | unissued | hybrid grammar (verb-first for global+creation; id-first for mission-targeted); `--start` flag on creation; old verb-first form removed (no dual-form support) |
 | **W7-new** — IsoEng removal + isomorphic-git npm dep drop | unissued | was original W4; cleaner under new arch |
@@ -153,21 +153,26 @@ Concrete change-set surface (informs W3-new through W8-new waves):
 
 ### §10.1 Single-writer-per-scope coordination (was: writer-lock primitive)
 
-**Disposition**: NO git-substrate lock primitive. Single-writer-per-scope enforced at **Hub-policy layer** via mission-entity create/activate checks.
+**Disposition**: NO git-substrate lock primitive. Single-writer-per-scope ratified as **Hub-policy** semantic (NOT substrate primitive).
 
-**Rationale** (per Director-direct):
+**v1.2.0 ship-scope** (Director-direct 2026-05-13 amendment):
+- **Hub-integration mechanism DEFERRED post-v1.2.0**. v1.2.0 ships standalone-capable with **operator-discipline** for single-writer-per-scope (documented in operator-DX); no Hub-API call from `msn create`; missioncraft remains substrate-only at v1.2.0.
+- W4-new wave-component for Hub-policy enforcement (originally slice (iv)) **DROPPED** from mission-78 scope. W4-new now ships 7 slices: schema-v2 + `msn watch` + `msn join` repurpose + Reader-daemon Loop B + multi-repo scope-inheritance + transparency-gate test + wave-close.
+- Director-direct verbatim: "Hub means the Mission Hub (our agentic network and router/policyengine — separate to missioncraft). We don't need to perform integration with the Hub just yet... This integration will require careful end-to-end design once the full primitives have been tested."
+
+**Rationale for "no substrate-lock" (still stands per Director-direct 2026-05-12)**:
 - Each mission has its own branch (`mission/<id>`); branches don't collide at the git level
 - The lock was substrate-level fix for a coordination concern that belongs at the Hub layer
 - Hub mission-entity already tracks active/proposed/completed/abandoned lifecycle; adding "single active writer-mission per scope" is a natural extension
 - Drops complexity: no lock-ref, no heartbeat, no TTL, no `--force-writer` flag, no stale-lock-recovery semantic
 
-**Hub-policy mechanism** (W4-new design):
-- `create_mission` Hub-API call with `scope` and `readOnly: false` checks: any existing active writer-mission against same scope?
-- If yes → refuses with error "scope already has active writer-mission `<existing-mission-id>`; abandon it or start as read-only"
-- If no → activates writer-mission
-- Stale-detection: if writer-mission's engineer-agent goes offline (cognitive-TTL expires), Hub auto-flags mission as "writer-orphaned" → operators can take over via `msn abandon` then new `msn create`
+**Forward-pointer (post-v1.2.0 mission)**: Hub-policy mechanism design + integration end-to-end:
+- `create_mission` Hub-API extension with `scope` and `readOnly: false` checks (refuse second active writer-mission against same scope)
+- Stale-detection via cognitive-TTL → "writer-orphaned" mission state → operators take over via `msn abandon` + new `msn create`
+- missioncraft `msn create` ↔ Hub MCP integration shape (Hub-coupling boundary; opt-in or required)
+- Gated on v1.2.0 primitives (single-branch + readers) being proven via dogfood + operator usage
 
-**W6-new wave (writer-lock) DROPPED from mission-78 wave structure.**
+Filed as forward-pointer in §13. W6-new wave (writer-lock) DROPPED from mission-78 wave structure (still stands).
 
 ### §10.2 Push/pull cadence config
 
@@ -335,6 +340,14 @@ Per Director-direct: **"No backward compat. Perfection only."**
 
 Director-signaled directions for post-v1.2.0 substrate evolution. Captured here to avoid v5.0 design accidentally locking out these futures; out-of-scope for mission-78.
 
+**Hub-missioncraft integration end-to-end design** (Director-direct 2026-05-13; NEW — was originally W4-new slice (iv) in-scope; now deferred):
+- Hub-policy single-writer-per-scope enforcement at agentic-network Mission Hub layer (the router/policyengine; separate codebase from missioncraft)
+- `create_mission` Hub-API extension with `scope` + `readOnly` parameters + policy check (refuse second active writer-mission against same scope) + cognitive-TTL stale-detection ("writer-orphaned" mission state)
+- missioncraft ↔ Hub integration boundary design: where does `msn create` invoke Hub? Standalone-fallback semantics? Hub-coupling opt-in vs required?
+- Operator-DX implications: Hub-running prerequisite for writer-missions? Reader-missions remain standalone?
+- **Director-direct rationale**: "This integration will require careful end-to-end design once the full primitives have been tested." — i.e., gated on v1.2.0 primitives (single-branch + readers) being proven via dogfood + operator usage before integration design starts.
+- Belongs in mission-79+ (post-v1.2.0); v1.2.0 ships standalone-capable with operator-discipline for single-writer-per-scope.
+
 **Smart-attach mechanisms**:
 - **Hub-driven auto-discovery**: Hub mission-entity broadcasts/publishes "active writer-missions per scope"; agents subscribe + auto-join relevant missions without operator-explicit `msn join <id>` invocation
 - **Agent-default main-watchers**: agents implicitly maintain `msn watch --branch main` per repo at startup (no operator action needed); persistent-tracker is the default "background observability" mode for all agents
@@ -364,3 +377,4 @@ These belong in mission-79+ (post-v1.2.0). Roadmap-marker, not v5.0 scope.
 - §10+§11 added: 2026-05-12T06:25:00Z AEST
 - Bundle-revision applied: 2026-05-12T06:50:00Z AEST (drop writer-lock + cadence revised + two read-only flavors + scope-as-pointer + hybrid CLI grammar + no-backward-compat ship discipline)
 - Perfection-grade revisions + §13 forward-pointers added: 2026-05-12T07:10:00Z AEST (drop msn-apply + drop tick + drop resume / idempotent-start + add slug-validation + capture post-v1.2.0 smart-attach + auto-discovery directions)
+- W4-new slice (iv) Hub-policy enforcement DEFERRED post-v1.2.0: 2026-05-13 AEST (Director-direct surfaced via thread-546 architect-consult; §4 wave-content amended + §10.1 disposition revised + §13 forward-pointer added; v1.2.0 ships standalone-capable with operator-discipline for single-writer-per-scope; Hub-missioncraft-integration end-to-end design gated on v1.2.0 primitives being proven)
