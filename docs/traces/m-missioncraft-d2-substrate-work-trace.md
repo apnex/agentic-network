@@ -38,20 +38,19 @@
 
 ## In-flight
 
-(W2-extension Fix #3 shipped on thread-543 round 1; awaiting architect re-dogfood verification before bilateral-converge wave-close + W3 cascade)
+(thread-544 BILATERAL-CONVERGED 2026-05-12T06:07Z; mission-78 RE-SCOPED via Director-direct disposition; W2-extension closed; Fix #1-#4 stay on `main` at `a4453e9`; Fix #5 ABANDONED; new wave structure W3-new through W8-new pending architect Design v5.0 + Survey-capture; standby for W3-new task issuance via Hub task entity per `feedback_mission_77_formal_wave_issuance.md`)
 
 ## Queued / filed
 
-- ▶ **W2-extension wave-close** — bilateral-converge thread-543 + W3 cascade pending re-dogfood pass
-- ⏸ **W3** — bug-74 post-success state-write ordering; cascade-spawn DEFERRED pending architect-side re-dogfood verification of W2-extension Fix #3 per thread-543 §6 protocol; engineer judgment surfaced on bug-74 fold-in: DEFERRED to W3 (substantive intent-vs-achievement semantic deliberation needed; not simple persist-relocation)
-- ○ **W3** — bug-74 post-success state-write ordering
-- ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
-- ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
-- ○ **W3** — bug-74 post-success state-write ordering
-- ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
-- ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
-- ○ **bug-74** — partial-state-write at complete(); deferred → W3
-- ○ **idea-N (architect to file inline)** — GitEngine contract extension for `reset` / `diff` / `lsRemote`; deferred per (γ) disposition; post-mission-78 follow-on
+- ⏸ **W3-new** — single-branch refactor: daemon commits direct to `mission/<id>`; drop `wip/<id>` sidecar
+- ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
+- ⏸ **W5-new** — drop coord-remote: single repo URL per mission + push-cadence config (`on-complete-only` / `every-Ns` / `on-demand`)
+- ⏸ **W6-new** — writer-lock primitive: `refs/missioncraft/lock/<scope>` + heartbeat TTL + `--force-writer` override
+- ⏸ **W7-new** — IsoEng removal + `isomorphic-git` npm-dep drop (was original W4; deferred under new arch)
+- ⏸ **W8-new** — closing audit + version bump 1.0.7 → **v1.2.0** + tag + scenario doc reconciliation
+- ⏸ **bug-74** — original W3 (post-success state-write ordering); fate TBD under new wave structure (architect to disposition)
+- ⏸ **thread-543** — W2-extension coord; will formally close when engineer-turn permits per architect plan
+- ⏸ **idea-N (architect to file inline)** — GitEngine contract extension for `reset` / `diff` / `lsRemote`; deferred per (γ) disposition; post-mission-78 follow-on
 
 ## Done this session
 
