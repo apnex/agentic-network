@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new slice (ii) shipped at `1893479` — `msn watch` new verb + reader-mission projection; 480/480 tests pass; awaiting architect ack on thread-546 before claiming slice (iii) `msn join` repurpose)
+(W4-new slice (iii) shipped at `351aca7` — `msn join` REPURPOSED as BRANCH-TRACKER reader; 485/485 tests pass; awaiting architect ack on thread-546 before claiming slice (iv) Hub-policy single-writer-per-scope)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -91,6 +91,19 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 19:55 AEST — W4-new slice (iii) SHIPPED — msn join REPURPOSED: BRANCH-TRACKER reader-mission
+
+- Architect ratified slice (ii) at 2026-05-12T09:47Z UTC + architect-disposition (a) on auto-close mechanics: defer ENTIRELY to slice (v) Loop B (single-mechanism collocation; no `msn tick` stub since `msn tick` slated for DROP per task-408 W6-new)
+- Did NOT burn thread-546 round on ack-only; silent into slice (iii) execution
+- CLI layer: `join` verb arg-spec REPURPOSED (required: 1 positional <writer-mission-id>; flags: --name only; dropped v4.x --coord-remote/--principal); shortDesc + longDesc reflect BRANCH-TRACKER semantic + slice-(v) auto-close forward-pointer
+- bin.ts: `case 'join'` MOVED from invokeRuntimeDeferred to main dispatch (creation-verb sister to `create` + `watch`); outer routing updated; old v4.x `mc.join(id, coordRemote, principal)` call DELETED from CLI path (v4.x SDK API method retained vestigially for test-compat)
+- SDK createMission: when readOnly + sourceMissionId set, resolveMissionRef normalizes name→canonical-id; writer-not-found clear MissionStateError; scope-inheritance copies writer's repos[] verbatim (single-repo this slice; multi-repo at slice vi)
+- Persisted sourceMissionId is RESOLVED canonical id (not input name); schema's msn-<8hex> regex enforced
+- 5 SHAPE-assertion tests added per calibration #72 (reader-mission shape + name-resolution + writer-not-found error + reader-name-flag + empty-writer-repos edge case)
+- `npm run build` clean; `npm test` **485/485** (was 480; **+5 net**); 98s
+- Pushed `351aca7` to apnex/missioncraft main
+- Surface to architect on thread-546 with slice-(iii) first-commit milestone + slice (iv) intent
 
 ### 2026-05-12 19:42 AEST — W4-new slice (ii) SHIPPED — msn watch new verb: PERSISTENT-TRACKER reader-mission
 
