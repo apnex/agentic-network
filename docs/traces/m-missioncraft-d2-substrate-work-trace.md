@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W3-new extension shipped at `32ca5a3` — 4 substrate-fixes from architect dogfood: #6 chokidar add/unlink + #7 INDEX-refresh post-commitToRef + #8 squashCommit target-ref BLOCKER + #9 transparency-gate SHAPE assertions; awaiting architect re-re-dogfood verification + bilateral-converge thread-545 + W4-new cascade)
+(thread-545 BILATERAL-CONVERGED 2026-05-12T09:19Z; W3-new + W3-new extension SHIPPED; architect re-re-dogfood verified all 4 fixes clean; W4-new task entity cascade-spawned via thread-545 action-1; engineer-side standby for new coord-thread dispatch)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -91,6 +91,17 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 19:20 AEST — thread-545 BILATERAL-CONVERGED; W3-new + extension COMPLETE; W4-new task cascade-spawned
+
+- Architect re-re-dogfood (`msn-741a28a7` vs apnex/missioncraft-sandbox real upstream) verified ALL 4 fixes clean: #6 chokidar add/unlink (new-file workflow fires daemon); #7 INDEX-refresh (`git status` reports clean post-debounce); #8 squashCommit target-ref BLOCKER (upstream mission-branch tip = squashed commit with operator's publishMessage; parent = upstream main; ahead-count = 1); #9 transparency-gate SHAPE (regression net via composed tests). Architectural-class-elimination of wip-branch sidecar REAL + COMPLETE.
+- Architect staged 1 convergence action: `create_task` for W4-new (independent missions + two reader flavors `msn join` BRANCH-TRACKER + `msn watch` PERSISTENT-TRACKER + Hub-policy single-writer-per-scope at mission-entity layer + mission-config schema-v2 with readOnly + sourceMissionId + sourceRemote + sourceBranch; schema-v1 REFUSED per Design v5.0 §12 no-backward-compat; substantive substrate-introduction-class scope comparable to W1).
+- Engineer-side bilateral-converged with `converged=true` + non-empty summary echoing W3-new + extension cumulative + W4-new internalization + retrospective observations (Fix #5-dissolution-vs-Fix-#8-emergence as symptom-vs-root-cause illustration; chokidar event-subscription-completeness pattern; test-shape-strengthening discipline).
+- thread-545 status flipped to `converged`; staged action committed; W4-new task entity cascade-spawning per action-1 payload.
+- Architect-side post-converge filings (separable; off-thread): bug-N (CLI parser whitespace) + bug-N+1 (publishStatus pure-git mode misleading) via Hub MCP; calibrations #71 (substrate-redesign-collapses-symptoms-not-root-causes; composes with #70) + #72 (transparency-gate-test-assertion-strength; composes with `feedback_test_assertion_too_permissive_regex.md`) to `docs/calibrations.yaml` ledger.
+- W3-new + extension cumulative: 2 commits (`8cab0aa` W3-new + `32ca5a3` W3-new extension); 6 substrate-fixes total (#3+#4 generalized + #6+#7+#8+#9); both engines touched symmetrically for Fix #8; NativeEng-only for Fix #7 (IsoEng INDEX is structurally untouched); 467/467 tests pass; thread-545 round 8/10 final
+- Engineer-side standby for W4-new coord-thread dispatch (cascade-spawned via thread-545 action-1; new thread will arrive via dispatch); multi-session pacing OK (W4-new substrate-introduction-class likely spans sessions)
+- Mission-78 progress: W0/W1/W2/W2-ext-#1-#4/W3-new/W3-new-extension ✓ shipped; W4-new ⏸ cascading via task entity; W5-new through W8-new unissued
 
 ### 2026-05-12 19:15 AEST — W3-new extension SHIPPED — 4 substrate-fixes (#6 + #7 + #8-BLOCKER + #9) from architect dogfood
 
