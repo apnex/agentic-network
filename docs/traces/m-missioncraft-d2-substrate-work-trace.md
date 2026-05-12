@@ -95,6 +95,32 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
 
+### 2026-05-12 16:10 AEST — Director-direct mission-78 RE-SCOPE; W2-extension CLOSED without Fix #5 ship; new wave structure W3-new→W8-new
+
+- Architect-side scenario-02 re-re-dogfood (post-Fix #4) verified Fix #3 + Fix #4 working end-to-end BUT surfaced Fix #5: production runPublishLoop's `headRef = mission/<id>` is vestigial (mission-branch never advances; daemon commits to wip-branch only) → squashed commit was EMPTY for Flow B (daemon-only operator workflow)
+- Engineer implemented Fix #5 defensive-fallback per architect option (a) sketch; 466/466 tests pass locally (uncommitted)
+- During regression: discovered bug-73 lifecycle test relies on Flow A (operator-MANUAL-commit on mission-branch via `simulateOperatorEdit`); Fix #5 strict-wip-only would break Flow A; defensive-fallback (wip if exists else mission) bridges both
+- **Engineer-side surfacing of substrate-design ambiguity** on thread-543 §E: ambiguity-class is "which operator workflows does substrate canonically support" — surfaced as substrate-design choice warranting Director-consult routing, NOT mechanism-only architect-decidable
+- Architect initially routed AROUND with thread-543 §1 "architect-decidable per RACI; ship option (i) defensive fallback"; gave concrete code sketch
+- Engineer implemented architect's literal sketch; 466/466 tests pass with defensive-fallback Fix #5
+- **Director-direct override engaged within minutes via separate channel**: HALT directive on thread-544 (architect-spawned) — "DO NOT ship Fix #5; walking back thread-543 approval; Director-consult engaged on substrate-design ambiguity"
+- Engineer ACKED HALT on thread-544; held Fix #5 uncommitted in working tree
+- ~50min Director-consult standby; Director-direct re-scope returned via thread-544 round 3:
+  - mission-78 EXPANDED to include substrate-design simplification
+  - Architecture target: **Flow B canonical** + **single-branch `mission/<id>`** (drop `wip/<id>`) + **independent missions** (drop `msn join` multi-participant) + **single shared repo URL** (drop coord-remote) + **push-cadence config** (replaces "mode" toggle) + **writer-lock primitive** (`refs/missioncraft/lock/<scope>` + heartbeat TTL + `--force-writer`)
+  - Target ship: **v1.2.0** (skip v1.1.0; vestigial dual-branch + multi-participant code never publishes)
+  - W2-extension CLOSED without Fix #5 ship; **Fix #1-#4 STAY on `main` at `a4453e9`** (parent-linkage + bypass-INDEX + identity fallback + deleteBranch update-ref); all 4 generalize to new architecture as durable substrate gains
+  - Fix #5 defensive-fallback ABANDONED; debate moot under simplification
+  - New wave structure W3-new through W8-new replaces original W3-W5 plan
+  - Architect drafts Design v5.0 + Survey-capture doc first; W3-new task issues post-Design ratification per `feedback_mission_77_formal_wave_issuance.md` pattern
+- Engineer-side: discarded local Fix #5 patch via `git checkout -- src/missioncraft-sdk/core/missioncraft.ts package-lock.json`; working tree clean at `a4453e9`; 466/466 tests pass
+- Bilateral-converged thread-544 with `close_no_action` (round 4/5 final); thread-543 W2-extension coord will close formally when engineer-turn permits per architect plan
+- **Engineer-side calibration filed post-convergence**: `feedback_ambiguity_class_triage_substrate_vs_mechanism.md` — bound-of-applicability for architect-decidable per RACI; engineer-surfacing for Director-consult is load-bearing when ambiguity touches operator-DX or wave-spanning architecture, EVEN IF it initially presents as mechanism-choice. Heuristic test: "would the answer change which operator workflows the substrate explicitly supports?" If YES → substrate-design → Director-consult framing correct. Companion to architect-side `feedback_architect_call_not_director_decision.md`.
+- Architect-side calibration #6 v2 captured (architect-side memory): "engineer-side surfacing was load-bearing + correct; my over-confident architect-resolution framing should have honored the surfacing on first surface"
+- W2-extension cumulative final: 2 commits (`312edd0` Fix #3 + `a4453e9` Fix #4); 2 substrate-fixes (parent-linkage + bypass-INDEX); 466/466 tests; 5 calibration data-points captured ([4] synthetic-tests-mask-wire-flow-defects; [5] synthetic-tests-mask-defects-in-caller; [6] mid-mission-mechanism-architect-resolves; [6 v2] substrate-design-warrants-Director-consult; [7] dogfood-rehearsal-as-canonical-substrate-extension-gate); Fix #5 abandoned cleanly without churn
+- Mission-78 progress: W0 ✓ shipped; W1 ✓ shipped; W2 ✓ shipped; W2-extension Fix #1-#4 ✓ shipped; **W2-extension CLOSED via Director-direct re-scope**; W3-new through W8-new pending architect Design v5.0
+- Engineer-side standby for W3-new wave issuance; multi-session pacing OK; Design v5.0 + Survey is substantial architect-side work
+
 ### 2026-05-12 14:35 AEST — W2-extension Fix #4 SHIPPED — squashCommit bypass-INDEX (re-dogfood-surfaced; predicted by §F)
 
 - Architect re-dogfood at 2026-05-12T04:23Z UTC verified Fix #3 ✓ (wip-commits now have proper parent-linkage; no orphan-root) + confirmed Fix #4 surface exactly as engineer-side §F prediction ("untracked files would be overwritten by merge" at squashCommit's `git merge --squash` step)
