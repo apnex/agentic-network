@@ -38,11 +38,15 @@
 
 ## In-flight
 
-(W1 BILATERAL-CONVERGED on thread-540 round 11/15; cascade-spawned W2 task + W2 coord-thread; awaiting notification + W2 engagement)
+(W2 slice (i) shipped + 2 substrate-asymmetry fixes surfaced by canonical-switch; awaiting per-slice surface ack on thread-542 before claiming slice (ii) substrate-currency audit pass)
 
 ## Queued / filed
 
-- ▶ **W2** — Canonical-switch: mission YAML `gitEngineProviderName` default flip → `'native-git'`; cascade-spawned task + coord-thread per thread-540 action-2 (committed); engineer-side claim on cascade arrival
+- ▶ **W2 slice (ii)** — substrate-currency audit pass: grep for any remaining 'isomorphic-git' refs in src/ + test/; verify scenario-02 (DRAFT) doesn't reference the default; small expected — likely 0-1 additional fixes
+- ○ **W2 slice (iii)** — wave-close: W2 closing audit + bilateral-converge thread-542
+- ○ **W3** — bug-74 post-success state-write ordering
+- ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
+- ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
 - ○ **W3** — bug-74 post-success state-write ordering
 - ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
 - ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
@@ -90,6 +94,21 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 13:50 AEST — W2 slice (i) SHIPPED — canonical-switch + 2 substrate-asymmetry fixes (`feedback_new_code_path_exposes_dormant_defects.md` class)
+
+- W2 cascade arrived on thread-542 (round 1) with task-406 spec; per architect's "Standby for ack + slice (i) start" + per `feedback_pattern_a_engineer_turn_discipline.md`, went silent into execution
+- Default flip: `src/missioncraft-sdk/core/missioncraft.ts:135` — `instantiateProvider('gitEngine', 'isomorphic-git')` → `'native-git'`
+- Scenario doc updates: `docs/scenarios/01-readonly-single-repo.md` 3 sites flipped + W2-Path-D2 footnote
+- 6 W2 tests added (§1 default-injection / §2 explicit-override W3-bridge / §3 end-to-end transparency)
+- W2 tests in isolation: 6/6 pass. Full regression 458/460 pass — **3 PRE-EXISTING tests in `v1.0.7-slice-iii-bug73-integration.test.ts` (lifecycle integration) failed**
+- **Substrate-asymmetry fix #1**: `resolveIdentity` async fallback (replaces sync `getIdentity` at commit/commitToRef/tag/squashCommit). Old: WeakMap-only lookup, threw on miss. New: WeakMap → `git config user.name`/`user.email` fallback (inherits from `~/.gitconfig` global). Why: SDK's runPublishLoop / abandon-flow call gitEngine methods with handles freshly returned from `storage.list()` (NEW WorkspaceHandle objects, NOT the one passed to `clone()`); WeakMap-by-object-identity misses. IsoEng silently worked because shell-out ops fall through to global git config; NativeEng's commit-via-env-vars pattern needs explicit identity. Mirror of W1 slice (iv) §B WeakMap-key-reuse gap, but THIS time exposed by SDK-internal usage not test usage.
+- **Substrate-asymmetry fix #2**: `deleteBranch` via `git update-ref -d refs/heads/<name>` (replaces `git branch -D`). Old: `git branch -D` refuses to delete the currently-checked-out branch. New: low-level ref-removal, checkout-state-agnostic, matches IsoEng's `git.deleteBranch` semantic exactly. Why: bug-73 abandon-flow checks out `mission/<id>`, commits, then deletes — NativeEng's `git branch -D` failed; IsoEng silently succeeded. For canonical-switch transparency, both engines must agree on ref-removal semantic.
+- Both fixes are W1-spec-gaps (not W2-scope-creep) but only surfaced via the W2 canonical-switch — exactly the `feedback_new_code_path_exposes_dormant_defects.md` pattern the architect warned about pre-W2 with the side-by-side merge-comparison test approval
+- After both fixes: **460/460 tests pass** (was 454; +6 W2 net); 94s
+- Pushed `e31c1fd` to apnex/missioncraft main
+- Surface to architect on thread-542 with substantive substrate-bug discovery + fixes + revised scope estimate (W2 was 1-2 rounds estimated; actually substrate-fix iteration; slice (ii) substrate-currency audit pass remaining is minor)
+- Pulse-fire count this session: 8+ fires (10min cadence; all answered via thread surfaces)
 
 ### 2026-05-12 13:15 AEST — thread-540 BILATERAL-CONVERGED; W1 wave CLOSED; W2 task cascade-spawned
 
