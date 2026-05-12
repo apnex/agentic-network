@@ -38,20 +38,23 @@
 
 ## In-flight
 
-(W1 slice (iii) shipped; awaiting per-slice surface ack from architect on thread-540 before claiming slice (iv) wave-close)
+(W1 wave-close shipped; awaiting bilateral-converge on thread-540 + cascade-spawn for W2)
 
 ## Queued / filed
 
-- ▶ **W1 slice (iv)** — PROVIDER_REGISTRY entry `'native-git'` registration in `src/missioncraft-sdk/core/provider-registry.ts` + full-contract integration test suite + W1 wave-close audit — claim post-architect-ack on slice (iii)
+- ○ **W2** — Canonical-switch: mission YAML `gitEngineProviderName` default flip → `'native-git'`; cascade-spawned via thread-540 wave-close convergence
+- ○ **W3** — bug-74 post-success state-write ordering
+- ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
+- ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
 - ○ **bug-74** — partial-state-write at complete(); deferred → W3
-- ○ **W2-W5** — unissued; cascade-spawned post-W1 wave-close
 - ○ **idea-N (architect to file inline)** — GitEngine contract extension for `reset` / `diff` / `lsRemote`; deferred per (γ) disposition; post-mission-78 follow-on
 
 ## Done this session
 
 - ✅ **W1 slice (i)** — `defaults/native-git-engine.ts` (NativeGitEngine class + `gitExec(workspace, args, options)` helper) + 6 ops (clone/branch/checkout/log/status/revparse) + 21 tests across 8 describe-blocks. Pushed `e65864e` to apnex/missioncraft main. 414 tests pass (was 393; +21). Path D2 argv-only discipline + git-stderr-surfacing + WeakMap identity-storage forward-compat for slice (ii).
 - ✅ **W1 slice (ii)** — flipped 13 contract methods from UnsupportedOperationError stub-throws to argv-only impls: init / getCurrentBranch / tag / stage / commit / commitToRef (bypass-INDEX via temp GIT_INDEX_FILE) / deleteBranch / fetch / push / pull / addRemote / removeRemote / listRemotes. Identity threaded via `GIT_AUTHOR_*`/`GIT_COMMITTER_*` env vars at commit-firing-time. 27 new tests. Mid-slice push-impl bug surfaced + fixed (default remote to `'origin'` when branch given without explicit remote). Pushed `95d65b6`. **439 tests pass (was 414; +27 new, -2 obsolete = +25 net)**.
-- ✅ **W1 slice (iii)** — advanced ops: `merge` (ff/no-ff strategy mapping per IsoEng §BBBBBB), `squashCommit` (Native-canonical NOT capability-gated; identity env-injected), `createBundle` (mkdir -p + git bundle create; returns path), `restoreBundle` (parses git bundle unbundle output; ref-name match wins over first-line fallback; git update-ref to set local ref). 9 new tests across 4 describe-blocks (merge default-no-ff merge-commit + ff fast-forward + ff-fails-on-divergence; squashCommit single-parent collapse with caller-message + caller-identity; createBundle+restoreBundle round-trip + multi-line parsing; W2 canonical-switch verification: squash-tree parity with IsoEng — IsoEng's squashCommit/createBundle/restoreBundle ALREADY shell out to native git per §2.6.2 v0.4 §AAA + §BBBBBB folds, so semantics match exactly). Slice-progression contract RETIRED (slice (i) + slice (ii) test files dropped obsolete merge-throws assertions). Pushed `32ef215`. **446 tests pass (was 439; +9 new, -2 obsolete = +7 net)**.
+- ✅ **W1 slice (iii)** — advanced ops: `merge` (ff/no-ff strategy mapping per IsoEng §BBBBBB), `squashCommit` (Native-canonical NOT capability-gated; identity env-injected), `createBundle` (mkdir -p + git bundle create; returns path), `restoreBundle` (parses git bundle unbundle output; ref-name match wins over first-line fallback; git update-ref to set local ref). 9 new tests across 4 describe-blocks. Slice-progression contract RETIRED. Pushed `32ef215`. **446 tests pass (was 439; +9 new, -2 obsolete = +7 net)**.
+- ✅ **W1 slice (iv) WAVE-CLOSE** — PROVIDER_REGISTRY `'native-git'` entry registered in `core/provider-registry.ts` (additive at v1.0.x → v1.1.0 alongside existing `'isomorphic-git'`; W4 drops the latter); `NativeGitEngine` + `gitExec` exported from `@apnex/missioncraft` public API. **Full-contract integration test suite**: PROVIDER_REGISTRY-instantiated engine end-to-end exercises ALL 17 GitEngine contract methods through HTTP fixture upstream. **W2 canonical-switch confidence test**: side-by-side IsoEng vs NativeEng merge-comparison — `'no-ff'` merge produces equivalent merge-commit-tree-SHA across both engines; `'ff'` merge fast-forwards both to identical HEAD-SHA. Test setup pins author/committer date via env vars to isolate merge-semantic equivalence from unrelated commit-SHA drift. **Result**: NO observable divergence between pure-TS `git.merge` (IsoEng) and native `git merge` (NativeEng) for the tested strategies/scenarios; W2 canonical-switch should be transparent. Defensive against `feedback_new_code_path_exposes_dormant_defects.md` class. 8 new tests across 3 sections (§1 PROVIDER_REGISTRY × 4, §2 full-contract integration × 2, §3 merge-parity × 2). Mid-slice test bug surfaced + fixed: WorkspaceHandle objects are WeakMap keys for identity-resolve; constructing two separate handles for the same dir produces two different keys (use ONE handle per workspace; reuse). Pushed `dfb43d1`. **454 tests pass (was 446; +8 net)**.
 
 ## Edges (dependency chains)
 
@@ -87,6 +90,24 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 13:05 AEST — W1 slice (iv) WAVE-CLOSE SHIPPED — PROVIDER_REGISTRY + full-contract integration + W2-switch confidence
+
+- Architect ratified slice (iii) at 2026-05-12T02:55Z UTC; slice (iv) green-lit + side-by-side merge-comparison test approved per §B-disposition; defense against `feedback_new_code_path_exposes_dormant_defects.md` class
+- Did NOT burn thread-540 round on ack-only; silent into slice (iv) execution
+- §1 PROVIDER_REGISTRY entry: `'native-git': () => new NativeGitEngine()` added to gitEngine factories in `src/missioncraft-sdk/core/provider-registry.ts` alongside existing `'isomorphic-git'` (additive at v1.0.x → v1.1.0; W4 drops `'isomorphic-git'` entry + the file). `NativeGitEngine` + `gitExec` exported from `src/missioncraft-sdk/index.ts` public API
+- §2 Full-contract integration test suite: PROVIDER_REGISTRY-instantiated engine end-to-end through HTTP fixture exercising ALL 17 GitEngine contract methods (clone/branch/checkout/getCurrentBranch/stage/commit/commitToRef/status/log/revparse/tag/push/fetch/pull/addRemote/removeRemote/listRemotes/deleteBranch/createBundle/restoreBundle/squashCommit/merge); validates wire-up + happy-path for W2 canonical-switch target
+- §3 Side-by-side IsoEng vs NativeEng merge-parity (W2 canonical-switch confidence):
+  - **`'no-ff'` merge**: NativeEng + IsoEng produce equivalent merge-commit-tree-SHA (canonical structural-identity verification)
+  - **`'ff'` merge**: both engines fast-forward to identical HEAD-SHA
+  - Test pins `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` env vars across both workspaces to isolate merge-semantic equivalence from unrelated commit-SHA drift
+  - **Result**: NO observable divergence between pure-TS `git.merge` (IsoEng) and native `git merge` (NativeEng) for tested strategies/scenarios; W2 canonical-switch transparent for tested paths
+- Mid-slice test bug surfaced + fixed: WorkspaceHandle objects are WeakMap keys for identity-resolve; constructing two separate handles for the same dir produces two different WeakMap keys (lookup misses). Fix: construct each workspace handle ONCE and reuse via shared variable. Same calibration class as `feedback_substrate_extension_wire_flow_integration_test.md`.
+- 8 new tests across 3 sections; `npm run build` clean; `npm test` **454/454** (was 446; **+8 net**); 94s
+- Pushed `dfb43d1` to apnex/missioncraft main (Pattern A direct-commit)
+- W1 substrate-introduction wave-close COMPLETE — NativeGitEngine canonical build SHIPPED. Awaiting bilateral-converge on thread-540 + cascade-action `create_task` for W2 (new coord-thread per architect's session-handoff-by-wave model)
+- Pulse-fire count this session: 6+ fires (10min cadence; all answered via thread-540 surfaces)
+- W1 cumulative: 4 commits (`e65864e` slice i + `95d65b6` slice ii + `32ef215` slice iii + `dfb43d1` slice iv) + ~65 net new tests (393 baseline → 454 total = +61 net) + 1 substrate file (~430 lines) + 4 test files (~1100 lines)
 
 ### 2026-05-12 12:55 AEST — W1 slice (iii) SHIPPED — advanced ops; slice-progression contract RETIRED
 
