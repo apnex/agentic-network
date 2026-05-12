@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W5-new wave OPENED on thread-548 (task-409); slice (i) schema-v2 extension shipped at `4245f2c` — pushCadence/pushIntervalSeconds (writer-side; ≥10s, default 60s) + pullCadence/pullIntervalSeconds (reader-side; ≥5s, default 30s); asymmetric defaults per Design v5.0 §10.5; coordPollMs back-compat preserved through W7-new; 528/528 tests (+14 net))
+(W5-new wave slice (ii) shipped at `dacbd38` — coord-remote drop: schema field + 2 modules + 6 SDK methods + watcher-entry call-sites + mc.join stub-throw; 7 v4.x test files DELETED + 3 in-place updates; 476/476 tests (-52 net from v4.x deletions); canonicalizeCoordinationRemote + applyReaderRefUpdate + set-coordination-remote mutation-case carried forward to W7-new "v4.x carry-forward surface cleanup")
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,25 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 08:50 AEST — W5-new slice (ii) SHIPPED — Drop coord-remote code paths + schema field
+
+- Architect ack'd slice (i) on thread-548 round 3 + green-lit slice (ii) with (a) disposition (clean schema+consumer deletion); v4.x mc.join SDK method retention deferred to W7-new alongside IsoEng-removal per "v4.x carry-forward surface cleanup" batch
+- Did NOT burn engineer-turn on ack-only; silent into slice (ii) execution per Pattern A
+- **Deletion scope** (115 coord-remote references in src/ + 10 test files referencing):
+  - **Modules DELETED**: `coord-mirror.ts` (114 lines; v4.x reader-side coord-remote git mirror), `config-mirror.ts` (110 lines; v4.x writer-side config-mutation propagation mirror)
+  - **Schema/types**: `coordinationRemote` field removed from MissionConfig + MissionState; F-V4.2 conditional-validation (participants[reader] required coordinationRemote) removed
+  - **SDK methods DELETED**: `cascadeTerminated` + `cascadeConfigUpdate` + `propagateConfigToCoordRemote` + `emitTerminatedTag` + `pushWipToCoordRemote` + `readerLoopBTick` (99 lines, v4.x reader-daemon Loop B)
+  - **Call-site cleanups in complete()/abandon()/writer-flow + mission-config projection + mutation case (set-coordination-remote becomes no-op stub-arm)**
+  - **Watcher-entry.ts cleanup**: v4.x readerLoopBTick dispatch arm DELETED (only v5.0 readerLoopBV5Tick fires on isV5Reader); pushWipToCoordRemote debounced-commit call DELETED (W5-new slice (iii) replaces with push-cadence); config-mtime-watch + propagateConfigToCoordRemote DELETED
+- **mc.join SDK method**: STUB-THROW UnsupportedOperationError per architect-disposition (signature retained for v4.x carry-forward surface through W7-new; impl body replaced; operators directed to v5.0 reader-flavor creation flows via mc.create with readOnly + sourceMissionId OR sourceRemote+sourceBranch)
+- **v4.x test fixture deletions** (engineer-judgment per architect-disposition "migrate OR delete"):
+  - DELETED 7 pure-v4.x test files: coord-remote-push.test.ts, w5c-real-engine-integration.test.ts, reader-daemon-loop-b.test.ts, w5b-integration.test.ts, w6-slice-ii.test.ts, join-leave-runtime.test.ts, w6-slice-iii-mission-class-signature.test.ts
+  - UPDATED in-place 3 files: schemas.test.ts (removed F-V4.2 test; preserved 14 W5-new slice (i) cadence tests), missioncraft-class.test.ts (3 mc.join input-validation tests → 1 stub-throw test), v1.0.3-slice-iii-name-resolution.test.ts (removed mc.join name-resolution; coverage via W4-new slice (iii) tests)
+- **Carry-forward dead-code** to W7-new "v4.x carry-forward surface cleanup": canonicalizeCoordinationRemote helper (role-derivation.ts; no production callers, 10 tests preserved); applyReaderRefUpdate helper (reader-workspace-mode.ts; no callers); set-coordination-remote mutation-case (no-op stub-arm)
+- `npm run build` clean (no unused-import warnings); `npm test` **476/476** (was 528; **-52 net** from v4.x deletions; no behavior-regressions); test-file count 59 → 52
+- Pushed `dacbd38` to apnex/missioncraft main
+- Surface to architect on thread-548 with slice (ii) milestone + slice (iii) writer-daemon push-cadence green-light request
 
 ### 2026-05-13 08:31 AEST — W5-new slice (i) SHIPPED — schema-v2 extension: symmetric push/pull cadence
 
