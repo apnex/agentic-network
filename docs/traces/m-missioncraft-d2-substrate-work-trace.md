@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new slice (v) CORE shipped at `2a6f0fc` + slice (vi) Multi-repo scope-inheritance test-coverage shipped at `5ba2132` — 493/493 tests pass; slice (iv) PAUSED pending Director-consult on Hub-policy locus; thread-546 architect's-turn 8/10; slice (v) CORE + slice (vi) milestone surface BUNDLED on next architect-turn-flip; awaiting architect-disposition on slice-(v)-extension scope)
+(W4-new slice (v.b) Reader-substrate completion shipped at `714f70a` — reader-start flow + workspace 0444 + auto-close mechanics (dual failure-modes) + housekeeping; 502/502 tests pass; slice (iv) DROPPED per Director (Hub-integration deferred post-v1.2.0); thread-546 CLOSED at round_limit 10/10 with close_no_action; thread-547 continuation with fresh 15-round budget; remaining: slice (vii) writer+reader bilateral transparency-gate test + slice (viii) wave-close + v1.2.0 ship)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,21 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 07:40 AEST — W4-new slice (v.b) Reader-substrate completion SHIPPED — reader-start flow + workspace 0444 + auto-close mechanics dual-failure-mode
+
+- Thread-547 spawned by architect with fresh 15-round budget (continuation from thread-546 round_limit converge); 7-slice W4-new amended per Director-direct (slice iv DROPPED entirely; Hub-integration deferred post-v1.2.0)
+- Did NOT burn engineer-turn on START SIGNAL ack; silent into slice (v.b) execution per Pattern A discipline
+- **Reader-start flow** — `Missioncraft.start()` accepts reader-mission lifecycle 'joined' (in addition to writer's 'configured'): validPreStates derived from `initialConfig.mission.readOnly`; reader's clone+checkout path checks out source-branch directly (PERSISTENT-TRACKER: explicit sourceBranch; BRANCH-TRACKER: `mission/<sourceMissionId>` per v5.0 single-branch architecture); lifecycle transitions 'joined' → 'started' (parallel to writer); spawn-failure rollback respects original pre-state; `_engineMutate` calls pass `role: 'auto'` for reader-state schema compat
+- **Workspace 0444 chmod-down** — post-clone+checkout: `setReaderWorkspaceMode` per workspace (reuses v4.x helper from `reader-workspace-mode.ts`; files 0444, dirs 0555, .git/ excluded per bug-62 v4.9 pattern); Loop B fetch+reset cycle: chmod-up via `setReaderWorkspaceWritable` BEFORE fetch+reset; chmod-down via `setReaderWorkspaceMode` AFTER (always, in finally-block; preserves 0444 invariant on fetch/reset failure)
+- **Auto-close mechanics dual failure-modes** — new `ReaderAutoCloseError` class in `errors.ts` (exported in public API); `readerLoopBV5Tick` throws ReaderAutoCloseError when BRANCH-TRACKER detects writer-terminal: (1) writer mission-config file gone, (2) writer lifecycleState in {completed, abandoned}; `watcher-entry.ts` catches specifically → `readerAutoAbandon` atomic lifecycle advance to 'abandoned' → clears Loop B timer + SIGTERMs self via readerShutdown; other Loop B errors remain tick-transient (retry-next-tick) per existing pattern
+- **`readerAutoAbandon(missionId, reason)` daemon-side cascade method** — atomic mutation via `_engineMutate` (role: 'auto') advancing lifecycle to 'abandoned' + setting abandonMessage (preserves existing if set per v3.3 immutability fold); idempotent (validate-rejection on already-terminal swallowed); graceful on non-existent mission (existsSync gate)
+- **Housekeeping** — `case 'join'` dispatch-switch invariant comment folded at `bin.ts` dispatch function header per architect observation thread-546 round 7 ("creation-verbs in main dispatch; runtime-deferred verbs are mission-id-targeted operations"); W6-new hybrid grammar will formalize
+- **Test scope** — new `v1.2.0-w4-new-reader-start-and-auto-close.test.ts` with 9 SHAPE-assertion tests (reader-start flow + auto-close dual failure-modes + readerAutoAbandon cascade); 2 existing slice (v) CORE tests updated for v.b behavior (BRANCH-TRACKER deleted-writer now asserts ReaderAutoCloseError throw; afterEach hooks chmod-up before rm)
+- **Mid-impl course-corrections** (3): (1) PERSISTENT-TRACKER test initially missing `repo: bareRepoUrl` — slice (ii) `msn watch` CLI sets BOTH repo (for repos[]) AND sourceRemote (for Loop B); test follows that shape; (2) `_engineMutate` in start() Step 5 transition + spawn-failure rollback defaulted to role='writer' which rejects reader-state 'joined' — added `role: 'auto'` to both; (3) `readerAutoAbandon` `_engineMutate` similarly needed `role: 'auto'` for reader-config parse
+- `npm run build` clean; `npm test` **502/502** (was 493; **+9 net** — all slice v.b tests)
+- Pushed `714f70a` to apnex/missioncraft main
+- Surface to architect on thread-547 with first-commit milestone + slice (vii) green-light request
 
 ### 2026-05-12 20:18 AEST — W4-new slice (vi) Multi-repo scope-inheritance test-coverage SHIPPED — silent into next slice per architect-explicit-approval
 
