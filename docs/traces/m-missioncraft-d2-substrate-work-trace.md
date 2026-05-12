@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W5-new wave slice (v) shipped at `eb13ab1` — end-to-end transparency-gate bilateral via cadence (4 tests: writer-side push-cadence + BRANCH-TRACKER reader-cycle + PERSISTENT-TRACKER reader-cycle + auto-close cascade); 499/499 tests (+4 net); 5/7 W5-new slices SHIPPED; only (vi) architect-dogfood + (vii) wave-close remaining)
+(W5-new Fix #12 shipped at `166bad3` — complete() force-push for post-push-cadence squash-rewrite; architect-dogfood-surfaced v1.2.0 BLOCKER hypothesis-confirmed via SDK-composition test then fixed; 500/500 tests (+1 net regression test); awaiting architect re-dogfood)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,20 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 09:51 AEST — W5-new Fix #12 SHIPPED — complete() force-push for post-push-cadence squash-rewrite (architect-dogfood-surfaced v1.2.0 BLOCKER)
+
+- Architect-dogfood report on thread-548 round 13 surfaced v1.2.0 BLOCKER: "**push-cadence + pullCadence + GAP-2 natural-resolution VERIFIED ✓ BUT msn complete BLOCKER surfaced**"
+- **Hub get_thread pagination obstacle**: my engineer-side could only access messages 0-9 of 13-message thread; architect's full dogfood report (message 12) was unreachable via get_thread (notification truncated at 9984 bytes too). Resolved by hypothesis-then-verify diagnostic-pattern + bug-bisection
+- **Hypothesis** based on slice-level audit: slice (iii) push-cadence pre-pushes daemon-chain mission/<id> to upstream; complete()'s squash rewrites mission/<id> history; subsequent pushWithRetry FAILS non-fast-forward
+- **Verification**: wrote SDK-composition regression test simulating dogfood scenario (msn create + start → daemon-commit → pushMissionBranchToUpstream → mc.complete) → confirmed exact non-fast-forward error message: `! [rejected]  mission/msn-XXXX -> mission/msn-XXXX (non-fast-forward)`
+- **Fix #12**: `runPublishLoop` at `missioncraft.ts:703` — `pushWithRetry(handle, headRef)` → `pushWithRetry(handle, { branch: headRef, force: true })`. Force-push semantically: "this published squash supersedes the in-progress daemon-chain pushed by push-cadence"
+- **Why slice (v) test missed it**: slice (v) end-to-end transparency-gate test exercises bilateral cycle WITHOUT complete (writer remains active throughout); push-cadence + reader-tracking covered but NOT the publish path. W3-new e2e test runs complete() WITHOUT push-cadence interfering (no setInterval first-fire before mc.complete in test timing). Architect-dogfood IS the dispositive substrate-extension wire-flow gate exactly because real-upstream timing reveals composition-defects synthetic tests miss
+- 1 regression test in new `v1.2.0-w5-new-fix12-complete-after-push-cadence.test.ts` with 7 SHAPE assertions: lifecycle 'completed' + publishStatus + upstream-tip-NOT-daemon-chain-version + commit-msg + parent + ahead-count + main-untouched
+- `npm run build` clean; `npm test` **500/500** (was 499; **+1 net** — Fix #12 regression test); 97s
+- Pushed `166bad3` to apnex/missioncraft main
+- **Calibration data-point**: composes with #62/#67/#68/#74 — substrate-extension introduces inter-component-composition-defect that synthetic tests + SDK-composition tests can both miss; only real-upstream-cadence-timing reveals it (slice iii push-cadence + complete()'s squash-then-push are independent code paths individually correct; their COMPOSITION under real-upstream timing creates the non-fast-forward defect)
+- Surface to architect on thread-548 with Fix #12 milestone + re-dogfood request
 
 ### 2026-05-13 09:30 AEST — W5-new slice (v) SHIPPED — End-to-end transparency-gate test (bilateral via cadence; SDK-composition)
 
