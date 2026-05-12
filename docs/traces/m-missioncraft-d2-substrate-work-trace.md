@@ -1,0 +1,118 @@
+# M-Missioncraft-D2-Substrate — Work Trace (live state)
+
+**Mission:** mission-78 (M-Missioncraft-D2-Substrate; substrate-replacement class)
+**Path D2 architectural decision:** Director-ratified 2026-05-12 — missioncraft hard-depends on `git` + `gh` CLI binaries; argv-only discipline; NativeGitEngine canonical; IsomorphicGitEngine REMOVED in single mission ship; ship target `@apnex/missioncraft@1.1.0`.
+**Coord-thread:** thread-540 (W1 execution; ACTIVE; correlationId task-405)
+**Owner:** apnex-greg (engineer)
+**Trace pattern:** docs/methodology/trace-management.md
+
+---
+
+## Resumption pointer (cold-session brief)
+
+1. **Read this trace file** — orients to mission-78 wave-state.
+2. **Active wave:** W1 in-flight on thread-540 — NativeGitEngine canonical build at `src/missioncraft-sdk/defaults/native-git-engine.ts` (parallel sibling to `isomorphic-git-engine.ts`; (α)-disposition by architect 2026-05-12T02:14Z).
+3. **Current in-flight:** W1 slice (i) — `gitExec` helper + 6 foundational ops (clone/branch/checkout/log/status/revparse) + per-method tests.
+4. **Read these files:**
+   - `src/missioncraft-sdk/pluggables/git-engine.ts` — full GitEngine interface contract (read FIRST — slice (i) implements 6 of ~22 methods)
+   - `src/missioncraft-sdk/defaults/isomorphic-git-engine.ts` — IsomorphicGitEngine reference impl (parallel sibling pattern)
+   - `src/missioncraft-sdk/substrate-detect.ts` — slice (i) precedent for argv-only discipline (`feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`)
+   - `test/fixtures/git-http-fixture.ts` — HTTP fixture for integration tests
+   - `test/missioncraft-sdk/w6-real-engine-start.test.ts` — fixture-consumer pattern
+5. **Hub state spot-check:** `task-405` ACTIVE; thread-540 round 4/15; mission-78 ACTIVE.
+
+---
+
+## Wave plan (per architect dispatch + thread-539 cascade)
+
+| Wave | Status | Description |
+|---|---|---|
+| W0 | ✅ CLOSED | substrate-detect module (idea-284, `580c38b`) + `msn version` extension (idea-285, `6e7aef3`); thread-539 converged |
+| **W1** | **▶ IN-FLIGHT** | NativeGitEngine canonical build — task-405; thread-540; 4 slices (gitExec+basic / write-ops / advanced / PROVIDER_REGISTRY+integration) |
+| W2 | ○ unissued | Canonical-switch: mission YAML `gitEngineProviderName` default flip → `'native-git'` |
+| W3 | ○ unissued | bug-74 post-success state-write ordering |
+| W4 | ○ unissued | Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep |
+| W5 | ○ unissued | Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship |
+
+---
+
+## In-flight
+
+(W1 slice (i) shipped; awaiting per-slice surface ack from architect on thread-540 before claiming slice (ii))
+
+## Queued / filed
+
+- ▶ **W1 slice (ii)** — write-ops (commit/push/fetch/tag/reset/diff/ls-remote) — claim post-architect-ack on slice (i)
+- ○ **W1 slice (iii)** — advanced ops (merge --squash; capability-gated bundle ops)
+- ○ **W1 slice (iv)** — PROVIDER_REGISTRY entry `'native-git'` + integration test suite (full GitEngine contract coverage; wave-close audit)
+- ○ **bug-74** — partial-state-write at complete(); deferred → W3
+- ○ **W2-W5** — unissued; cascade-spawned post-W1 wave-close
+
+## Done this session
+
+- ✅ **W1 slice (i)** — `defaults/native-git-engine.ts` (NativeGitEngine class + `gitExec(workspace, args, options)` helper) + 6 ops (clone/branch/checkout/log/status/revparse) + 21 tests across 8 describe-blocks (helper / clone / branch+checkout / revparse / status / log / UnsupportedOperationError contract / providerName / HTTP-fixture integration). Pushed `e65864e` to apnex/missioncraft main. 414 tests pass (was 393; +21). Path D2 argv-only discipline + git-stderr-surfacing (per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + WeakMap identity-storage forward-compat for slice (ii). PROVIDER_REGISTRY entry `'native-git'` deferred to slice (iv) per architect spec.
+
+## Edges (dependency chains)
+
+```
+W0 (✓ substrate-detect)
+   ↓
+W1 slice (i)  ─── ▶ IN-FLIGHT
+   ↓
+W1 slice (ii) write-ops ─── (depends on slice (i) gitExec helper)
+   ↓
+W1 slice (iii) advanced ops ─── (bug-75 was-here site; ensure argv-array discipline)
+   ↓
+W1 slice (iv) PROVIDER_REGISTRY + integration ─── (wave-close audit)
+   ↓
+W2 canonical-switch ─── (depends on W1 wave-close)
+   ↓
+W3 bug-74 ─── (depends on W2 default flip)
+   ↓
+W4 IsomorphicGitEngine removal ─── (depends on W3)
+   ↓
+W5 ship v1.1.0 ─── (Director gate-point)
+```
+
+## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-12 12:00 AEST — mission-78 W1 cold-pickup post-Director-context-clear
+
+- Director cleared engineer context 2026-05-12T02:11Z UTC mid-W1; architect spawned thread-541 cold-pickup primer
+- Cold-pickup primer ACKED on thread-541 (round 2): engineer-side MEMORY.md + Path D2 + mission-78 wave-state + apnex/missioncraft local-state (`main` clean; HEAD=`6e7aef3`) all verified
+- Surfaced one path-clarification question: primer §5 specified `src/missioncraft-sdk/git-engines/native-git-engine.ts` but existing engine lives at `defaults/isomorphic-git-engine.ts` (no `git-engines/` dir exists)
+- Architect-disposition (α): place new file at `defaults/native-git-engine.ts` parallel-sibling to existing IsomorphicGitEngine; matches 4-pluggable `defaults/` structure; W4 IsomorphicGitEngine removal eliminates any leftover asymmetry; lowest scope-creep
+- 4th architect-claim-vs-code drift this session captured (calibration class established at `feedback_architect_bug_filing_needs_root_cause_verification.md`)
+- thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
+- W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
+- Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 12:25 AEST — W1 slice (i) SHIPPED — NativeGitEngine canonical build
+
+- `defaults/native-git-engine.ts` authored: NativeGitEngine class + exported `gitExec(workspace, args, options)` helper with argv-only discipline; static `providerName = 'native-git'`; WeakMap-stored identity for slice (ii) commit-firing-time resolve (forward-compat)
+- 6 ops fully implemented:
+  - `clone` — `git clone <url> <path>`; identity stored in WeakMap; null-cwd execFile mode
+  - `branch` — `git branch <name> [<from>]`
+  - `checkout` — `git checkout <branch>`
+  - `revparse` — `git rev-parse <ref>` → 40-char SHA
+  - `status` — composite of `git rev-parse --abbrev-ref HEAD` + `git rev-parse HEAD` + `git status --porcelain=v1 -z`; XY-letter parsing for staged/modified/untracked
+  - `log` — `git log` with `%H%x1f%an%x1f%ae%x1f%aI%x1f%P%x1f%B%x1e` format; US-field-separator + RS-record-separator parsing
+- Other GitEngine methods (init/commit/push/fetch/tag/etc.) stub-throw `UnsupportedOperationError` with slice-pointer message; locks slice-progression contract
+- `gitExec` error-handler surfaces git's actual stderr (not Node's argv-joined display string per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`); 4th instance of that calibration discipline applied
+- Test file `test/missioncraft-sdk/v1.1.0-slice-i-native-git-engine.test.ts`: 21 tests across 8 describe-blocks (gitExec / clone / branch+checkout / revparse / status / log / UnsupportedOperationError contract / providerName / HTTP-fixture integration)
+- Test-helper iteration: initial `git init --initial-branch=main` failed on dev-machine git 2.25.4 (no `--initial-branch` flag pre-2.28); switched to `git init --quiet` + `git symbolic-ref HEAD refs/heads/main` (matches existing `w6-real-engine-start.test.ts` pattern). All 21 tests pass.
+- `npm run build` clean; `npm test` 414/414 (was 393; +21 net); 95s
+- Pushed `e65864e` to apnex/missioncraft main (Pattern A direct-commit; no PR-flow per `feedback_apnex_repos_direct_commit_to_main.md`)
+- Commit-prefix shift noted in commit body: W0 commits used `[v1.0.8 ...]` framing pre-mission-78; switching to `[v1.1.0 W1 ...]` to align with mission-78 target version. W5 performs the actual package.json + VERSION-const bump.
+- Surface to architect on thread-540 with first-commit milestone + slice (ii) intent + pulse-status (10min cadence answered via this surface vs separate note)
+
+## Canonical references
+
+- **Path D2 directive:** Director verbatim 2026-05-12 — "Let's hard depend on git and gh binaries. Let's make missioncraft detect these automatically, and show the current git and gh binary versions additionally in the 'msn version' output. Arguments become a robust code structuring exercise. Clean and simple."
+- **Architect-side memory:** `project_missioncraft_path_d2_native_substrate.md` (auto-loaded engineer-side parallel may exist)
+- **GitEngine interface contract:** `src/missioncraft-sdk/pluggables/git-engine.ts`
+- **PROVIDER_REGISTRY:** `src/missioncraft-sdk/core/provider-registry.ts` (closed registry at v1; `'native-git'` entry lands W1 slice (iv))
+- **Slice (i) precedent (argv-only):** `src/missioncraft-sdk/substrate-detect.ts` (W0 slice (i) `580c38b`)
+- **Test fixture pattern:** `test/fixtures/git-http-fixture.ts` consumed by `test/missioncraft-sdk/w6-real-engine-start.test.ts`
+- **Mission-77 retrospective:** `docs/reviews/m-missioncraft-v1-retrospective.md` (DRAFT)
+- **Trace-management methodology:** `docs/methodology/trace-management.md`
