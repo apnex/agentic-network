@@ -2212,6 +2212,150 @@ calibrations:
       - tele-7
       - tele-2
 
+  - id: 67
+    class: methodology
+    title: "Synthetic engine-isolation tests mask SDK-internal-call-pattern defects (necessary-but-insufficient test net)"
+    origin: mission-78-W2-extension
+    surfaced_at: thread-543-round1 (Fix #3 commitToRef parent-linkage discovery via scenario-02 dogfood)
+    status: closed-folded
+    closure_mechanism: |
+      Architect-side scenario-02 dogfood against fresh apnex/missioncraft-sandbox
+      surfaced Fix #3 (commitToRef wip-commit orphan-parent) despite 460/460 unit/
+      integration tests passing on engine-isolation tests. The defect was at the
+      SDK-internal call-pattern (storage.list returns fresh WorkspaceHandle to
+      runPublishLoop / abandon-flow) — NOT reachable via engine-isolation tests
+      that instantiate GitEngine directly with reused-handle pattern.
+
+      Pattern: when test fixtures construct engine-level state via test-helpers
+      that differ from the production SDK-internal call-pattern, defects in the
+      production call-shape can pass the test net entirely. The W1 slice (iv)
+      §2 full-contract integration test exercised PROVIDER_REGISTRY-instantiated
+      engine but with reused-handle pattern; if it had ALSO exercised the storage.
+      list-fresh-handle pattern, Fix #3 + Fix #4 would have been caught at W1
+      wave-close (pre-canonical-switch).
+
+      Closure-fold: Design v5.0 §7 governance item + W8-new pre-publish wire-flow
+      rehearsal protocol per feedback_substrate_extension_wire_flow_integration_
+      test.md. The dispositive substrate-extension transparency gate is operator-
+      side rebuild + reinstall + clean ~/.missioncraft + scenario-XX dogfood
+      passes BEFORE tag-push triggers release.yml.
+    cross_refs:
+      - feedback_substrate_extension_wire_flow_integration_test.md
+      - docs/designs/m-missioncraft-d2-substrate-design.md §3 #2
+      - thread-543 (W2-extension coord-thread Fix #3 + Fix #4 surface)
+    tele_alignment:
+      - tele-2
+
+  - id: 68
+    class: methodology
+    title: "Synthetic tests also mask DEFECTS-IN-THE-CALLER (caller-input-shape divergence from production)"
+    origin: mission-78-W2-extension
+    surfaced_at: thread-543-round5 (Fix #5 surfacing — publish-loop empty-squash from mission-branch instead of wip-branch)
+    status: closed-folded
+    closure_mechanism: |
+      Companion to calibration #67. Even when engine-isolation tests have correct
+      hand-crafted inputs (e.g. greg's Fix #4 §3 end-to-end test passed wip-branch
+      directly to squashCommit), they DON'T catch defects when the production caller
+      passes DIFFERENT inputs (e.g. runPublishLoop passes mission/<id>, not wip/<id>).
+
+      Pattern: Fix #3 fixed wip-commit-construction; Fix #4 fixed squashCommit's
+      working-tree-handling; Fix #5 surfaced publish-loop's choice of input. Each
+      fix exposed the next layer's defect — fix-class-recursion pattern (see
+      calibration #70 for the architectural-simplification interpretation).
+
+      The fix-class-recursion + caller-input-shape-divergence together demonstrate
+      that the architect-side dogfood is the dispositive substrate-extension
+      transparency gate even when 466/466 tests pass.
+
+      Closure-fold: Design v5.0 §7 governance item + W8-new pre-publish wire-flow
+      rehearsal protocol. Same closure-vehicle as #67.
+    cross_refs:
+      - feedback_substrate_extension_wire_flow_integration_test.md
+      - docs/designs/m-missioncraft-d2-substrate-design.md §3 #3
+      - thread-543 (W2-extension coord-thread Fix #5 surfacing)
+
+  - id: 69
+    class: methodology
+    title: "Engineer-surfacing for Director-consult routing is load-bearing when substrate-design ambiguity is genuine (calibration #6 v2 refinement)"
+    origin: mission-78-W2-extension
+    surfaced_at: thread-543-round6 (greg's Fix #5 surfacing of dual-flow substrate-design ambiguity) + thread-544 architect-walkback
+    status: closed-folded
+    closure_mechanism: |
+      Refinement to original calibration #6 (architect resolves (a)-vs-(b) mechanism
+      choices without Director-escalation per feedback_architect_call_not_director_
+      decision.md). v2 captures: the original calibration is correct for MECHANISM
+      choices within stable substrate-target-state, but architect must verify the
+      substrate-target-state-vs-mechanism distinction BEFORE autonomously routing
+      around an engineer's Director-consult surfacing.
+
+      Surfaced via failure-mode: architect autonomously dispositioned greg's Fix #5
+      "likely Director-consult" surfacing as (a)-vs-(b)-mechanism + chose defensive
+      fallback. Operator-direct correction reversed via thread-544 HALT — the
+      choice between Flow A / Flow B / dual-mode WAS substrate-target-state
+      directional, not mechanism. Director-direct ratification of Flow B canonical
+      + drop multi-participant + drop coord-remote substrate-design simplification
+      followed.
+
+      Diagnostic rubric for future architect-application:
+      - (a) directional (substrate-target-state defining) → Director-consult REQUIRED
+      - (b) mechanism (within stable substrate-target-state) → architect-resolvable
+      Engineer-side framing-instinct ("this might be Director-scope") is load-
+      bearing; architect should slow-down before autonomously dismissing.
+
+      Closure-pair: feedback_architect_call_not_director_decision.md (original rule
+      preserved for mechanism choices) + feedback_ambiguity_class_triage_substrate_
+      vs_mechanism.md (sister discipline; pre-existing memory) + NEW memory
+      feedback_verify_directional_vs_mechanism_before_routing_around.md (TBD
+      filing post-this-calibration-ratification).
+    cross_refs:
+      - feedback_architect_call_not_director_decision.md
+      - feedback_ambiguity_class_triage_substrate_vs_mechanism.md
+      - docs/designs/m-missioncraft-d2-substrate-design.md §3 #5
+      - thread-543 (W2-extension; greg's Fix #5 surfacing at round 6)
+      - thread-544 (HALT; architect-walkback + Director-direct re-scope)
+
+  - id: 70
+    class: methodology
+    title: "Architectural-simplification via Director-progressive-question (fix-class-recursion at architectural level → substrate-redesign signal)"
+    origin: mission-78-W2-extension + 2026-05-12 Director-consult session
+    surfaced_at: operator-channel substrate-design conversation (Director-progressive-question pattern)
+    status: open
+    closure_mechanism: |
+      Pattern-recognition; no closure-PR (architectural-pathology meta-pattern).
+
+      Diagnostic signature: when architect proposes a substrate-level primitive
+      (e.g. writer-lock with TTL + heartbeat + override flag), question whether
+      the underlying concern is substrate-layer or coordination-layer. The lock
+      primitive was a substrate-level fix for a Hub-coordination concern (single-
+      writer-per-scope policy). Once reframed as "Hub-policy at mission-entity
+      layer", the lock primitive dissolved entirely.
+
+      Sibling-direction pattern: Director-progressive-question collapsed multiple
+      layers of accidental complexity in Design v5.0:
+      - "Why do we need both mission/<id> + wip/<id>?" → drop wip; single-branch
+      - "Why coord-remote? Reader can just join?" → drop coord-remote; single repo
+      - "Do we need a lock? Branches don't collide" → drop writer-lock primitive;
+        Hub-policy instead
+      Each question collapsed a layer.
+
+      Architectural-pathology composition: Fix-class-recursion (each fix exposes
+      next defect — calibrations #67 + #68 capture the test-net side) is a SIGNAL
+      of architectural-drift at the substrate level. When 3+ consecutive substrate-
+      fixes appear in same code-area without reaching wave-close, the right
+      response is often substrate-redesign (collapse the architecture), NOT another
+      incremental fix.
+
+      Application instance: mission-78 W2-extension. 5 substrate-fixes proposed
+      (Fix #1-#4 shipped + Fix #5 debate); pause + redesign yielded Design v5.0
+      collapse of writer-lock + coord-remote + dual-branch + multi-participant
+      into single-branch + independent-missions + shared-repo-URL + Hub-policy.
+    cross_refs:
+      - docs/designs/m-missioncraft-d2-substrate-design.md §3 #4 + #7
+      - thread-543 (Fix #3 → Fix #4 → Fix #5 cascade)
+      - thread-544 (architect-walkback + Director-direct substrate-redesign)
+    tele_alignment:
+      - tele-2
+
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
 #   title                       string; human-readable pattern name
