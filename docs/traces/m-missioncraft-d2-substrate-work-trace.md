@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new WAVE BILATERAL-CONVERGED at thread-547 round 10/15 — architect re-dogfood verified all Fix #10+#11 substrate-paths clean against `apnex/missioncraft-sandbox`; BRANCH-TRACKER auto-close cascade end-to-end PROVEN; W5-new cascade task issued via architect-staged create_task + thread-547 close_no_action by engineer; apnex/missioncraft `main` at `d06d253`; 514/514 tests; +47 across W3-new arc + W4-new wave; W5-new coord-thread expected to spawn next)
+(W5-new wave OPENED on thread-548 (task-409); slice (i) schema-v2 extension shipped at `4245f2c` — pushCadence/pushIntervalSeconds (writer-side; ≥10s, default 60s) + pullCadence/pullIntervalSeconds (reader-side; ≥5s, default 30s); asymmetric defaults per Design v5.0 §10.5; coordPollMs back-compat preserved through W7-new; 528/528 tests (+14 net))
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,22 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 08:31 AEST — W5-new slice (i) SHIPPED — schema-v2 extension: symmetric push/pull cadence
+
+- W5-new coord-thread spawned (thread-548; task-409; correlationId mission-78; sourceThreadId=thread-547 bilateral-converge); fresh 15-round budget per substrate-rewrite-cycle pattern
+- Did NOT burn engineer-turn on START SIGNAL ack; silent into slice (i) execution per Pattern A
+- Schema-only landing this slice (substrate consumption deferred to slice (iii) writer-daemon push-cadence + slice (iv) reader-daemon pullCadence lift). `StateDurabilityConfigSchema` extended in `mission-config-schema.ts` + `StateDurabilityConfig` type in `types.ts`:
+  - `pushCadence` enum {'on-complete-only', 'every-Ns', 'on-demand'} optional (substrate default 'every-Ns')
+  - `pushIntervalSeconds` int ≥10s optional (substrate default 60)
+  - `pullCadence` enum {'every-Ns', 'on-demand'} optional (substrate default 'every-Ns')
+  - `pullIntervalSeconds` int ≥5s optional (substrate default 30)
+- Validation NOT role-conditional at schema layer (parallel to wipCadenceMs/coordPollMs coexistence pattern — substrate-side consumes per role)
+- Backward-compat: `coordPollMs` retained for v4.x missions through W7-new (deprecated for v5.0; pullIntervalSeconds is preferred for v5.0 missions); both fields coexist in schema
+- 14 new schema tests in `schemas.test.ts` covering: accept-shapes (writer+reader+combined) + enum-set validation + boundary-inclusive (push 10s min; pull 5s min) + boundary-rejection (below min) + non-integer rejection + cross-contamination guard (pullCadence rejects push-only enum 'on-complete-only') + optional-omitted-yields-undefined + v4.x coordPollMs coexistence regression net
+- `npm run build` clean; `npm test` **528/528** (was 514; **+14 net**); 102s
+- Pushed `4245f2c` to apnex/missioncraft main
+- Surface to architect on thread-548 with slice (i) first-commit milestone + slice (ii) green-light request
 
 ### 2026-05-13 08:26 AEST — W4-new WAVE BILATERAL-CONVERGED on thread-547 — architect re-dogfood verified clean; W5-new cascade staged
 
