@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new Fix #10+#11 shipped at `d06d253` — daemon canonical missionConfigPath layout fix (v1.2.0 BLOCKER cleared) + dispatch-layer transparency gate test (calibration #74 candidate); 514/514 tests pass; thread-547 round 8/15 awaiting architect re-dogfood; GAP-2 + GAP-3 deferred per engineer-judgment, awaiting architect-disposition)
+(W4-new WAVE BILATERAL-CONVERGED at thread-547 round 10/15 — architect re-dogfood verified all Fix #10+#11 substrate-paths clean against `apnex/missioncraft-sandbox`; BRANCH-TRACKER auto-close cascade end-to-end PROVEN; W5-new cascade task issued via architect-staged create_task + thread-547 close_no_action by engineer; apnex/missioncraft `main` at `d06d253`; 514/514 tests; +47 across W3-new arc + W4-new wave; W5-new coord-thread expected to spawn next)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,23 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 08:26 AEST — W4-new WAVE BILATERAL-CONVERGED on thread-547 — architect re-dogfood verified clean; W5-new cascade staged
+
+- Architect re-dogfood on thread-547 round 9 VERIFIED clean against `apnex/missioncraft-sandbox` real upstream: Fix #10 daemon canonical missionConfigPath layout ACTIVATES reader-mode detection (was dead pre-Fix-#10); Fix #11 dispatch-layer gate-test calibration #74 candidate (8 SHAPE-assertions including pre-Fix-#10 regression net); writer Fix #8 still working (upstream `mission/msn-4a991f71` = `68b6448a30` with operator-msg "W4-redo-writer-squash" + parent === upstream main); PERSISTENT-TRACKER reader-start clean (lifecycle 'joined'→'started'→'in-progress' + sourceRemote+sourceBranch populated + 0444 chmod)
+- **BRANCH-TRACKER auto-close cascade end-to-end PROVEN**: reader 'joined'→'started'→'in-progress'→**'abandoned'**; abandonMessage matches slice-(v.b) ReaderAutoCloseError shape EXACTLY (`"BRANCH-TRACKER reader 'msn-2efe0dea' auto-close: writer-mission 'msn-4a991f71' is terminal (completed)"`); daemon SIGTERM-self cascade fired (PID 124454 process exit). The cascade-shape match (engineer-side regex from slice-(v.b) === actual cascade output) is the cleanest possible SHAPE-assertion validation
+- The dispositive substrate-extension wire-flow gate worked exactly as discipline mandates: caught GAP-1 v1.2.0 BLOCKER that slice (vii) SDK-direct test missed → Fix #10+#11 extension cycle → re-dogfood verified clean → bilateral-converge unblocked. Calibration #74 candidate captures the methodology refinement
+- **GAP-disposition acked** per architect §B:
+  - GAP-2 BRANCH-TRACKER pre-publish failure: deferred to W5-new pushCadence natural-resolution (architect noted W5-new acceptance criteria explicit)
+  - GAP-3 msn-start workspace-exists: separable bug filing (architect post-converge)
+  - GAP-4 chokidar startup-race: separable bug filing (architect post-converge)
+  - bug-77 publishStatus pure-git mode: W8-new doc reconciliation carry-forward
+  - Calibration #74 candidate: architect-Director-bilateral ledger filing post-converge
+- **Cascade-action-set** (both convergence-actions committed at thread-547):
+  - action-1 (architect): `create_task` stages W5-new task entity with full inline scope-spec (drop coord-remote + symmetric push/pull cadence + GAP-2 natural-resolution; 15-round budget; mission-78.plannedTasks[7] canonical)
+  - action-2 (engineer): `close_no_action` marks thread-547 resolved
+- Thread-547 status `converged` at round 10/15; W5-new coord-thread expected to spawn next per cascade-handler
+- W4-new wave COMPLETE: 7/7 dev-slices + Fix #10/#11 SHIPPED; slice (iv) DROPPED per Director; +47 tests across W3-new + extension + W4-new + Fix #10/#11
 
 ### 2026-05-13 08:13 AEST — W4-new Fix #10 + #11 SHIPPED — Daemon canonical missionConfigPath layout (v1.2.0 BLOCKER cleared) + dispatch-layer transparency gate test
 
