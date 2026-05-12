@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W5-new wave slice (ii) shipped at `dacbd38` — coord-remote drop: schema field + 2 modules + 6 SDK methods + watcher-entry call-sites + mc.join stub-throw; 7 v4.x test files DELETED + 3 in-place updates; 476/476 tests (-52 net from v4.x deletions); canonicalizeCoordinationRemote + applyReaderRefUpdate + set-coordination-remote mutation-case carried forward to W7-new "v4.x carry-forward surface cleanup")
+(W5-new wave slice (iii) shipped at `0758200` — writer-daemon push-cadence integration: pushMissionBranchToUpstream SDK method + detectWriterPushCadence dispatch-layer helper (calibration #74) + watcher-entry.ts fire-and-forget setInterval; 488/488 tests (+12 net); 3/7 W5-new slices SHIPPED)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,19 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 09:15 AEST — W5-new slice (iii) SHIPPED — Writer-daemon push-cadence integration
+
+- Architect ack'd slice (ii) on thread-548 round 5 + green-lit slice (iii) with (β) disposition: independent setInterval timer per pushIntervalSeconds (NOT debounce-coupled)
+- Did NOT burn engineer-turn on ack-only; silent into slice (iii) execution per Pattern A
+- **SDK method**: new `Missioncraft.pushMissionBranchToUpstream(missionId)` — per-tick: parse config (auto role); reader/empty-repos/terminal-lifecycle gates returning 0; per-repo `pushWithRetry({branch: refs/heads/mission/<id>, remote: 'origin'})`; per-repo failure non-aborting via pushWithRetry exponential backoff; idempotent no-op on already-up-to-date
+- **Daemon-dispatch helper**: extracted `detectWriterPushCadence(workspaceRoot, missionId)` in `daemon-mode-detect.ts` returning `{enabled, intervalSeconds}` per calibration #74 dispatch-layer transparency discipline; gates derived from `stateDurability.pushCadence` (`'every-Ns'` enabled, `'on-complete-only'`/`'on-demand'` disabled) + `stateDurability.pushIntervalSeconds` (default 60); reader-mission and non-existent fall back to disabled
+- **watcher-entry.ts integration**: writer-mode setup adds push-cadence timer post-chokidar-handler-registration via fire-and-forget `.then()` pattern (NOT top-level await); firstFire at intervalSeconds (no immediate-fire on mission-start per architect-spec); cleared in extended shutdown handler
+- 12 SHAPE-assertion tests in new `v1.2.0-w5-new-slice-iii-writer-push-cadence.test.ts`: 5 SDK-direct + 7 dispatch-layer; covers happy-path push + gate variants + reader/non-existent fallback + boundary-inclusive (10s min)
+- **Mid-impl course-correction discovery (calibration-class)**: encountered "daemon-watcher did not advance mission-branch within 8s" failures in `v1.0.7-slice-iii-bug73-integration.test.ts` + `v1.2.0-w3-new-single-branch-e2e.test.ts`. Initially suspected slice (iii) regression; bisected via `git stash` showed failures pre-existed slice (iii). Root-cause: **101 orphan watcher-entry.js daemon processes from earlier test runs accumulating + consuming system CPU/IO + slowing chokidar polling past the test's 8s threshold**. Cleaned via `pkill -f watcher-entry.js msn-`; all 488 tests pass cleanly. Test-infrastructure issue: vitest test-aborts leave daemons orphaned because mc.complete/mc.abandon SIGTERM isn't called when test fails mid-flow. Surface to architect for retrospective. Fire-and-forget pattern retained as defensive measure.
+- `npm run build` clean; `npm test` **488/488** (was 476 post-slice-ii; **+12 net**); 98s
+- Pushed `0758200` to apnex/missioncraft main
+- Surface to architect on thread-548 with slice (iii) milestone + orphan-daemon-accumulation calibration data-point + slice (iv) green-light request
 
 ### 2026-05-13 08:50 AEST — W5-new slice (ii) SHIPPED — Drop coord-remote code paths + schema field
 
