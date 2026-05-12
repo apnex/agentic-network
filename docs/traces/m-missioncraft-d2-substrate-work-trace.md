@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W5-new wave slice (iv) shipped at `0a8b459` — reader-daemon Loop B pullCadence integration: detectReaderPullCadence helper + watcher-entry.ts setInterval pull from helper (v5.0 30s default; v4.x coordPollMs fallback through W7-new); 495/495 tests (+7 net); 4/7 W5-new slices SHIPPED)
+(W5-new wave slice (v) shipped at `eb13ab1` — end-to-end transparency-gate bilateral via cadence (4 tests: writer-side push-cadence + BRANCH-TRACKER reader-cycle + PERSISTENT-TRACKER reader-cycle + auto-close cascade); 499/499 tests (+4 net); 5/7 W5-new slices SHIPPED; only (vi) architect-dogfood + (vii) wave-close remaining)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,22 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 09:30 AEST — W5-new slice (v) SHIPPED — End-to-end transparency-gate test (bilateral via cadence; SDK-composition)
+
+- Architect ack'd slice (iv) on thread-548 round 9 + green-lit slice (v) with (i) SDK-composition disposition (defer real-daemon end-to-end to slice (vi) architect-dogfood; calibration #75 orphan-accumulation makes real-daemon-spawn unsuitable test-suite cost)
+- Did NOT burn engineer-turn on ack-only; silent into slice (v) execution per Pattern A
+- **Test architecture**: single HTTP-fixture upstream (carry-forward (a) shape from W4-new slice vii); SDK-composition simulates daemon firing-events:
+  - Writer-side: `simulateWriterCommit` helper invokes `gitEngine.commitToRef` directly (simulating chokidar debounced fireDebouncedCommit); then `pushMissionBranchToUpstream` simulates daemon setInterval push-cadence-fire
+  - Reader-side: `readerLoopBV5Tick` simulates daemon Loop B fire at pullIntervalSeconds
+- **4 test-cases** in `v1.2.0-w5-new-slice-v-bilateral-cadence-e2e.test.ts` per architect §B target-set:
+  - Writer push-cadence (3 SHAPE assertions): tip-equality + idempotent + advance-detection
+  - BRANCH-TRACKER bilateral cycle (7 SHAPE assertions): tip-equality + 0444 + lifecycle + advance + chmod-cycle invariant + branch-namespace (no wip/) + adjacent-ref untouched
+  - PERSISTENT-TRACKER bilateral cycle (4 SHAPE assertions): initial-tip + 0444 + upstream-advance-sync + branch-namespace (no wip/, no mission/)
+  - Auto-close cascade via pull-cadence detection (1 SHAPE assertion): writer→completed → reader Loop B throws ReaderAutoCloseError → cascade → 'abandoned' + abandonMessage shape
+- `npm run build` clean; `npm test` **499/499** (was 495 post-slice-iv; **+4 net**); 98s
+- Pushed `eb13ab1` to apnex/missioncraft main
+- Surface to architect on thread-548 with slice (v) milestone + standby for slice (vi) architect-dogfood gate
 
 ### 2026-05-13 09:24 AEST — W5-new slice (iv) SHIPPED — Reader-daemon Loop B pullCadence integration
 
