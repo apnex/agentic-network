@@ -1,6 +1,6 @@
 # M-Missioncraft-D2-Substrate — Design v5.0 DRAFT SCAFFOLD (Director-direct substrate-design simplification)
 
-**Status**: **v5.0 DRAFT SCAFFOLD** — Survey-capture of Director-direct 2026-05-12 substrate-design directional disposition. Architect-side mid-mission re-scope; engineer-side implementation-spec to follow in subsequent passes before W3-new wave issuance.
+**Status**: **v5.0 DRAFT — ARCHITECT-DISPOSITIONS PROPOSED** (was: v5.0 DRAFT SCAFFOLD). Survey-capture of Director-direct 2026-05-12 substrate-design directional disposition + architect-proposed ratification dispositions for §5 open questions (see §10). Architect-Director bilateral or Director-direct ratification of §10 dispositions unblocks W3-new wave issuance.
 
 **Composed from**: mission-78 W0-W2 + W2-extension shipped artifacts (`a4453e9` on `apnex/missioncraft` main) + dogfood discoveries (Fix #1-#4 substrate-asymmetries) + this 2026-05-12 Director-consult conversation.
 
@@ -154,9 +154,83 @@ Concrete change-set surface (informs W3-new through W8-new waves):
 
 ## §9 Next steps
 
-1. Architect-side flesh-out of §5 open questions (Design v5.0 RATIFICATION DRAFT)
-2. Architect-Director bilateral on §5.1 writer-lock details (granularity + TTL + override) if needed
-3. W3-new wave-issuance via Hub task entity (per mission-77 formal-wave-issuance pattern) post-Design ratification
+1. Architect-side flesh-out of §5 open questions → see §10 (dispositions proposed)
+2. Director ratification of §10 dispositions (or override individual items per §11)
+3. W3-new wave-issuance via Hub task entity (per mission-77 formal-wave-issuance pattern) post-§10/§11 ratification
 4. Engineer Greg standby (Fix #5 patch discarded; main at `a4453e9`; 466/466 pass) until W3-new task issues
 
-— Lily (architect; agent-40903c59; 2026-05-12T06:10:00Z AEST)
+---
+
+## §10 Architect-proposed ratification dispositions
+
+Architect proposes the following dispositions for §5 open questions. Director ratifies as-is OR overrides individual items per §11 surfaced choices.
+
+### §10.1 Writer-lock primitive
+
+| Question | Architect disposition | Rationale |
+|---|---|---|
+| **Granularity** | **Per-repo** (one writer-lock per repo URL) | Simplest predictable semantic: "this repo is being written to by one mission at a time." Cross-repo missions acquire lock on each repo. Per-scope adds entity-coupling unnecessarily; per-base-branch adds complexity for negligible production benefit. If parallel-branch-writers become a need, evolve granularity then. |
+| **Lock-namespace** | **`refs/missioncraft/lock`** (single ref per repo) | Ref-based (atomic via push-with-lease). Custom namespace (`refs/missioncraft/*`) keeps lock-refs out of `refs/heads/` (no clutter in `git branch` output). Single-ref-per-repo simpler than sub-pathed-by-scope. |
+| **Lock-commit content** | Small commit-object with metadata: `{ missionId, agentId, host, principalId, acquiredAt, lastHeartbeatAt }` as commit-message YAML payload; tree pointing at empty-tree | Lock is metadata-only; no working-tree content needed. Commit-message-YAML is git-native + grep-able by external tools. |
+| **TTL value** | **300 seconds (5 minutes)** default; operator-config override via mission-config `lockTtlSeconds` | Long enough that brief network blips or daemon GC pauses don't expire locks; short enough that crashed-writer recovery is fast. |
+| **Heartbeat cadence** | **TTL / 3 = 100 seconds** default; operator-config override via `lockHeartbeatSeconds` | TTL/3 gives 2x margin for missed heartbeats before expiry. Daemon refreshes lock-commit's `lastHeartbeatAt` + force-pushes to advance the ref. |
+| **Override mechanism** | **`--force-writer` flag** to `msn start`. Single-flag form (no `--i-acknowledge-stale-lock-risk` companion); UX: prints stderr warning with stale-lock-holder's agentId + acquiredAt + lastHeartbeat; proceeds. | KISS. If operator passes `--force-writer`, they accept the risk. Multi-flag forms are over-engineered for the rare manual-recovery case. |
+| **Stale-lock detection** | When `now - lastHeartbeatAt > TTL`, lock is considered STALE. Implicit-takeover (without `--force-writer`) is BLOCKED by default; operator must use `--force-writer` to acquire the stale lock. | Conservative default avoids ambiguous "did the writer really crash?" race. Explicit operator-intent required. Could relax to auto-takeover post-TTL in future if operator-DX feedback requests. |
+| **Migration** | v1.0.x and v1.1.x missions don't acquire/release locks. v1.2.0+ missions acquire on `msn start`. Cross-version interop: mission-config schema-version bumps to `2` at v1.2.0; pre-v2 missions skip lock-acquire; v2 missions push lock-ref. v1-writer + v2-reader-attempting-start: v2 sees no lock → proceeds (no protection against v1 concurrent writer; acceptable since v1 is deprecated). | Schema-version-based gating; no special migration tooling. |
+
+### §10.2 Push-cadence config defaults
+
+| Question | Architect disposition | Rationale |
+|---|---|---|
+| **Default for read-write missions** | `pushCadence: 'on-complete-only'` (matches v4.x solo-writer behavior; no in-mission noise) | Conservative default. Operators who need reader-visibility set `every-Ns` explicitly. |
+| **Default for read-only missions** | `pushCadence: null` / not-applicable (read-only missions never push) | Read-only is push-disabled by definition. |
+| **`every-Ns` value range** | Default N=30 seconds (matches existing `wipCadenceMs` default of 30s). Operator-config override via `pushIntervalSeconds`. Minimum N=10 to prevent abuse. | Aligned with existing daemon-tick cadence. |
+| **`on-demand` mechanism** | Hub-triggered: external signal via MCP tool (e.g. `request_mission_sync(missionId)`) sets a flag in mission-lockfile; daemon picks it up + pushes once. | Hub becomes the trigger surface; clean MCP-tool surface. Defer impl to W5-new; provision config field at W3-W4. |
+| **Refs-namespace for non-final pushes** | **`refs/heads/mission/<id>`** (standard branch namespace; visible to GitHub-tooling) | Accept GitHub-noise cost; mitigations (custom namespace) require git-server-side config which complicates deployment. If noise becomes prohibitive, address in v1.3+. |
+
+### §10.3 Read-only mission mechanics
+
+| Question | Architect disposition | Rationale |
+|---|---|---|
+| **`msn start --read-only` form** | Support BOTH: <br>**(a)** Explicit: `msn start --read-only --source-remote <url> --source-branch <ref>` (no Hub dependency) <br>**(b)** Hub-resolved: `msn join <writer-mission-id>` → Hub mission entity resolves source-remote (writer-mission's repo URL) + source-branch (`mission/<writer-mission-id>` convention) | (a) covers offline/no-Hub cases; (b) covers normal coordination flow (cleaner operator-DX). |
+| **`msn join` repurpose** | YES — repurpose to mean "start a read-only mission tracking the named writer-mission". Preserves operator muscle-memory; deprecates the multi-participant-shared-mission v4.x semantic. Stderr deprecation-note for one minor-version, then removed. | Operator-DX continuity. |
+| **Reader-daemon Loop B pull mechanics** | Periodic `git fetch <source-remote> <source-branch>:refs/remotes/source/<source-branch>` + `git reset --hard refs/remotes/source/<source-branch>` on reader's local mission-branch. Working-tree updated by reset. | Standard git mechanism. |
+| **Working-tree filesystem mode** | Reader's workspace files mode `0444` (read-only) per v4.x reader-mode invariant (idea-265 spec). Editor refuses writes; filesystem-level enforcement complements CLI-level. | Preserve v4.x guarantee. |
+| **Reader-daemon pull cadence** | Mission-config field `pullIntervalSeconds`; default 30s. | Symmetric defaults. |
+| **Reader mission terminal-state** | Reader never runs `msn complete`. `msn abandon` is the only terminal verb for read-only. Workspace destroyed at abandon per existing semantic. | Aligned with "read-only never publishes" invariant. |
+
+### §10.4 Backward compatibility
+
+| Question | Architect disposition | Rationale |
+|---|---|---|
+| **Mission-config schema-version bump** | v1.0.x/v1.1.x = schema-version `1`. v1.2.0 = schema-version `2`. Schema-v2 adds: `readOnly`, `sourceRemote`, `sourceBranch`, `pushCadence`, `pushIntervalSeconds`, `pullIntervalSeconds`, `lockTtlSeconds`, `lockHeartbeatSeconds`. | Standard schema-versioning. |
+| **Cross-version interop** | v2-missioncraft refuses to open v1-mission-configs with explicit error "mission-config schema-version 1 unsupported in v1.2.0+; abandon + recreate". No migration tooling. | v1.x is throwaway-demonstrator. |
+| **Engineer memory reconciliation** | RETRACT `feedback_operator_never_runs_git_commands.md` post-v1.2.0 closing-audit (W8-new). Replace with `feedback_operator_never_runs_git_commands_v2.md` reflecting Flow B canonical (operator does NOTHING git-related; daemon handles all). | Memory hygiene; audit trail preserved. |
+| **`msn join` deprecation timeline** | v1.2.0: repurposed semantic + stderr note. v1.3.0: note removed. v2.0.0: consider rename to `msn read` or `msn watch`, but `join` muscle-memory probably worth preserving long-term. | Minimal disruption. |
+
+### §10.5 Reader-mode without coord-remote (operational details)
+
+| Aspect | Architect disposition |
+|---|---|
+| **Source-remote URL** | The shared upstream-repo URL (e.g. `https://github.com/apnex/missioncraft.git`). Same URL writer pushes to + reader fetches from. |
+| **Source-branch convention** | `mission/<writer-mission-id>` (e.g. `mission/msn-abc123`). |
+| **Initial-clone** | Reader's `msn start --read-only` clones upstream-repo (same as writer); checks out source-branch as local `mission/<reader-mission-id>`. |
+| **Auth** | Reader needs READ access to upstream. Same auth as normal `git fetch` (gh-CLI / credential-helper / SSH-keys). No additional surface. |
+| **Reader picks up post-writer-complete** | Writer's `mission/<id>` branch may be deleted post-publish (existing Step-6 cleanup). Reader's daemon sees fetch-error → mission enters "writer-terminated" lifecycle state (NEW state). Reader can abandon. |
+
+---
+
+## §11 Open items requiring Director-direct ratification
+
+Architect proposes §10 as the ratification baseline. Items below specifically warrant Director-direct review:
+
+- **§10.1 Lock granularity (per-repo)** — alternative is per-scope or per-base-branch. Architect recommends per-repo for v1.2.0 launch simplicity.
+- **§10.1 TTL value (300s)** — operator-DX trade-off between fast crash-recovery vs heartbeat-traffic. Operator-config override available.
+- **§10.1 Stale-lock takeover policy (`--force-writer` required)** — alternative is auto-takeover post-TTL. Architect recommends conservative (explicit-intent).
+- **§10.2 Refs-namespace for non-final pushes (`refs/heads/mission/<id>`)** — accepts GitHub-noise cost.
+- **§10.3 `msn join` verb repurposing** — alternative is `msn read` / `msn watch` for semantic-clarity. Architect recommends repurposing for muscle-memory continuity.
+- **§10.4 v1→v2 migration policy (no migration tooling)** — alternative is build `msn migrate` verb. Architect recommends no-migration given v1.x's throwaway status.
+
+Director ratifies §10 + §11 dispositions; architect bumps status to **Design v5.0 RATIFIED**; W3-new wave issues to Greg via Hub task entity.
+
+— Lily (architect; agent-40903c59; 2026-05-12T06:10:00Z AEST; §10+§11 added 2026-05-12T06:25:00Z AEST)
