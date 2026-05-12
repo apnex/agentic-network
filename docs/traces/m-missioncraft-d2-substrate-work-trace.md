@@ -38,19 +38,20 @@
 
 ## In-flight
 
-(W1 slice (i) shipped; awaiting per-slice surface ack from architect on thread-540 before claiming slice (ii))
+(W1 slice (ii) shipped; awaiting per-slice surface ack from architect on thread-540 before claiming slice (iii))
 
 ## Queued / filed
 
-- ▶ **W1 slice (ii)** — write-ops (commit/push/fetch/tag/reset/diff/ls-remote) — claim post-architect-ack on slice (i)
-- ○ **W1 slice (iii)** — advanced ops (merge --squash; capability-gated bundle ops)
+- ▶ **W1 slice (iii)** — advanced ops: merge / squashCommit + capability-gated bundle ops (createBundle / restoreBundle); the bug-75-was-here site (architect-spec) — verify argv-array discipline + git stderr passthrough — claim post-architect-ack on slice (ii)
 - ○ **W1 slice (iv)** — PROVIDER_REGISTRY entry `'native-git'` + integration test suite (full GitEngine contract coverage; wave-close audit)
 - ○ **bug-74** — partial-state-write at complete(); deferred → W3
 - ○ **W2-W5** — unissued; cascade-spawned post-W1 wave-close
+- ○ **scope-question for architect** — slice (ii) architect-spec mentioned `reset` / `diff` / `ls-remote` ops that aren't on the GitEngine contract (no IsomorphicGitEngine impl either). Surfaced on thread-540: contract-extension Y/N for slice (iii) inclusion?
 
 ## Done this session
 
-- ✅ **W1 slice (i)** — `defaults/native-git-engine.ts` (NativeGitEngine class + `gitExec(workspace, args, options)` helper) + 6 ops (clone/branch/checkout/log/status/revparse) + 21 tests across 8 describe-blocks (helper / clone / branch+checkout / revparse / status / log / UnsupportedOperationError contract / providerName / HTTP-fixture integration). Pushed `e65864e` to apnex/missioncraft main. 414 tests pass (was 393; +21). Path D2 argv-only discipline + git-stderr-surfacing (per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + WeakMap identity-storage forward-compat for slice (ii). PROVIDER_REGISTRY entry `'native-git'` deferred to slice (iv) per architect spec.
+- ✅ **W1 slice (i)** — `defaults/native-git-engine.ts` (NativeGitEngine class + `gitExec(workspace, args, options)` helper) + 6 ops (clone/branch/checkout/log/status/revparse) + 21 tests across 8 describe-blocks. Pushed `e65864e` to apnex/missioncraft main. 414 tests pass (was 393; +21). Path D2 argv-only discipline + git-stderr-surfacing + WeakMap identity-storage forward-compat for slice (ii).
+- ✅ **W1 slice (ii)** — flipped 13 contract methods from UnsupportedOperationError stub-throws to argv-only impls: init / getCurrentBranch / tag / stage / commit / commitToRef (bypass-INDEX via temp GIT_INDEX_FILE) / deleteBranch / fetch / push / pull / addRemote / removeRemote / listRemotes. Identity threaded via `GIT_AUTHOR_*`/`GIT_COMMITTER_*` env vars at commit-firing-time. 27 new tests (HTTP-fixture push/fetch/pull integration; commitToRef end-to-end bypass-INDEX semantic verification — operator INDEX UNTOUCHED + HEAD UNCHANGED + wip-tree captures working-tree state; multi-word commit-message assertions per `feedback_test_assertion_too_permissive_regex.md`). Mid-slice push-impl bug surfaced + fixed: when `branch` given without explicit `remote`/`url`, default remote to `'origin'` so the branch arg lands in the refspec slot (parallel to isomorphic-git internal default). Slice (i) test obsolescence: 2 stub-throw tests removed (init + commit no longer throw); slice-progression contract narrows to merge / squashCommit / bundle ops. Pushed `95d65b6` to apnex/missioncraft main. **439 tests pass (was 414; +27 new, -2 obsolete = +25 net)**.
 
 ## Edges (dependency chains)
 
@@ -86,6 +87,22 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 12:40 AEST — W1 slice (ii) SHIPPED — write-ops + lifecycle + remote-management
+
+- Architect ratified slice (i) at 2026-05-12T02:30Z UTC + green-lit slice (ii); architect-disposition on commit-prefix: continue `[v1.1.0 W{N} slice ({roman})]` framing for W1-W5; do NOT amend W0 commits (`580c38b` + `6e7aef3`) — historically accurate for pre-mission-78 framing; W5 closing-audit §17 will document framing-shift narrative
+- Did NOT burn thread-540 round on ack-only per `feedback_pattern_a_engineer_turn_discipline.md` — went silent into slice (ii) execution
+- Implemented 13 contract methods: init / getCurrentBranch / tag (lightweight + annotated + force) / stage / commit (with autoStage + amend + custom-author override) / **commitToRef** (bypass-INDEX wip-branch semantic via temp `GIT_INDEX_FILE`) / deleteBranch / fetch / push / pull / addRemote / removeRemote / listRemotes
+- Identity threading: `GIT_AUTHOR_NAME`/`EMAIL` + `GIT_COMMITTER_NAME`/`EMAIL` env vars injected at commit-firing-time via `commitEnv(identity, base?)` helper; no git config writes (argv-only end-to-end)
+- commitToRef impl: temp index file `<workspace>/.git/wip-index-<UUID>` → seed from existing ref's tree if present (`git read-tree`) → stage entire working tree to TEMP index (`git add -A` with `GIT_INDEX_FILE=<temp>`; operator's index UNTOUCHED) → `git write-tree` → `git commit-tree -p <parent> -m <msg>` → `git update-ref` → cleanup temp file in `finally`. UUID-suffix for concurrency-safety across overlapping wip-commit invocations.
+- Mid-slice bug surfaced + fixed: push-impl initially didn't default remote to `'origin'` when `branch` provided without explicit `remote`/`url`; integration test `push writes a new commit upstream over HTTP` failed with `git push main` (positional `main` parsed as remote-name not refspec); fix: `target = options.url ?? options.remote ?? (options.branch !== undefined ? 'origin' : undefined)` (parallel to isomorphic-git internal default behavior)
+- Tests: 27 new across 9 describe-blocks (init / getCurrentBranch / tag / stage / commit / commitToRef bypass-INDEX semantic / deleteBranch / fetch+push+pull HTTP integration / remote management / slice (iii) UnsupportedOperationError preservation)
+- `commitToRef` bypass-INDEX semantic verified end-to-end: operator's staged + modified + untracked lists IDENTICAL pre/post wip-commit; HEAD UNCHANGED (bypass-HEAD); wip-commit's tree captures WORKING-TREE state (not operator's INDEX state); subsequent wip-commits chain via parent-linkage; temp index file cleaned up post-call
+- Slice (i) test file delta: 2 obsolete `UnsupportedOperationError`-stub assertions removed (init + commit no longer throw); slice-progression contract narrows to merge / squashCommit / bundle ops (slice (iii))
+- `npm run build` clean; `npm test` **439/439** (was 414; +27 new, -2 obsolete = **+25 net**); 93s
+- Pushed `95d65b6` to apnex/missioncraft main (Pattern A direct-commit)
+- Surface to architect on thread-540 with first-commit milestone + slice (iii) intent + reset/diff/ls-remote contract-extension scope-question + 3rd pulse-fire answered via this surface
+- Pulse-fire count this session: 3 fires (10min cadence; all answered via thread-541 §C + thread-540 surfaces — none via separate `kind=note` short_status; pattern: substantive-surface-answers-pulse > orphan-status-note when active coord-thread is moving)
 
 ### 2026-05-12 12:25 AEST — W1 slice (i) SHIPPED — NativeGitEngine canonical build
 
