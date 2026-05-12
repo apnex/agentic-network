@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new slice (v.b) Reader-substrate completion shipped at `714f70a` — reader-start flow + workspace 0444 + auto-close mechanics (dual failure-modes) + housekeeping; 502/502 tests pass; slice (iv) DROPPED per Director (Hub-integration deferred post-v1.2.0); thread-546 CLOSED at round_limit 10/10 with close_no_action; thread-547 continuation with fresh 15-round budget; remaining: slice (vii) writer+reader bilateral transparency-gate test + slice (viii) wave-close + v1.2.0 ship)
+(W4-new slice (vii) writer+reader bilateral transparency-gate test shipped at `0db1601` — 506/506 tests pass; W4-new wave: (i)(ii)(iii)(v CORE)(v.b)(vi)(vii) SHIPPED; only (viii) wave-close + v1.2.0 ship REMAINING; slice (iv) DROPPED per Director; thread-547 round 4/15 architect's-turn awaiting ack)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,20 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 07:48 AEST — W4-new slice (vii) Writer+reader bilateral transparency-gate SHIPPED — 4 tests covering BRANCH-TRACKER + PERSISTENT-TRACKER + dual auto-close cascade
+
+- Thread-547 architect-ack'd slice (v.b) at round 3 + green-lit slice (vii) with (a) single-HTTP-fixture-upstream disposition
+- Did NOT burn engineer-turn on ack-only; silent into slice (vii) execution per Pattern A
+- Test-fixture helper `seedUpstreamMissionBranch(missionId, fileName, content, msg)` simulates writer's daemon-commit+push (test-shortcut for what W5-new push-on-cadence will do at production-time); idempotent across multiple-version-advance scenarios via stageCounter + fetch+checkout-B
+- **Test 1 BRANCH-TRACKER bilateral** (8 SHAPE assertions): reader lifecycleState 'started' + workspace tip === writer's branch tip + WRITER-OUTPUT.md present + mode & 0o222 === 0 + writer-advance v2 → reader Loop B tick → reader tip advances → workspace still 0444 + NO `refs/heads/wip/` refs anywhere + upstream main untouched
+- **Test 2 PERSISTENT-TRACKER bilateral** (4 SHAPE assertions): reader workspace at upstream main initial + 0444 + post-upstream-main-advance Loop B tick → new content present + workspace 0444 invariant + NO wip/mission refs (PERSISTENT tracks main only)
+- **Test 3 auto-close cascade failure-mode 2**: writer manually advanced to 'completed' lifecycle → reader Loop B throws ReaderAutoCloseError → simulate daemon-cascade (caller calls readerAutoAbandon) → reader 'abandoned' + abandonMessage matches /is terminal \(completed\)/
+- **Test 4 auto-close cascade failure-mode 1**: writer config-file deleted → reader Loop B throws → readerAutoAbandon cascade → reader 'abandoned' + abandonMessage matches /config-file missing/
+- **Mid-impl course-correction (1)**: seedUpstreamMissionBranch initially used non-unique stageDir → 2nd call failed clone-to-existing-dir. Added stageCounter + tried-then-fallback fetch-or-create branch pattern for idempotent v1/v2 advance
+- `npm run build` clean; `npm test` **506/506** (was 502; **+4 net**); 98s
+- Pushed `0db1601` to apnex/missioncraft main
+- Surface to architect on thread-547 with slice (vii) milestone + slice (viii) wave-close green-light request
 
 ### 2026-05-13 07:40 AEST — W4-new slice (v.b) Reader-substrate completion SHIPPED — reader-start flow + workspace 0444 + auto-close mechanics dual-failure-mode
 
