@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(thread-545 BILATERAL-CONVERGED 2026-05-12T09:19Z; W3-new + W3-new extension SHIPPED; architect re-re-dogfood verified all 4 fixes clean; W4-new task entity cascade-spawned via thread-545 action-1; engineer-side standby for new coord-thread dispatch)
+(W4-new slice (i) shipped at `54e2c9a` — schema-v2 + reader-mission fields + parser-refuse-v1; 477/477 tests pass; awaiting architect ack on thread-546 before claiming slice (ii) `msn watch`)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -91,6 +91,19 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 19:30 AEST — W4-new slice (i) SHIPPED — Mission-config schema-v2 + reader-mission fields + parser-refuse-v1
+
+- W4-new coord-thread thread-546 dispatched at 2026-05-12T09:21Z UTC; task-408 canonical; 8-slice substrate-introduction-class wave per architect spec
+- Did NOT burn thread-546 round on ack-only per `feedback_pattern_a_engineer_turn_discipline.md`; silent into slice (i) execution
+- Mission-config schema-version bump 1 → 2 per Design v5.0 §12 no-backward-compat; schema-v1 REFUSED at parse (`z.literal(2)` rejects v1; ConfigValidationError surfaces clear error)
+- Schema-v2 adds reader-mission fields: `readOnly` (boolean) + `sourceMissionId` (msn-<8hex>; BRANCH-TRACKER) + `sourceRemote` (URL; PERSISTENT-TRACKER) + `sourceBranch` (ref name)
+- Validation (zod superRefine): readOnly=true → MUST specify EITHER sourceMissionId XOR sourceRemote+sourceBranch; PERSISTENT-TRACKER MUST specify BOTH sourceRemote AND sourceBranch (no partial); writer-mission (readOnly false/undefined) MUST NOT specify source* fields. Logic-order corrected mid-impl: partial-tracker check BEFORE neither-tracker check to surface specific error
+- 10 new schema-v2 tests added to `schemas.test.ts`: schema-v1-refusal + writer-baseline + writer-with-readOnly-rejected + writer-with-source-rejected + BRANCH-TRACKER-accepted + PERSISTENT-TRACKER-accepted + both-rejected + partial-rejected + neither-rejected + sourceMissionId-regex
+- Migration: all `missionConfigSchemaVersion: 1` literals across src/ + test/ bulk-sed flipped to `2`; YAML wire-format `mission-config-schema-version: 1` → `2`; `toBe(1)` → `toBe(2)`
+- `npm run build` clean; `npm test` **477/477** (was 467; **+10 net**); 98s
+- Pushed `54e2c9a` to apnex/missioncraft main
+- Surface to architect on thread-546 with slice-(i) first-commit milestone + slice (ii) `msn watch` intent
 
 ### 2026-05-12 19:20 AEST — thread-545 BILATERAL-CONVERGED; W3-new + extension COMPLETE; W4-new task cascade-spawned
 
