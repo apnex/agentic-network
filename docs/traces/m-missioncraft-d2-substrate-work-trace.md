@@ -38,12 +38,12 @@
 
 ## In-flight
 
-(W2 BILATERAL-CONVERGED on thread-542 round 6/10 with `close_no_action`; W3 cascade DEFERRED pending architect-side scenario-02 dogfood per Option B; engineer-side standby for dogfood outcome — W2-extension-directive if dogfood surfaces gaps, OR W3 cascade if clean)
+(W2-extension Fix #3 shipped on thread-543 round 1; awaiting architect re-dogfood verification before bilateral-converge wave-close + W3 cascade)
 
 ## Queued / filed
 
-- ⏸ **W3** — bug-74 post-success state-write ordering; cascade-spawn DEFERRED pending architect-side scenario-02 dogfood per thread-542 wave-close Option B
-- ⏸ **W2-extension** (conditional) — only if dogfood surfaces additional substrate-asymmetries of Fix#1/Fix#2 class; lands as extension-commit on `main`, not W3
+- ▶ **W2-extension wave-close** — bilateral-converge thread-543 + W3 cascade pending re-dogfood pass
+- ⏸ **W3** — bug-74 post-success state-write ordering; cascade-spawn DEFERRED pending architect-side re-dogfood verification of W2-extension Fix #3 per thread-543 §6 protocol; engineer judgment surfaced on bug-74 fold-in: DEFERRED to W3 (substantive intent-vs-achievement semantic deliberation needed; not simple persist-relocation)
 - ○ **W3** — bug-74 post-success state-write ordering
 - ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
 - ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
@@ -94,6 +94,21 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 14:15 AEST — W2-extension Fix #3 SHIPPED — commitToRef parent-linkage to HEAD (dogfood-surfaced; SHARED-engine substrate-defect)
+
+- Architect-side scenario-02 dogfood spawned thread-543 W2-extension coord-thread at 2026-05-12T04:10Z UTC; surfaced SHARED-engine substrate-defect (NOT NativeEng-vs-IsoEng asymmetry — symmetric in both engines): `commitToRef` produced ORPHAN-ROOT wip-commits when target ref didn't exist on first invocation; subsequent `git merge --squash` failed with "refusing to merge unrelated histories"; `msn complete` couldn't ship PR
+- Architect provided complete root-cause diagnosis + code-sketches in thread-543; architect-pre-disposition stand at "Fix #3" — anchor wip-branch to HEAD on first commitToRef invocation; apply to BOTH engines
+- Did NOT burn thread-543 round on ack-only; silent into Fix #3 execution per `feedback_pattern_a_engineer_turn_discipline.md`
+- Fix #3 applied SYMMETRICALLY to both engines:
+  - `src/missioncraft-sdk/defaults/native-git-engine.ts` commitToRef — outer try { rev-parse <ref>; read-tree } catch → inner try { rev-parse HEAD → use as parent } catch → fall through to orphan-root (truly-empty repo case)
+  - `src/missioncraft-sdk/defaults/isomorphic-git-engine.ts` commitToRef — same pattern using `git.resolveRef({ ref: 'HEAD' })`
+- bug-74 fold-in DEFERRED to W3 per engineer-judgment: persist site (missioncraft.ts:488-500) shows the bug is INTENT-VS-ACHIEVEMENT semantic, not simple persist-relocation; publishMessage is persisted-on-first-invocation for IDEMPOTENT RETRY (immutable post-write per v3.2 MEDIUM-R2.6); proper fix needs deliberation on the intent-vs-achievement contract + likely new field OR documenting publishStatus as the achievement marker; folding into W2-extension would conflate two different fix-classes
+- Tests: `test/missioncraft-sdk/v1.1.0-w2-extension-commitToRef-parent-linkage.test.ts` — 6 tests across 4 sections (NativeEng parent-linkage; IsoEng parity; end-to-end through squashCommit BOTH engines (clean working tree between commitToRef and squashCommit to isolate Fix #3 from orthogonal "untracked files would be overwritten" surface); truly-empty-repo fall-through case)
+- `npm run build` clean; `npm test` **466/466** (was 460; **+6 net**); 95s
+- Pushed `312edd0` to apnex/missioncraft main
+- Surface to architect on thread-543 with Fix #3 ship + bug-74 deferral judgment + 4th calibration data-point flagged (synthetic integration tests can mask wire-flow defects; dogfood-via-actual-end-to-end is the dispositive gate per `feedback_substrate_extension_wire_flow_integration_test.md`)
+- Awaiting re-dogfood verification per thread-543 §6 protocol
 
 ### 2026-05-12 14:05 AEST — thread-542 BILATERAL-CONVERGED; W2 wave CLOSED; W3 cascade DEFERRED pending dogfood
 
