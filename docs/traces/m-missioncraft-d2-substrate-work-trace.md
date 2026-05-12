@@ -95,6 +95,27 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
 
+### 2026-05-12 14:35 AEST — W2-extension Fix #4 SHIPPED — squashCommit bypass-INDEX (re-dogfood-surfaced; predicted by §F)
+
+- Architect re-dogfood at 2026-05-12T04:23Z UTC verified Fix #3 ✓ (wip-commits now have proper parent-linkage; no orphan-root) + confirmed Fix #4 surface exactly as engineer-side §F prediction ("untracked files would be overwritten by merge" at squashCommit's `git merge --squash` step)
+- Architect-pre-disposition (b) ARCHITECTURAL bypass-INDEX preferred (parallel-symmetric to commitToRef pattern; eliminates entire class of working-tree-state concerns at squash-time)
+- Did NOT burn thread-543 round on ack-only; silent into Fix #4 execution
+- Fix #4 applied SYMMETRICALLY to both engines as 4-step bypass-INDEX:
+  - (1) `rev-parse <headRef>^{tree}` → headTree (wip-branch content to squash)
+  - (2) `rev-parse <baseRef>` → parent (mission-branch tip = target ancestor)
+  - (3) `commit-tree <headTree> -p <parent> -m <message>` → squashedSha (env-injected identity for NativeEng; uses git config for IsoEng — preserves IsoEng's pre-Fix-#4 implicit identity-resolution shape)
+  - (4) `update-ref refs/heads/<baseRef> <squashedSha>`
+  - HEAD + working tree NOT touched. Push uses ref directly; HEAD position irrelevant.
+- IsoEng's previous shell-out impl (checkout + merge --squash + commit) replaced with same 4-step bypass-INDEX pattern; preserves capability-gated UnsupportedOperationError for missing git CLI; no env-injection (preserves implicit identity-resolution shape)
+- Resolves architect's §3 ASYMMETRY OBSERVATION question moot — bypass-INDEX doesn't use merge --squash at all, so dogfood-vs-manual-repro discrepancy at the merge --squash exit-code level becomes academic
+- Tests: §3 in `v1.1.0-w2-extension-commitToRef-parent-linkage.test.ts` updated — REMOVED working-tree-cleanup workaround (Fix #4 makes it unnecessary); test now LEAVES untracked work-*.txt in working tree at squashCommit time = exact dogfood failure-mode; assertions added for (i) mission-branch ref points at squashed commit, (ii) working-tree state UNTOUCHED post-squash (Fix #4 preserves operator state). Added missing existsSync import.
+- Existing slice-iii squashCommit tests all pass (assertions are ref-based not HEAD-based; bypass-INDEX impl is backward-compatible)
+- `npm run build` clean; `npm test` **466/466** (unchanged from Fix #3; net-zero test count delta — replaced merge-+-cleanup test with bypass-INDEX-doesnt-need-cleanup test); 96s
+- Pushed `a4453e9` to apnex/missioncraft main
+- bug-74 deferral to W3 CONFIRMED by architect (option (b) new `publishedMessage` field as W3 target; cleaner data-model + preserves idempotent-retry)
+- W5 closing-audit §17 pre-publish wire-flow rehearsal protocol ACCEPTED by architect; captured as release-readiness gate
+- Awaiting architect-side re-re-dogfood per §6 protocol
+
 ### 2026-05-12 14:15 AEST — W2-extension Fix #3 SHIPPED — commitToRef parent-linkage to HEAD (dogfood-surfaced; SHARED-engine substrate-defect)
 
 - Architect-side scenario-02 dogfood spawned thread-543 W2-extension coord-thread at 2026-05-12T04:10Z UTC; surfaced SHARED-engine substrate-defect (NOT NativeEng-vs-IsoEng asymmetry — symmetric in both engines): `commitToRef` produced ORPHAN-ROOT wip-commits when target ref didn't exist on first invocation; subsequent `git merge --squash` failed with "refusing to merge unrelated histories"; `msn complete` couldn't ship PR
