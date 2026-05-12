@@ -2356,6 +2356,196 @@ calibrations:
     tele_alignment:
       - tele-2
 
+  - id: 71
+    class: methodology
+    title: "Substrate-redesign collapses symptoms but doesn't auto-fix root-cause defects exposed by the collapse"
+    origin: mission-78-W3-new + W3-new-extension
+    surfaced_at: thread-545 architect-side scenario-02 re-dogfood post W3-new ship (8cab0aa) → GAP-3 squashCommit target-ref defect surfaced (Fix #8 v1.2.0 BLOCKER)
+    status: closed-folded
+    closure_mechanism: |
+      Composes with calibration #70 (substrate-redesign-collapses-accidental-
+      complexity). Calibration #70 captures the architectural-pathology recognition
+      pattern — Director-progressive-question collapses accidental complexity.
+      Calibration #71 captures the COROLLARY: the redesign collapses SYMPTOMS but
+      may LEAVE UNDERLYING root-cause defects exposed for the first time when the
+      collapse changes the system's invariants.
+
+      Diagnostic signature: a substrate-redesign that dissolves a debate (e.g.
+      "Fix #5 headRef → wip-branch vs defensive-fallback" debate dissolved by
+      W3-new single-branch architecture per calibration #70 application) may
+      leave latent root-cause defects that were MASKED by the prior symptom.
+      The redesign expose these defects WITHOUT auto-fixing them; substrate-fix
+      is still required.
+
+      Application instance: mission-78 W3-new (8cab0aa) shipped single-branch
+      architecture; Fix #5 debate dissolved (mission-branch now has content;
+      runPublishLoop unchanged). BUT squashCommit step-(4) update-ref targeting
+      baseRef (NOT headRef) — pre-existing bug at native-git-engine.ts:343 + iso-
+      morphic-git-engine.ts equivalent — was MASKED pre-W3-new because:
+        Pre-W3-new: mission-branch tree was empty (daemon committed to wip/<id>);
+        squashCommit read empty tree from mission-branch; update-main to no-op-
+        tree commit was harmless. "Fix #5 empty-squash failure-mode" was the
+        observable symptom; root-cause (wrong-target-update) lurked.
+
+      W3-new made mission-branch non-empty (daemon commits there directly).
+      squashCommit now reads operator's edits → non-empty squashed commit →
+      update-main lands real content on main locally (orphan-advance) + mission-
+      branch UNCHANGED → pushWithRetry pushes daemon-commit (not squash) → silent
+      ship of pre-squash content. The wrong-target-update BLOCKER surfaced at
+      first architect-side dogfood post-W3-new ship.
+
+      Resolution: Fix #8 (squashCommit step-(4) update-ref targets headRef not
+      baseRef in BOTH engines) shipped in W3-new extension at 32ca5a3. The
+      transparency-gate test that should have caught it was too permissive
+      (separate calibration #72).
+
+      Architect-discipline takeaway: when a substrate-redesign dissolves a debate
+      or symptom, the redesign-ship is NOT sufficient — architect-side dogfood
+      MUST validate the redesigned substrate against real upstream before
+      declaring the wave converged. The dogfood IS the transparency gate per
+      calibration #67 + #68 + feedback_substrate_extension_wire_flow_integration_
+      test.md.
+    cross_refs:
+      - calibration #70 (substrate-redesign-collapses-accidental-complexity; this composes)
+      - calibration #67 (synthetic engine-isolation tests mask SDK-internal-call-pattern defects)
+      - calibration #68 (synthetic tests also mask DEFECTS-IN-THE-CALLER)
+      - feedback_substrate_extension_wire_flow_integration_test.md
+      - thread-545 (W3-new + extension coord; Fix #8 surface via architect dogfood)
+      - apnex/missioncraft@8cab0aa (W3-new core; failure-mode surfaced)
+      - apnex/missioncraft@32ca5a3 (W3-new extension Fix #6/#7/#8/#9)
+      - docs/designs/m-missioncraft-d2-substrate-design.md §10.1
+    tele_alignment:
+      - tele-2
+
+  - id: 72
+    class: methodology
+    title: "Transparency-gate test SHAPE assertions necessary alongside content-presence assertions"
+    origin: mission-78-W3-new + W3-new-extension
+    surfaced_at: thread-545 architect-side dogfood revealed pre-Fix-#8 transparency-gate test passed despite v1.2.0 BLOCKER substrate-defect
+    status: closed-folded
+    closure_mechanism: |
+      Composes with feedback_test_assertion_too_permissive_regex.md (same defect
+      class at a different layer). Calibration #72 captures the discipline that
+      transparency-gate tests for substrate-extension waves must assert publish
+      SHAPE (commit identity, parent chain, branch-tip relationship, adjacent-
+      ref-state), not just content-presence.
+
+      Diagnostic signature: a transparency-gate e2e test passes because it
+      asserts that operator's edits CONTENT reaches the upstream destination,
+      but doesn't assert that the SHAPE of the publish matches the canonical
+      semantic (squashed commit with operator-message + correct parent + correct
+      branch identity + adjacent refs untouched). Content-presence is necessary
+      BUT NOT SUFFICIENT.
+
+      Application instance: mission-78 W3-new slice (iv) introduced transparency-
+      gate test v1.2.0-w3-new-single-branch-e2e.test.ts asserting:
+        - mission-branch advanced past base SHA ✓
+        - mission-branch HEAD-tree contains operator's edit ✓
+        - upstream mission-branch's README contains operator's edit ✓
+        - git diff main..mission/<id> includes README + "1 file changed" ✓
+      Test passed at 8cab0aa. But Fix #8 (squashCommit wrong-target-update) was
+      ALSO live: upstream mission-branch tip was daemon-commit (not squashed
+      commit); content reached upstream but SHAPE was wrong.
+
+      Missing SHAPE assertions (added in Fix #9 at 32ca5a3):
+        - upstream mission-branch tip commit-message === publishMessage
+        - upstream mission-branch tip parent === upstream main tip
+        - upstream mission-branch ahead-count == 1 (single squashed commit)
+        - local main unchanged post-complete
+        - upstream main unchanged post-complete
+        - no wip/<id> refs anywhere (local OR remote)
+
+      6 SHAPE assertions strengthened the gate post-Fix-#8. Pre-existing slice-iii
+      + W2-ext §3 squashCommit tests also retargeted to corrected semantic
+      (regression net hardening).
+
+      Architect-discipline takeaway: for substrate-extension transparency-gate
+      tests, assert (a) content reaches destination AND (b) shape matches
+      canonical semantic. Pair the content-assertion with shape-assertions on
+      commit-msg + parent + ahead-count + adjacent-ref-state. Apply at every
+      wave-close transparency-gate; pre-existing tests touching same surface
+      should be audited + retargeted when shape-semantic changes.
+    cross_refs:
+      - feedback_test_assertion_too_permissive_regex.md (sibling discipline at same defect class)
+      - calibration #71 (substrate-redesign collapses symptoms; this calibration is the test-quality companion)
+      - calibration #67 + #68 (synthetic-test masking patterns; this is the gate-test side)
+      - thread-545 (W3-new + extension coord; Fix #9 SHAPE-assertion strengthening at 32ca5a3)
+      - apnex/missioncraft@32ca5a3 (Fix #9 transparency-gate strengthening)
+      - test/missioncraft-sdk/v1.2.0-w3-new-single-branch-e2e.test.ts (canonical SHAPE-assertion example)
+    tele_alignment:
+      - tele-2
+
+  - id: 73
+    class: methodology
+    title: "Apply directional-vs-mechanism diagnostic to own wave-spec authorship (inward sibling of calibration #69 v2)"
+    origin: mission-78-W4-new
+    surfaced_at: thread-546 slice (iv) engineer-side directional ambiguity surface → architect-Director engagement → Director-direct deferral 2026-05-13
+    status: closed-folded
+    closure_mechanism: |
+      Refinement composing with calibration #69 v2. Calibration #69 v2 captured
+      the architect-receives-engineer-surface direction (when engineer surfaces
+      "this might be Director-scope" on substrate-design ambiguity, architect
+      must verify substrate-target-state-vs-mechanism distinction BEFORE
+      autonomously routing around). Calibration #73 captures the COMPLEMENT:
+      architect must apply the same diagnostic to OWN wave-spec authorship,
+      not just to engineer-side surfaces.
+
+      Diagnostic signature: architect translates a ratified design-doc section
+      into engineer-actionable wave-spec (task description, mission plannedTasks,
+      coordination-thread opening). The translation contains implicit directional
+      choices not fully specified in the design-doc. If architect doesn't apply
+      the directional-vs-mechanism diagnostic INWARD at spec-authorship time,
+      those directional choices ship to engineer as "the plan" without Director-
+      consult — silent failure-mode where engineer-side becomes responsible for
+      catching the directional ambiguity (calibration #69 v2 outward path).
+
+      Application instance: mission-78 W4-new task-408 §6 component-change 4
+      authored by architect from Design v5.0 §10.1 ("Hub-policy single-writer-
+      per-scope enforcement at Hub mission-entity layer"). Translating §10.1's
+      "Hub-API call with scope and readOnly" into engineer-actionable scope
+      (slice iv) implicitly committed v1.2.0 missioncraft to Hub-coupling — a
+      substantial directional choice (changes operator-DX, affects published
+      artifact, defines what missioncraft "is" vs standalone). Engineer-side
+      surfaced the ambiguity at slice (iv) start ("which codebase? what API
+      shape?"); architect applied diagnostic to engineer-surface; routed to
+      Director; Director-direct deferral ("we don't need integration with the
+      Hub just yet... will require careful end-to-end design once primitives
+      tested").
+
+      Counterfactual: if architect had applied the diagnostic INWARD to own
+      task-408 authorship pre-wave-issuance, Director-engagement would have
+      happened at task drafting time. Engineer-side wouldn't have needed to
+      surface the directional concern post slice-(iii) ship; thread-546 round-
+      budget wouldn't have been consumed by mid-wave scope-clarification.
+
+      Architect-discipline takeaway: when authoring wave-spec (task descriptions,
+      mission plannedTasks, coordination-thread openings), apply the 4-sub-test
+      directional-vs-mechanism rubric BEFORE wave-issuance:
+        - Does choice change documented operator-DX in scenarios?
+        - Does choice require engineer-runtime memory updates?
+        - Does choice affect published artifact?
+        - Does choice define what the system "is" vs internal mechanism?
+      If ANY sub-test signals directional → Director-consult BEFORE wave-spec
+      lands. Don't translate design-doc ambiguity into engineer-actionable scope
+      without explicit Director-disposition on the directional choices.
+
+      Resolution: Director-direct deferral 2026-05-13 dropped slice (iv) from
+      W4-new entirely. Design v5.0 §10.1 amended (commit 0361bc4 on agent-lily/
+      m-missioncraft-v4-design); v1.2.0 ships standalone-capable with operator-
+      discipline. Hub-missioncraft integration filed as forward-pointer (idea-291
+      post-v1.2.0 mission). Architect-side feedback memory filed (feedback_apply_
+      directional_diagnostic_to_own_spec_authorship.md).
+    cross_refs:
+      - calibration #69 v2 (outward-facing rubric; this is inward sibling)
+      - feedback_verify_directional_vs_mechanism_before_routing_around.md (#69 v2 memory)
+      - feedback_apply_directional_diagnostic_to_own_spec_authorship.md (this calibration's memory)
+      - feedback_architect_call_not_director_decision.md (original calibration #6; still load-bearing for mechanism)
+      - thread-546 (W4-new coord; slice (iv) engineer surface + architect-Director engagement)
+      - idea-291 (post-v1.2.0 Hub-missioncraft integration mission candidate)
+      - docs/designs/m-missioncraft-d2-substrate-design.md §10.1 (2026-05-13 amendment)
+    tele_alignment:
+      - tele-2
+
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
 #   title                       string; human-readable pattern name
