@@ -38,12 +38,11 @@
 
 ## In-flight
 
-(W2 slice (i) shipped + 2 substrate-asymmetry fixes surfaced by canonical-switch; awaiting per-slice surface ack on thread-542 before claiming slice (ii) substrate-currency audit pass)
+(W2 slice (ii) shipped — substrate-currency audit clean; 2 stale doc-comments updated; ZERO additional substrate-asymmetries; awaiting per-slice surface ack on thread-542 before bilateral-converge wave-close)
 
 ## Queued / filed
 
-- ▶ **W2 slice (ii)** — substrate-currency audit pass: grep for any remaining 'isomorphic-git' refs in src/ + test/; verify scenario-02 (DRAFT) doesn't reference the default; small expected — likely 0-1 additional fixes
-- ○ **W2 slice (iii)** — wave-close: W2 closing audit + bilateral-converge thread-542
+- ▶ **W2 slice (iii) wave-close** — bilateral-converge thread-542 + cascade-spawn W3 task (bug-74 post-success state-write ordering)
 - ○ **W3** — bug-74 post-success state-write ordering
 - ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
 - ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
@@ -94,6 +93,21 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 14:00 AEST — W2 slice (ii) SHIPPED — substrate-currency audit clean; 2 stale doc-comments updated
+
+- Architect ratified slice (i) at 2026-05-12T03:52Z UTC; APPROVED both substrate-asymmetry fixes inline (NOT bug-filing-class — W1-spec gaps surfaced via canonical-switch); all 3 calibration data-points captured for W5 closing-audit §17 + Phase 10 retrospective; architect to file 2 of the 3 as her own memory entries (`feedback_engine_pluggable_transparency_matches_implicit_contract.md` + `feedback_engine_substitution_integration_via_sdk_call_pattern.md`); engineer to file calibration #1 (analog) at discretion
+- Engineer-side filed `feedback_test_caught_substrate_gap_default_disposition.md` memory at architect's "at your discretion" suggestion — engineer-side analog to `feedback_architect_bug_filing_needs_root_cause_verification.md`; 3-question test for "test-bug vs substrate-gap" disposition
+- Comprehensive grep audit of `'isomorphic-git'` literal refs + `IsomorphicGitEngine` class refs in src/ + test/ + scenario docs:
+  - All refs categorized as INTENTIONAL (W3-bridge / W4 cleanup target) OR stale doc-comments
+  - 2 stale doc-comments updated:
+    - `src/missioncraft-sdk/pluggables/git-engine.ts:2` — header was "Default v1 implementation: IsomorphicGitEngine" → updated to NativeGitEngine as default + IsoEng as W3-bridge alternate until mission-78 W4
+    - `src/missioncraft-sdk/core/config-mirror.ts:46` — "(per W2 IsomorphicGitEngine impl)" — referenced mission-77 W2 (DIFFERENT mission); reworded to engine-agnostic
+  - Scenario doc audit: scenario 01 already done in slice (i); scenario 02 NO refs (no updates needed)
+- ZERO additional substrate-asymmetries of W2 slice (i) Fix#1/Fix#2 class surfaced. Both `resolveIdentity` + `deleteBranch` via `update-ref -d` are the COMPLETE substrate-asymmetry-corrections for canonical-switch transparency.
+- `npm run build` clean; `npm test` **460/460** (unchanged from slice (i); doc-only changes; no test impact); 96s
+- Pushed `8dabd97` to apnex/missioncraft main
+- Slice (iii) wave-close + bilateral-converge ahead
 
 ### 2026-05-12 13:50 AEST — W2 slice (i) SHIPPED — canonical-switch + 2 substrate-asymmetry fixes (`feedback_new_code_path_exposes_dormant_defects.md` class)
 
