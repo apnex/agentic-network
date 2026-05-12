@@ -38,11 +38,11 @@
 
 ## In-flight
 
-(W1 wave-close shipped; awaiting bilateral-converge on thread-540 + cascade-spawn for W2)
+(W1 BILATERAL-CONVERGED on thread-540 round 11/15; cascade-spawned W2 task + W2 coord-thread; awaiting notification + W2 engagement)
 
 ## Queued / filed
 
-- ○ **W2** — Canonical-switch: mission YAML `gitEngineProviderName` default flip → `'native-git'`; cascade-spawned via thread-540 wave-close convergence
+- ▶ **W2** — Canonical-switch: mission YAML `gitEngineProviderName` default flip → `'native-git'`; cascade-spawned task + coord-thread per thread-540 action-2 (committed); engineer-side claim on cascade arrival
 - ○ **W3** — bug-74 post-success state-write ordering
 - ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
 - ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
@@ -90,6 +90,17 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 13:15 AEST — thread-540 BILATERAL-CONVERGED; W1 wave CLOSED; W2 task cascade-spawned
+
+- Architect-side ratified W1 wave-close at 2026-05-12T03:09Z UTC + staged 2 convergence actions:
+  - action-1 `close_no_action`: thread-540 W1 coord-thread closes; W1 substrate-introduction COMPLETE
+  - action-2 `create_task`: W2 canonical-switch task with full description (mission YAML schema default flip + create()/apply() default-injection + substrate-currency audit + multi-word-commit-msg integration tests + post-W2 architect-side scenario-02 dogfood; out-of-scope: bug-74 W3 / IsoEng removal W4 / ship W5)
+- Engineer-side bilateral-converged with `converged=true` + non-empty summary echoing the W1 ship trail + slice-progression-stub-throw-pattern calibration data-point flagged for mission-78 retrospective (1 test was passing-for-wrong-reason via `getIdentity` UOE throw, not via stub UOE throw)
+- thread-540 status flipped to `converged`; both staged actions committed; W2 task cascade-spawning per action-2 payload
+- W1 cumulative: 4 commits (`e65864e` + `95d65b6` + `32ef215` + `dfb43d1`); 1 substrate file (~430 lines) + 4 test files (~1100 lines combined); +61 net new tests (393 W0-baseline → 454 W1-final); 2 mid-slice bugs surfaced + fixed via integration test catch-net; 5 architect-claim-vs-code drifts captured this wave; 8+ pulse fires answered via thread-540 surfaces (zero orphan kind=note)
+- W2 standby: awaiting cascade arrival (W2 task + new coord-thread); per architect's session-handoff-by-wave model, W2 spawns fresh thread; engineer-side claim on cascade arrival; multi-session pacing OK
+- Mission-78 progress: W0 ✓ shipped; W1 ✓ shipped; W2 ▶ cascading; W3-W5 unissued
 
 ### 2026-05-12 13:05 AEST — W1 slice (iv) WAVE-CLOSE SHIPPED — PROVIDER_REGISTRY + full-contract integration + W2-switch confidence
 
