@@ -38,11 +38,12 @@
 
 ## In-flight
 
-(W2 slice (ii) shipped — substrate-currency audit clean; 2 stale doc-comments updated; ZERO additional substrate-asymmetries; awaiting per-slice surface ack on thread-542 before bilateral-converge wave-close)
+(W2 BILATERAL-CONVERGED on thread-542 round 6/10 with `close_no_action`; W3 cascade DEFERRED pending architect-side scenario-02 dogfood per Option B; engineer-side standby for dogfood outcome — W2-extension-directive if dogfood surfaces gaps, OR W3 cascade if clean)
 
 ## Queued / filed
 
-- ▶ **W2 slice (iii) wave-close** — bilateral-converge thread-542 + cascade-spawn W3 task (bug-74 post-success state-write ordering)
+- ⏸ **W3** — bug-74 post-success state-write ordering; cascade-spawn DEFERRED pending architect-side scenario-02 dogfood per thread-542 wave-close Option B
+- ⏸ **W2-extension** (conditional) — only if dogfood surfaces additional substrate-asymmetries of Fix#1/Fix#2 class; lands as extension-commit on `main`, not W3
 - ○ **W3** — bug-74 post-success state-write ordering
 - ○ **W4** — Remove IsomorphicGitEngine entirely + drop `isomorphic-git` npm dep
 - ○ **W5** — Closing audit §17 + version bump 1.0.x → 1.1.0 + tag + ship
@@ -93,6 +94,17 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 14:05 AEST — thread-542 BILATERAL-CONVERGED; W2 wave CLOSED; W3 cascade DEFERRED pending dogfood
+
+- Architect ratified slice (ii) at 2026-05-12T03:59Z UTC + accepted Option B (defer W3 cascade pending architect-side scenario-02 dogfood); rationale alignment confirmed via `feedback_substrate_extension_wire_flow_integration_test.md` framing — dogfood IS the load-bearing canonical-switch transparency verification
+- Architect staged 1 convergence action: `close_no_action` (W3 cascade deferred; new coord-thread + task entity will be spawned by architect post-dogfood-verification, typically same-day)
+- Engineer-side bilateral-converged with `converged=true` + non-empty summary echoing W2 ship trail + Option B rationale + companion-policy framing for the engineer-side/architect-side calibration pair
+- thread-542 status flipped to `converged`; staged action committed; W2 wave-close COMPLETE
+- W2 cumulative: 2 commits (`e31c1fd` slice (i) + `8dabd97` slice (ii)) + 1 default-flip + 2 substrate-fixes + 5 doc-comment updates + 6 new tests; 460/460 tests passing; 1 engineer-side memory entry filed
+- Engineer-side standby: awaiting dogfood outcome — (a) W3 cascade if clean OR (b) W2-extension-directive on `main` if gaps surface; pulse cadence preserved as background liveness signal during standby
+- Architect-side pending: file 2 retrospective memories (transparency-matches-implicit-contract + integration-via-SDK-call-pattern) post-wave-close; execute scenario-02 dogfood
+- Mission-78 progress: W0 ✓ shipped; W1 ✓ shipped; W2 ✓ shipped; W3 ⏸ deferred-pending-dogfood; W4-W5 unissued (IsoEng removal + closing-audit + v1.1.0 publish)
 
 ### 2026-05-12 14:00 AEST — W2 slice (ii) SHIPPED — substrate-currency audit clean; 2 stale doc-comments updated
 
