@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new slice (iii) shipped at `351aca7` — `msn join` REPURPOSED as BRANCH-TRACKER reader; 485/485 tests pass; awaiting architect ack on thread-546 before claiming slice (iv) Hub-policy single-writer-per-scope)
+(W4-new slice (v) CORE shipped at `2a6f0fc` — Reader-daemon Loop B v5.0 fetch+reset; PARTIAL slice (workspace 0444 + auto-close + reader-start-flow DEFERRED); 489/489 tests pass; slice (iv) PAUSED pending Director-consult on Hub-policy locus; awaiting architect-disposition on slice-(v)-extension scope)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -91,6 +91,19 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 20:10 AEST — W4-new slice (v) CORE shipped — Reader-daemon Loop B v5.0 fetch+reset (PARTIAL; workspace 0444 + auto-close + reader-start-flow DEFERRED)
+
+- Architect ratified slice (iii) at 2026-05-12T09:58Z UTC + Director-consult engagement on slice (iv) locus question (4/4 directional signals); architect offered slice (v) OR (vi) for parallel work; engineer chose (v) Reader-daemon Loop B per its load-bearing position
+- Did NOT burn thread-546 round on ack-only; silent into slice (v) execution
+- `watcher-entry.ts`: TWO reader-detection paths now — v5.0 PRIMARY (`config.mission.readOnly === true`) dispatching to new `readerLoopBV5Tick`; v4.x LEGACY (participant-role lookup) retained for back-compat through W7-new dispatching to existing `readerLoopBTick`. Both paths converge on same setInterval + signal-handler structure; `isV5Reader` flag in closure routes
+- New `Missioncraft.readerLoopBV5Tick(missionId)` method: resolves source identity per reader-flavor (PERSISTENT: sourceRemote+sourceBranch; BRANCH: writer.repos[0].url + refs/heads/mission/<writer-id>) → `git fetch <remote> <branch>:refs/remotes/source/source-branch` → `git reset --hard refs/remotes/source/source-branch`. Returns count of repos synced
+- Internal helper `gitResetHard(workspace, ref)`: native git CLI shell-out (substrate-bypass; GitEngine contract doesn't expose `reset` per reset/diff/lsRemote deferred-idea filing)
+- DEFERRED to slice-(v) extension or follow-on: workspace 0444 chmod-down (needs reader-start substrate; v4.x `setReaderWorkspaceMode` helper exists, needs v5.0 wiring); auto-close mechanics (writer-terminal-detection 2-failure-mode disposition needed pre-impl); reader-mission `msn start` flow (writer-only at lifecycle gate; reader-start substrate is sub-slice-(v.b) or slice (vi) territory)
+- 4 SHAPE-assertion tests (writer no-op + non-existent no-op + PERSISTENT-TRACKER fetch+reset upstream-advance + BRANCH-TRACKER writer-deleted graceful-zero)
+- `npm run build` clean; `npm test` **489/489** (was 485; **+4 net**); 99s
+- Pushed `2a6f0fc` to apnex/missioncraft main
+- Surface to architect on thread-546 with slice-(v) CORE first-commit milestone + partial-scope flag + slice-(v)-extension scope-question
 
 ### 2026-05-12 19:55 AEST — W4-new slice (iii) SHIPPED — msn join REPURPOSED: BRANCH-TRACKER reader-mission
 
