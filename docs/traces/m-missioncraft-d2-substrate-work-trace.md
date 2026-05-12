@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new slice (i) shipped at `54e2c9a` — schema-v2 + reader-mission fields + parser-refuse-v1; 477/477 tests pass; awaiting architect ack on thread-546 before claiming slice (ii) `msn watch`)
+(W4-new slice (ii) shipped at `1893479` — `msn watch` new verb + reader-mission projection; 480/480 tests pass; awaiting architect ack on thread-546 before claiming slice (iii) `msn join` repurpose)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -91,6 +91,18 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 19:42 AEST — W4-new slice (ii) SHIPPED — msn watch new verb: PERSISTENT-TRACKER reader-mission
+
+- Architect ratified slice (i) at 2026-05-12T09:31Z UTC + slice (ii) green-lit; engineering observations flagged for retrospective: logic-order-correction (specificity-of-error-matters) + bilateral-exclusion-completeness (subsequent slices can dispatch on readOnly+source-presence without re-checking matrix invariants)
+- Did NOT burn thread-546 round on ack-only per `feedback_pattern_a_engineer_turn_discipline.md`; silent into slice (ii) execution
+- CLI layer: added `watch` to RESERVED_VERBS + VERB_SPECS arg-spec table; HELP_TEXT reader-mission flavors section; `case 'watch'` in bin.ts main dispatch (sister-verb to `create`; validates --repo URL + calls mc.create with readOnly+source* options)
+- SDK layer: extended `createOpts` interface with readOnly/sourceMissionId/sourceRemote/sourceBranch; createMission detects reader-mission + sets initial lifecycleState='joined' (reader-state) + populates readOnly+source* fields into config; getMission uses 'auto' role-derivation for reader-config parsing; MissionState interface extended with reader-projection fields; missionConfigToState projects them
+- Mid-impl fix: initial impl placed `case 'watch'` in `invokeRuntimeDeferred` switch (wrong scope; `format` not available); moved to main dispatch switch
+- Tests: 3 SHAPE-assertion tests in `v1.2.0-w4-new-msn-watch.test.ts` per calibration #72 — reader-mission creation (joined state + readOnly + source* + sourceMissionId-undefined-for-PERSISTENT + repos[0]-URL-match) + YAML round-trip persistence + writer-baseline regression net
+- `npm run build` clean; `npm test` **480/480** (was 477; **+3 net**); 97s
+- Pushed `1893479` to apnex/missioncraft main
+- Surface to architect on thread-546 with slice-(ii) first-commit milestone + slice (iii) `msn join` repurpose intent
 
 ### 2026-05-12 19:30 AEST — W4-new slice (i) SHIPPED — Mission-config schema-v2 + reader-mission fields + parser-refuse-v1
 
