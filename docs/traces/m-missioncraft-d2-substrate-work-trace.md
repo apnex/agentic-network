@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W4-new slice (vii) writer+reader bilateral transparency-gate test shipped at `0db1601` — 506/506 tests pass; W4-new wave: (i)(ii)(iii)(v CORE)(v.b)(vi)(vii) SHIPPED; only (viii) wave-close + v1.2.0 ship REMAINING; slice (iv) DROPPED per Director; thread-547 round 4/15 architect's-turn awaiting ack)
+(W4-new Fix #10+#11 shipped at `d06d253` — daemon canonical missionConfigPath layout fix (v1.2.0 BLOCKER cleared) + dispatch-layer transparency gate test (calibration #74 candidate); 514/514 tests pass; thread-547 round 8/15 awaiting architect re-dogfood; GAP-2 + GAP-3 deferred per engineer-judgment, awaiting architect-disposition)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,19 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 08:13 AEST — W4-new Fix #10 + #11 SHIPPED — Daemon canonical missionConfigPath layout (v1.2.0 BLOCKER cleared) + dispatch-layer transparency gate test
+
+- Architect-dogfood report on thread-547 round 7 surfaced **GAP-1 v1.2.0 BLOCKER**: watcher-entry.ts mode-detection at line 92 + line 256 hardcoded WRONG config-path (`<workspaceRoot>/config/<id>.yaml`, missing `missions/` subdir per v1.0.5 idea-271 layout); reader-mode never activated; Loop B dispatch dead end-to-end
+- Why slice (v.b)/(vii) tests passed: synthetic SDK-direct test pattern (exercise `Missioncraft.readerLoopBV5Tick` directly) bypasses daemon-watcher dispatch path. Calibration #74 candidate: composes with #67/#68 (synthetic-test-masking patterns) + #72 (transparency-gate-SHAPE discipline) at the daemon-watcher layer
+- Did NOT burn engineer-turn on ack-only; silent into Fix #10 + #11 execution per Pattern A
+- **Fix #10** — new `daemon/daemon-mode-detect.ts` module: extracted `missionConfigPath(workspaceRoot, id)` canonical-path helper + `detectDaemonMode(workspaceRoot, id, principalArg, defaultCoordPollMs)` returning `{role, isV5Reader, coordPollMs}` dispatch result. watcher-entry.ts refactored to use both helpers; pre-Fix-#10 inline detection + hardcoded paths replaced
+- Module-extraction rationale: tests importing helpers from watcher-entry.ts directly trigger the top-level `main().catch(process.exit)` invocation (vitest unhandled-rejection). Separate module enables clean testability
+- **Fix #11** — new `v1.2.0-w4-new-fix10-daemon-dispatch-gate.test.ts` with 8 SHAPE-assertion tests at the dispatch-layer: canonical-path helper output + regression net (path WITHOUT `missions/` is INVISIBLE to detection — defends against fallback-regression) + reader/writer mode-detection per config-shape + non-existent fallback + coordPollMs override
+- Architect target-set per thread-547 §G (Fix #10 + #11) covered as one commit-cycle; GAP-2 + GAP-3 + GAP-4 + bug-77 explicitly deferred per engineer-judgment, awaiting architect-disposition at re-dogfood gate
+- `npm run build` clean; `npm test` **514/514** (was 506; **+8 net**); 99s
+- Pushed `d06d253` to apnex/missioncraft main
+- Surface to architect on thread-547 with Fix #10+#11 milestone + re-dogfood request + GAP-2/#13 scope-disposition request
 
 ### 2026-05-13 07:48 AEST — W4-new slice (vii) Writer+reader bilateral transparency-gate SHIPPED — 4 tests covering BRANCH-TRACKER + PERSISTENT-TRACKER + dual auto-close cascade
 
