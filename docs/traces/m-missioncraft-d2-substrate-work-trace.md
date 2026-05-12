@@ -38,11 +38,9 @@
 
 ## In-flight
 
-(thread-544 BILATERAL-CONVERGED 2026-05-12T06:07Z; mission-78 RE-SCOPED via Director-direct disposition; W2-extension closed; Fix #1-#4 stay on `main` at `a4453e9`; Fix #5 ABANDONED; new wave structure W3-new through W8-new pending architect Design v5.0 + Survey-capture; standby for W3-new task issuance via Hub task entity per `feedback_mission_77_formal_wave_issuance.md`)
+(W3-new shipped at `8cab0aa`; awaiting architect re-dogfood verification + bilateral-converge thread-545 + W4-new cascade)
 
 ## Queued / filed
-
-- ⏸ **W3-new** — single-branch refactor: daemon commits direct to `mission/<id>`; drop `wip/<id>` sidecar
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
 - ⏸ **W5-new** — drop coord-remote: single repo URL per mission + push-cadence config (`on-complete-only` / `every-Ns` / `on-demand`)
 - ⏸ **W6-new** — writer-lock primitive: `refs/missioncraft/lock/<scope>` + heartbeat TTL + `--force-writer` override
@@ -93,6 +91,23 @@ W5 ship v1.1.0 ─── (Director gate-point)
 - thread-541 converged (round 4) with `close_no_action` cascade-action + non-empty summary; primer thread CLOSED
 - W1 slice (i) execution-engagement on thread-540 follows: `defaults/native-git-engine.ts` skeleton + `gitExec(workspace, ...args)` helper (argv-only via execFile + git stderr surfacing per `feedback_node_execfile_error_formatter_visual_misleads_diagnosis.md`) + 6 foundational ops + per-method unit tests + 1 integration test against HTTP fixture
 - Pulse fired @ 02:12Z (engineerPulse 10min cadence); status answered on thread-541 §C: NO blockers; first-commit milestone is next surface
+
+### 2026-05-12 18:50 AEST — W3-new SHIPPED — Single-branch refactor (daemon commits direct to mission/<id>; drop wip/<id> sidecar)
+
+- W3-new dispatch arrived on thread-545 at 2026-05-12T08:29Z UTC post Design v5.0 ratification (`d0385fb`+ on `agent-lily/m-missioncraft-v4-design`); architect spec internalized
+- Did NOT burn thread-545 round on ack-only; silent into execution per `feedback_pattern_a_engineer_turn_discipline.md`
+- Slice (i) substrate-flip: `src/missioncraft-sdk/core/daemon/watcher-entry.ts:170` — daemon's `commitToRef` target ref flipped `refs/heads/wip/${missionId}` → `refs/heads/mission/${missionId}`; commit message `[wip] auto-commit` → `[auto] daemon-commit`; docstring documents HEAD-stability + clean-working-tree semantic at v5.0 (HEAD points symbolically at mission/<id>; update-ref moves the tip; working tree matches new tip exactly → `git status` reports clean — the operator-DX promise)
+- Slice (ii) substrate-currency audit: grep `wip/` across `src/` + `test/` + `docs/`. Categorized:
+  - Bundle-ops paths in `missioncraft.ts:1122/1170/1191` (`snapshotWipBranches` + `restoreFromSnapshot`) — FLIPPED to mission-branch; method name retained for API backward-compat through v1.x (future rename at W8-new); docstrings updated
+  - Bundle-ops test setup in `w6-slice-v-bundle-ops.test.ts` — FLIPPED to mission-branch (test fixtures + assertions); engine-direct test using generic `wip-branch` literal name retained (branch-name-agnostic engine-level test)
+  - W4-new multi-participant paths (`coord-mirror.ts`, `pushWipToCoordRemote`, `mission-types.ts` remoteRef): DEFERRED with annotation; W4-new + W5-new will reconcile when dropping coord-remote + msn join
+- Slice (iii) bug-73 lifecycle test refactor (Flow A → Flow B canonical): `simulateOperatorEdit` retired `git add + git commit` calls (operator-MANUAL-commit pattern per pre-v5.0 Flow A) in favor of file-edit + wait-for-daemon-fire (Flow B canonical). Helper polls for mission-branch to advance past base SHA. Modifies README.md (existing file) since chokidar listens for `change` events; new-file `add` events skipped by `ignoreInitial: true`. 3/3 lifecycle integration tests pass under canonical Flow B.
+- Slice (iv) end-to-end transparency gate: `test/missioncraft-sdk/v1.2.0-w3-new-single-branch-e2e.test.ts` — THE dispositive substrate-extension transparency gate per `feedback_substrate_extension_wire_flow_integration_test.md`. Exercises end-to-end Flow B (msn create → msn start → operator edits README → daemon-watcher fires commitToRef(mission/<id>) on debounce → msn complete → squashCommit + push → upstream mission-branch has the operator's content + diff-stat non-empty). **Eliminates the dogfood-failure-mode (empty squashed commit) STRUCTURALLY** — recursive-defect-activation pattern from W2-extension cannot recur in single-branch architecture.
+- `runPublishLoop` UNCHANGED at squashCommit(base='main', head='mission/<id>'): pre-Fix-#5 code was already correct under v5.0 single-branch; W2-extension Fix #5 debate dissolves naturally (mission-branch now has daemon's content)
+- `npm run build` clean; `npm test` **467/467** (was 466; **+1 net** for transparency-gate test); 97s
+- Pushed `8cab0aa` to apnex/missioncraft main
+- Engineer-runtime memory note (no action this wave): `feedback_operator_never_runs_git_commands.md` currently encodes Flow A; under v5.0 Flow B canonical this becomes inaccurate; retraction scheduled for W8-new closing-audit per thread-545 spec
+- Surface to architect on thread-545 with W3-new wave-close milestone + bilateral-converge proposal + W4-new cascade
 
 ### 2026-05-12 16:10 AEST — Director-direct mission-78 RE-SCOPE; W2-extension CLOSED without Fix #5 ship; new wave structure W3-new→W8-new
 
