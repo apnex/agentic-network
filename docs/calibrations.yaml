@@ -2546,6 +2546,190 @@ calibrations:
     tele_alignment:
       - tele-2
 
+  - id: 74
+    class: methodology
+    title: "Daemon-dispatch path requires its own transparency-gate test layer (necessary-but-insufficient SDK-direct coverage)"
+    origin: mission-78-W4-new + W4-new-extension
+    surfaced_at: thread-547 architect-side scenario-XX dogfood post W4-new ship (0db1601) → GAP-1 daemon canonical-path BLOCKER surfaced (Fix #10)
+    status: closed-folded
+    closure_mechanism: |
+      Composes with calibration #67/#68 (synthetic engine-isolation tests mask SDK-
+      internal-call-pattern defects + DEFECTS-IN-THE-CALLER) at a different layer:
+      SDK-direct tests cover the SDK methods in isolation but DON'T exercise the
+      daemon-watcher dispatch path that routes Loop-B-tick-firing through helpers
+      like `detectDaemonMode`. The dispatch-layer is the integration-test gap.
+
+      Diagnostic signature: a wave's SDK-level transparency-gate test (per calibration
+      #72 SHAPE-assertion discipline) passes despite the daemon-dispatch path having
+      a substrate-defect that breaks production-side end-to-end. The defect lurks
+      because tests drive the SDK methods directly (e.g. `Missioncraft.readerLoopBV5
+      Tick(missionId)`) without going FROM the daemon-watcher entry-point.
+
+      Application instance: mission-78 W4-new slice (vii) transparency-gate test
+      (v1.2.0-w4-new-writer-reader-bilateral-e2e.test.ts) passed at 0db1601. But
+      Fix #10 BLOCKER (daemon's reader-mode-detection path used wrong config-path,
+      missing `missions/` subdir per v1.0.5 idea-271 layout) was LATENT: daemon's
+      `existsSync(configPath)` returned false → silent catch → defaulted to writer-
+      mode → entire reader-mode substrate functionally DEAD via daemon path. Slice
+      (vii) tests didn't exercise the dispatch path so the defect didn't surface.
+      Architect-side dogfood at thread-547 round 7 caught it via real-daemon spawn
+      against apnex/missioncraft-sandbox real upstream.
+
+      Resolution: Fix #10 (daemon canonical missionConfigPath layout via daemon-
+      mode-detect.ts module extraction) + Fix #11 (8 SHAPE-assertion tests at the
+      dispatch-layer including pre-Fix-#10 regression net: synthetic config at
+      broken path INVISIBLE). Discipline-fold: substrate-extension waves that
+      touch daemon-dispatch require BOTH (A) SDK-direct SHAPE tests AND (B) daemon-
+      dispatch-layer integration tests asserting helper-flag activation + canonical-
+      path return. Pattern carried forward through W5-new slice (iii) `detectWriter
+      PushCadence` + slice (iv) `detectReaderPullCadence` extractions.
+
+      Architect-discipline takeaway: when a wave introduces daemon-watcher dispatch
+      changes, the transparency-gate test layer MUST cover the dispatch helpers
+      themselves (not just the downstream SDK calls they fan out to). Composes with
+      `feedback_substrate_extension_wire_flow_integration_test.md` discipline at the
+      daemon-watcher entry-point.
+    cross_refs:
+      - calibration #67 (synthetic engine-isolation tests mask SDK-internal-call-pattern defects)
+      - calibration #68 (synthetic tests also mask DEFECTS-IN-THE-CALLER)
+      - calibration #72 (transparency-gate-test SHAPE assertions; this calibration is the daemon-dispatch sibling at integration layer)
+      - feedback_substrate_extension_wire_flow_integration_test.md
+      - thread-547 (W4-new continuation coord; Fix #10 surfaced via architect dogfood round 7)
+      - apnex/missioncraft@0db1601 (W4-new slice vii ship; BLOCKER latent)
+      - apnex/missioncraft@32ca5a3 (W4-new Fix #10 + #11 resolution)
+      - docs/designs/m-missioncraft-d2-substrate-design.md (Design v5.0 + 2026-05-13 amendment)
+    tele_alignment:
+      - tele-2
+
+  - id: 75
+    class: methodology
+    title: "Orphan-daemon-accumulation from vitest test-aborts → test-infrastructure flakiness that looks like substrate regression"
+    origin: mission-78-W5-new
+    surfaced_at: thread-548 round 6 mid-implementation finding during Fix #12 verification — 101 orphan watcher-entry daemon processes accumulated from prior vitest test-runs
+    status: open
+    closure_mechanism: |
+      Pattern-recognition; no closure-PR yet (test-infrastructure-pathology meta-
+      pattern). Mitigation options surfaced; specific fix-disposition deferred to
+      Director-bilateral surface OR W8-new closing-audit batch.
+
+      Diagnostic signature: vitest test-aborts (e.g., when one test fails mid-suite)
+      leave daemon processes orphaned because `mc.complete`/`mc.abandon` SIGTERM
+      isn't called when the test exits abnormally. Long-lived dev-box test runs
+      accumulate orphans → CPU/IO contention → chokidar polling slows past test's
+      threshold (typically 8s) → cascade of false-positive flakiness that LOOKS
+      like substrate regression but is actually test-infrastructure contention.
+
+      Diagnostic test for bisection (load-bearing for ENGINEERS during slice-ship
+      verification):
+      1. Test failures persist after `git stash` (clean baseline before slice
+         substrate)? → NOT slice-substrate; check (2)
+      2. `ps aux | grep watcher-entry` → orphan-process count > 0? → test-
+         infrastructure issue (not substrate regression)
+      3. `pkill -f "watcher-entry.js msn-"` → re-run tests; should pass
+
+      Application instance: mission-78 W5-new slice (iii) verification. Engineer
+      initially suspected slice-(iii) regression on bug-73 lifecycle + W3-new e2e
+      tests. Bisected via git stash → failures persisted in slice (ii) baseline →
+      `ps aux | grep watcher-entry` showed 101 orphan watcher-entry processes →
+      pkill cleaned up → tests passed.
+
+      Mitigation options (architect-Director-bilateral disposition pending):
+      - (a) per-test afterEach SIGTERM-by-PID via daemon-state.yaml lookup (substrate-
+        tightness; test-fixture invariant)
+      - (b) periodic cleanup hook in test-runner (vitest global teardown)
+      - (c) operator-discipline doc: dev-box `pkill -f "watcher-entry.js msn-"`
+        periodically (operator-DX-cheap; doesn't tighten substrate)
+      Lean: (a) is the substrate-tight disposition; (c) is cheap short-term.
+
+      Composes with calibration #62 (wire-flow integration tests catch SDK-internal-
+      call-pattern issues) — same defect class at the TEST-INFRASTRUCTURE layer
+      rather than the substrate layer. Sibling at process-cleanup-boundary.
+
+      Architect-discipline takeaway: when slice-ship test-failures look like
+      regression, FIRST check git-stash-baseline; SECOND check orphan-daemon-count;
+      THIRD investigate substrate. Saves bisection cycles + prevents false-positive-
+      panic.
+    cross_refs:
+      - calibration #62 (wire-flow integration tests catch SDK-internal-call-pattern issues; sibling at test-infrastructure layer)
+      - calibration #67 + #68 (synthetic test masking patterns; flip-side at test-process-cleanup boundary)
+      - thread-548 (W5-new coord; greg's mid-impl finding round 6)
+      - apnex/missioncraft daemon-process lifecycle (watcher-entry.js spawned by mc.start; SIGTERM'd by mc.complete/mc.abandon)
+    tele_alignment:
+      - tele-2
+
+  - id: 76
+    class: methodology
+    title: "Compositional-gaps at multiple layers caught by architect-side real-upstream + real-build dogfood (substrate + test-stack + engineer-side ship-verify discipline)"
+    origin: mission-78-W5-new + W5-new-extension
+    surfaced_at: thread-548 round 12 + thread-549 round 2 — architect-side dogfood post W5-new ship at eb13ab1 → GAP-1 force-push BLOCKER (Fix #12) + tsc-strict-build TS2353 (Fix #12.b) + engineer-side ship-verify-language drift
+    status: closed-folded
+    closure_mechanism: |
+      Composes with calibration #71 (substrate-redesign-collapses-symptoms-not-root-
+      cause-defects) + #74 (daemon-dispatch transparency-gate test layer) at the
+      MULTI-LAYER compositional level. Calibration #76 captures the discipline that
+      composition-gaps span THREE distinct layers — all caught by architect-side
+      real-upstream + real-build dogfood that engineer-side test suite cannot
+      exercise without daemon-spawn + tsc-strict-build pipeline.
+
+      THREE composition layers surfaced in W5-new arc:
+
+      **Layer 1 — Substrate composition**: feature-A (slice iii push-cadence
+      independent setInterval timer) composes with feature-B (Missioncraft.complete
+      squashCommit-publish) to expose previously-masked design-intent (Design v5.0
+      §10.3 explicit force-push for "squash replaces wip-history"). Pre-W5-new the
+      writer's local mission-branch was always at the SAME state as upstream (no
+      auto-push between mission-creation + complete) → fast-forward worked. Post-
+      W5-new push-cadence pre-pushes daemon-chain → squash-rewrite needs force-push.
+      Fix #12 plumbed `force: true` through pushWithRetry call site.
+
+      **Layer 2 — Test-stack composition**: feature-A (vitest+esbuild test runner;
+      strips TypeScript types at execution) composes with feature-B (tsc-strict-
+      build for dist generation; FULL type-checking) to MASK type errors at the
+      test layer. Fix #12 commit at 166bad3 passed vitest 502/502 but tsc-strict-
+      build failed with TS2353 (pushWithRetry options-type didn't include
+      `force?: boolean`). Fix #12.b added the missing type-narrowing barrier.
+      Discipline-fold: ship-verify gate MUST include `npm run build` clean (tsc-
+      strict; non-waivable) alongside `npm test` green.
+
+      **Layer 3 — Engineer-side discipline**: ship-verify-language-vs-actual-
+      command-execution drift. Engineer's Fix #12 commit-message claimed "npm run
+      build: clean" but the verification was actually NOT re-run after the
+      substrate edit. Architect-side dogfood caught this via `npm install -g .`
+      silently reusing stale dist (build had failed; install reported "up to date").
+      Discipline-fold: commit-message verification claims must reflect ACTUAL
+      command output, not extrapolation/aspiration.
+
+      Architect-discipline takeaway: substrate-extension transparency-gates require
+      architect-side dogfood with real-upstream pipeline + real-build pipeline to
+      catch compositional gaps that no single test-suite layer can cover. Composes
+      with #71 (substrate-redesign-collapses-symptoms) at the feature-composition
+      level + #74 (daemon-dispatch transparency-gate) at the integration-test layer
+      + #62/#67/#68 (synthetic test masking) at the SDK-call-pattern level.
+
+      Application instance: mission-78 W5-new arc. Fix #12 (force-push substrate
+      composition) + Fix #12.b (tsc-strict type-extension test-stack composition)
+      + ship-verify-language refinement (engineer-side discipline) all from a
+      single architect-dogfood cycle. Three BLOCKERS effectively rolled into one
+      wave-close-extension cycle.
+
+      Discipline-fold deferred to W8-new closing-audit doc reconciliation batch
+      alongside Flow A retraction + snapshotWipBranches → snapshotMissionBranches
+      rename + bug-77 publishStatus + ship-verify checklist documentation (tsc-
+      strict build-gate + commit-message-verification-discipline).
+    cross_refs:
+      - calibration #71 (substrate-redesign-collapses-symptoms-not-root-cause-defects; this calibration is the multi-layer sibling)
+      - calibration #74 (daemon-dispatch transparency-gate test layer; integration-test sibling)
+      - calibration #72 (transparency-gate-test SHAPE assertions; canonical-asserttion sibling)
+      - calibration #62 + #67 + #68 (synthetic test masking patterns; SDK-call-pattern siblings)
+      - feedback_substrate_extension_wire_flow_integration_test.md (architect-side dogfood discipline)
+      - thread-548 (W5-new coord; Fix #12 BLOCKER surfaced at round 12)
+      - thread-549 (W5-new wave-close coord; Fix #12.b TS2353 surfaced at round 2)
+      - apnex/missioncraft@166bad3 (Fix #12 ship; substrate-correct but tsc-strict-build broken)
+      - apnex/missioncraft@36b6f62 (Fix #12.b ship; tsc-strict-build clean; architect dogfood verified end-to-end)
+      - docs/designs/m-missioncraft-d2-substrate-design.md §10.2 + §10.3 (push-cadence + force-push design-intent)
+    tele_alignment:
+      - tele-2
+
 # patterns[] — per-entry schema:
 #   id                          string slug; stable kebab-case
 #   title                       string; human-readable pattern name
