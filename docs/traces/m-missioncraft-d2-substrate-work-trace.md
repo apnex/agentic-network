@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W6-new wave slice (v) shipped at `9f67881` — DROP msn apply + msn tick verbs entirely per (i) surgical drop disposition; resume already absent (merged into idempotent start at slice iii); leave preserved (deferred to W7-new); removed from RESERVED_VERBS + VERB_SPECS + bin.ts dispatch + SDK methods + HELP_TEXT + FSM hint matrix + ID_NAME_VERBS + slug-validation SDK set; grammar.test.ts test-fixture migrated; 541/541 tests unchanged; tsc-strict-build clean; 5/9 W6-new slices SHIPPED)
+(W6-new wave slice (v.b) shipped at `a7a77b8` — REMOVE verb-first form for mission-targeted verbs (show/start/complete/abandon/workspace/cd) per no-backward-compat ratification; coord-form exception for workspace + cd (positional[0] contains ':'); update + leave PRESERVED through W7-new; 4 test files migrated to id-first form; calibration #75 orphan-daemon-accumulation observed during verification + cleaned via pkill; 541/541 tests + tsc-strict-build clean; 5+1/9 W6-new slices SHIPPED [slice (v) + slice (v.b) extension])
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,24 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 11:13 AEST — W6-new slice (v.b) SHIPPED — REMOVE verb-first form for mission-targeted verbs (no-backward-compat)
+
+- Architect ack'd slice (v) on thread-550 round 10 + confirmed verb-first removal IS in W6-new scope; engineer-judgment on slice (v.b) extension OR fold-into-(vi). My choice: (a) slice (v.b) extension (substrate-change separated from cosmetic HELP_TEXT slice; matches W4-new slice (v.b) precedent)
+- Did NOT burn engineer-turn on ack-only; silent into slice (v.b) execution per Pattern A
+- **Parser change**: new `MISSION_TARGETED_REQUIRES_ID_FIRST` set in `grammar/parser.ts` = {show, start, complete, abandon, workspace, cd}. When verb in this set + missionRefOverride undefined → throw ConfigValidationError "verb '<verb>' requires id-first form: `msn <mission-id> <verb>` (W6-new no-backward-compat)" with hint to msn list
+- **Coord-form exception**: workspace + cd accept legacy `msn workspace <id>:<repo>` form when positional[0] contains ':' (Rule 7 substrate-coordinate). Coord-form embeds mission-id; redundant to require id-first prefix
+- **Preserved verb-first**: `update` (sub-action shape preserved through W6-new); `leave` (v4.x carry-forward; deferred to W7-new alongside mc.join)
+- **Slug-via-verb-first impact**: per (γ) parser disposition slug not detected at parse-time; slice (v.b) removes verb-first → slug-via-verb-first ALSO removed; operator workflow now `msn list` → `msn <id> <verb>`
+- **Test fixture migration** (4 files):
+  - `v1.2.0-w6-new-slice-ii-id-first-parser.test.ts`: 2 tests updated (asserted "verb-first STILL WORKS" → now assert rejection)
+  - `grammar.test.ts`: 5 tests migrated to id-first form using `msn-12345678` valid pattern
+  - `v1.0.5-bug-67-error-cleanup.test.ts`: 3 tests migrated
+  - `v1.0.6-slice-vi-purge-workspace-flag.test.ts`: 2 tests migrated
+- **Mid-impl finding** (calibration #75 instance): initial post-edit test run showed 13 failures + 2 different-file flakes; bisected to orphan-daemon-accumulation (vitest test-aborts left watcher-entry processes orphaned across recent slices); pkill-cleanup restored 541/541. Calibration #75 carry-forward continues to pay dividends as diagnostic-pattern
+- `npm run build` clean (tsc-strict per calibration #76); `npm test` **541/541** post-cleanup
+- Pushed `a7a77b8` to apnex/missioncraft main
+- Surface to architect on thread-550 with slice (v.b) milestone + slice (vi) HELP_TEXT-reconciliation green-light request
 
 ### 2026-05-13 10:58 AEST — W6-new slice (v) SHIPPED — DROP msn apply + msn tick verbs (Design v5.0 §10.6 perfection-grade revisions)
 
