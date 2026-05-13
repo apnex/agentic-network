@@ -38,14 +38,14 @@
 
 ## In-flight
 
-(W7-new IN-FLIGHT on thread-552 — IsoEng removal + isomorphic-git npm-dep drop + v4.x carry-forward surface sweep; 5 sub-task scope across 7 architect-suggested slices; thread-552 spawned via thread-551 bilateral-converge `create_task` cascade; round budget 15; slice (i) IsoEng provider deletion next)
+(W8-new STANDBY — FINAL wave + v1.2.0 ship-gate; cascade-spawned via thread-552 bilateral-converge `create_task`; new coord-thread (thread-553 expected) imminent; 9 architect-suggested slices: closing audit + memory/discipline-fold batch + scenario doc reconciliation + bug disposition + version bump 1.0.7→v1.2.0 + Director Release-gate engagement + pre-publish wire-flow rehearsal + tag-push npm publish + wave-close mission-completed Phase 10 retrospective; substrate-extension wire-flow gate + Director Release-gate both NOT WAIVABLE)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config — ✅ SHIPPED (thread-548 converged)
 - ⏸ **W5-new** — drop coord-remote: single repo URL per mission + push-cadence config (`on-complete-only` / `every-Ns` / `on-demand`) — ✅ SHIPPED (thread-549 converged)
 - ⏸ **W6-new** — hybrid CLI verb grammar refactor (three-class taxonomy + id-first canonical + --start flag) — ✅ SHIPPED (thread-550 + thread-551 converged)
-- ▶ **W7-new** — IsoEng removal + `isomorphic-git` npm-dep drop + v4.x carry-forward surface sweep (mc.join + msn leave + dead-code helpers + update-verb-first disposition) — IN-FLIGHT thread-552
-- ⏸ **W8-new** — closing audit + version bump 1.0.7 → **v1.2.0** + tag + scenario doc reconciliation
+- ⏸ **W7-new** — IsoEng removal + `isomorphic-git` npm-dep drop + v4.x carry-forward surface sweep (mc.join + msn leave + dead-code helpers + update-verb-first disposition) — ✅ SHIPPED (thread-552 converged)
+- ▶ **W8-new** — closing audit + version bump 1.0.7 → **v1.2.0** + tag + scenario doc reconciliation + memory/discipline-fold batch + bug-77/78/79/80 disposition + pre-publish wire-flow rehearsal + Director Release-gate + tag-push npm publish — STANDBY for cascade-spawned coord-thread
 - ⏸ **bug-74** — original W3 (post-success state-write ordering); fate TBD under new wave structure (architect to disposition)
 - ⏸ **thread-543** — W2-extension coord; will formally close when engineer-turn permits per architect plan
 - ⏸ **idea-N (architect to file inline)** — GitEngine contract extension for `reset` / `diff` / `lsRemote`; deferred per (γ) disposition; post-mission-78 follow-on
@@ -80,6 +80,33 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 13:40 AEST — W7-new wave bilateral-CONVERGED + W8-new (FINAL wave + v1.2.0 ship-gate) SPAWNED
+
+- thread-552 round_count 6/15 — bilateral-CONVERGED with create_task (architect, action-1) + close_no_action (engineer, action-2) at 2026-05-13T03:40:48Z
+- W7-new shipped 5 dev-slices across 5 commits (i+ii+iii batched + iv+v batched per Pattern A silent-batch ship-cadence):
+  - (i) IsoEng provider deletion `adf1c66` — 538 LOC `defaults/isomorphic-git-engine.ts` + isomorphic-git npm dep + 53 packages + PROVIDER_REGISTRY entry + SDK IsomorphicGitEngine re-export + comment-only IsoEng-refs scrubbed across native-git-engine.ts + pluggables/git-engine.ts + missioncraft.ts + watcher-entry.ts; -6 tests (IsoEng-parity describe blocks)
+  - (ii) mc.join SDK deletion `1f3edfe` — `Missioncraft.join` v4.x stub-throw method (22 LOC + architect-narrative comment block) DELETED; CLI `case 'join':` (W4-new BRANCH-TRACKER repurposed) UNAFFECTED; -1 test
+  - (iii) msn leave CLI + mc.leave SDK deletion `e843f8a` — CLI `case 'leave':` removed from MISSION-TARGETED dispatch + dispatchMissionTargeted + HELP_TEXT "Reader-mission auxiliary" block deleted + `'leave'` removed from RESERVED_VERBS + leave: {...} verb-spec deleted + seeAlso lists pruned + `Missioncraft.leave` SDK method (75 LOC) DELETED + FSM `leave-begin`/`leave-complete` events removed from LifecycleEvent union + nextState() switch + isTransient() check + RESERVED_NAMES_PROTECTED_SDK + principal-resolution.ts comment refreshed + 5 test files migrated/pruned; -5 tests; `'leaving'` lifecycle-state retained as INERT-vestigial for legacy YAML-parse-tolerance (W8-new full-removal candidate)
+  - (iv) Dead-code helpers cleanup `531476e` — canonicalizeCoordinationRemote helper (role-derivation.ts; 12 LOC) DELETED + applyReaderRefUpdate helper (reader-workspace-mode.ts; 61 LOC including sentinel-guard 5-step impl + imports) DELETED + `'set-coordination-remote'` mutation-kind removed from MissionMutation type-union + missioncraft.ts engineMutate case-arm (7 LOC) DELETED + state-restriction-matrix.ts case-arm (6 LOC) DELETED + watcher-entry.ts reader-mode comment refreshed (v5.0 readerLoopBV5Tick); 2 test files migrated (-6 tests: 5 canonicalize + 1 set-coordination-remote)
+  - (v) update-verb-first PRESERVE disposition fold `2dd6637` — architect-confirmed PRESERVE per thread-552 round 3 §C; comment-narrative-only inline-doc fold; parser.ts:360 docblock refreshed with permanent PRESERVE rationale (hybrid grammar carve-out + structurally-required + sub-action grammar fit + calibration #73 mechanism-choice clearance); arg-spec.ts:264 update-verb spec gains pre-docblock documenting dual-form acceptance through v1.2.0; W6-new slice (v.b) "during migration" carry-forward framing retired
+- Architect re-dogfood at `2dd6637` against apnex/missioncraft-sandbox real upstream VERIFIED clean end-to-end: msn version substrate-detect output clean (git+gh only; no IsoEng listing); msn help three-class hybrid grammar + msn join present as BRANCH-TRACKER + NO msn leave Reader-mission auxiliary block + update verb-first preservation documented; end-to-end msn create + start + complete cycle (msn-2367add4) through Fix #12 force-push squashed to `1e59bdd917` with operator-msg + parent === upstream main `8ea3a4a777` — W5-new substrate uncompromised by W7-new cleanup; update verb-first preservation working (msn update <original-slug> name <new-name> succeeds + canonical id always works)
+- **NO BLOCKERS** at cleanup-class — three-tier risk-precedent CONFIRMED across mission-78 arc: substrate-rewrite (W3-W5) 3 BLOCKERS → CLI-rewrite (W6-new) 0 BLOCKERS → cleanup-sweep (W7-new) 0 BLOCKERS
+- **bug-80 filed** by architect during re-dogfood: PRE-EXISTING operator-DX gap — `msn update <id> name <new-name>` updates mission YAML but does NOT refresh `.names/<slug>.yaml` symlink → subsequent slug-resolution using NEW name fails (workaround: canonical msn-<8hex> id). NOT W7-new regression (update-verb code untouched; surfaced under update-verb-first PRESERVE commitment). Engineer-disposition: fix-in-W8-new Component E.iv per surgical-scope + composability-with-Component-D update-verb surface touches + pre-ship operator-DX-consistency rationale.
+- Cumulative wave-arc metrics: 41 files; +159/-1838 LOC (-1679 net pure v4.x carry-forward surface sweep); -18 net tests (pure v4.x-test deletion; v5.0 substrate uncovered); 5 commits over 2 surface-batches; 6/15 thread-552 round usage
+- W8-new task-cascade-spawned: thread-553 (expected) spawn imminent per cascade-handler; sourceThreadId=thread-552
+- W8-new scope (9 architect-suggested slices per architect §3 + cascade payload):
+  - (i) Closing audit doc authoring (mission-arc retrospective + calibration cross-refs + bug summary)
+  - (ii) Memory + discipline-fold reconciliation batch (Component D: 8 items: Flow A retraction v2 + snapshotWipBranches→snapshotMissionBranches rename + `'leaving'` full-removal + ship-verify checklist + bare-id-default-to-show + update verb-first PRESERVE documentation + calibration #73 3-instance pattern + update-verb HELP_TEXT id-first parallel examples)
+  - (iii) Scenario doc reconciliation (Component C: Scenario 01+02 re-ratify + Scenario 04 substantial rewrite reflecting independent-missions + reader-flavors)
+  - (iv) bug-disposition per engineer-judgment (Component E: bug-77/78/79/80 fix-in-W8-new vs post-v1.2.0-hotfix-roadmap; bug-80 pre-disposed to fix-in-W8-new)
+  - (v) Version bump 1.0.7 → v1.2.0 + package.json + lockfile (skip v1.1.0 per Director-direct W2-extension re-scope)
+  - (vi) **Director Release-gate engagement** (architect-Director-bilateral; NOT waivable per architect §3 + memory `feedback_pr_merge_is_not_director.md` + `feedback_substrate_extension_wire_flow_integration_test.md`)
+  - (vii) Pre-publish wire-flow rehearsal protocol (substrate-extension wire-flow gate at v1.2.0-tag-prep; NOT waivable)
+  - (viii) Tag-push v1.2.0 + release.yml fires npm publish (OIDC-signed; Granular Access Token Bypass-2FA) + verify @apnex/missioncraft@1.2.0 package landing
+  - (ix) Wave-close + mission-78 lifecycle → 'completed' + Phase 10 Retrospective preparation
+- Director-engagement gate-points remaining for mission-78: W8-new Release-gate (pre-tag-push) + Phase 10 Retrospective
+- Pattern A turn-discipline (combined ack-and-progress; no engineer-turn-burn on ack-only) + Calibration #72/#74/#75/#76 test-discipline + Build-gate + test-gate ship-verify maintained across W7-new wave; calibration #76 ship-verify-language-vs-execution discipline at 5/5 slices commits-claims-reflect-actual-tsc-strict-build-and-npm-test outputs
 
 ### 2026-05-13 11:44 AEST — W7-new wave SPAWNED — IsoEng removal + v4.x carry-forward surface sweep (thread-552; cascade-spawned from thread-551 converge)
 
