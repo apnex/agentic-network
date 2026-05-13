@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W6-new wave slice (iii) shipped at `f44a8af` — --start flag on creation-verbs + idempotent mc.start: SDK gains idempotent: boolean opt-param (no-op on started/in-progress; preserves throw on terminal); CLI `msn <id> start` always idempotent: true (replaces dropped v1.x resume verb); creation-verbs --start flag for sequential mc.create+start composition (Hub-integration-friendly); 5 SHAPE-assertion tests; 519/519 tests + tsc-strict-build clean; 3/9 W6-new slices SHIPPED)
+(W6-new wave slice (iv) shipped at `d480c70` — slug-validation guard audit + SDK-defense per (c) disposition: new slug-validation.ts module + validateSlugAtSdk wired into createMission + createScope; engineer-audit verified RESERVED_VERBS complete for W6-new; 22 SHAPE-assertion tests covering verb-collision + namespace + format rejection + ACCEPT regression nets; 541/541 tests + tsc-strict-build clean; 4/9 W6-new slices SHIPPED)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,18 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 10:50 AEST — W6-new slice (iv) SHIPPED — Slug-validation guard audit + SDK-defense (Design v5.0 §10.6 perfection-grade revision (d))
+
+- Architect ack'd slice (iii) on thread-550 round 6 + green-lit slice (iv) with (c) audit+SDK-defense disposition
+- Did NOT burn engineer-turn on ack-only; silent into slice (iv) execution per Pattern A
+- **Audit verified**: CLI's RESERVED_VERBS already covers ALL W6-new hybrid grammar verbs (create/list/show/start/apply/update/complete/abandon/tick/scope/workspace/config/join/leave/watch/help/cd/shell-init/version/tree). RESERVED_NAMES_PROTECTED extends with UPDATE_SUB_ACTIONS + SCOPE_SUB_VERBS + SCOPE_UPDATE_SUB_ACTIONS + CONFIG_SUB_VERBS. No extension needed for slice (iv) audit
+- **SDK-defense module**: new `src/missioncraft-sdk/core/slug-validation.ts` exports `validateSlugAtSdk(slug)` — mirror of CLI parser.ts:78 validateSlugFormat with hardcoded RESERVED_NAMES_PROTECTED_SDK set (cross-ref to CLI for sync-discipline; both maintain INDEPENDENT sets to avoid CLI→SDK reverse-dependency)
+- **Wired into createMission + createScope**: pre-id-generation validation when opts.name set; throws ConfigValidationError with `mc.create('mission'): slug-format: <reason>` (mirror for scope). Defense-in-depth complement to CLI parse-time check; non-CLI consumers (Hub-MCP via idea-291 future + direct API users) get same validation
+- 22 SHAPE-assertion tests in new `v1.2.0-w6-new-slice-iv-slug-validation-sdk.test.ts`: mission verb-collision rejection (10 verbs covering all 3 classes) + mission namespace + format rejection (5 cases incl. msn-/scp- prefix + colon-collision + DNS-pattern) + scope mirror (3 cases) + ACCEPT regression nets (4 cases)
+- `npm run build` clean (tsc-strict per calibration #76 carry-forward); `npm test` **541/541** (was 519; **+22 net**); 102s
+- Pushed `d480c70` to apnex/missioncraft main
+- Surface to architect on thread-550 with slice (iv) milestone + slice (v) green-light request
 
 ### 2026-05-13 10:42 AEST — W6-new slice (iii) SHIPPED — --start flag on creation-verbs + idempotent mc.start
 
