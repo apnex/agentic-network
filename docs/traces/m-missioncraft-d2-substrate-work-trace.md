@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W6-new wave OPENED on thread-550; slice (i) CLI dispatcher restructure shipped at `5c81862` — three-class taxonomy scaffolding (Global / Creation / Mission-targeted) + dispatchMissionTargeted helper rename + show/update reclassification; verb-first parser preserved; slice (ii) lands id-first parser changes; 500/500 tests + tsc-strict-build clean; 1/9 W6-new slices SHIPPED)
+(W6-new wave slice (ii) shipped at `cd86874` — id-first parser detection per γ disposition: isMissionId pattern-match (msn-<8hex>) + missionRef field on ParsedCommand + bare-id-default-to-show convenience; 14 SHAPE-assertion tests; 514/514 tests + tsc-strict-build clean; 2/9 W6-new slices SHIPPED)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,20 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 10:33 AEST — W6-new slice (ii) SHIPPED — Mission-id-first parser detection (γ disposition)
+
+- Architect ack'd slice (i) on thread-550 round 2 + green-lit slice (ii) with (γ) disposition (parser-level pattern-detection of msn-<8hex> only; dispatcher resolves slugs via mc.resolveMissionRef AFTER parse)
+- Did NOT burn engineer-turn on ack-only; silent into slice (ii) execution per Pattern A
+- **Parser changes** in `grammar/parser.ts`:
+  - new `isMissionId(s)` pure-function matcher (`^msn-[a-f0-9]{8}$`; matches schema-v2 regex)
+  - `missionRefOverride` detection at top of parse() (post-help/version short-circuits, pre-verb-resolution): if argv[0] matches, set missionRef + shift effectiveArgv; bare `msn <id>` (length 1) defaults to `show` verb for operator-DX-convenience
+  - tokenize uses effectiveArgv.slice(1); missionRef PREPENDED to positionals[0] post-tokenize so existing per-verb dispatch reads positionals[0] as mission-id unchanged
+  - `ParsedCommand.missionRef?: string` field added (set under id-first; undefined under verb-first); slice (iv) uses for slug-validation guard
+- 14 SHAPE-assertion tests in new `v1.2.0-w6-new-slice-ii-id-first-parser.test.ts` covering: id-first happy-path (show/complete/abandon/start/workspace/update-name) + bare-id-default + verb-first retention (legacy/slugs/global) + edge-case rejection (partial-hex/uppercase-hex/id+unknown-verb)
+- `npm run build` clean (tsc-strict per calibration #76 carry-forward); `npm test` **514/514** (was 500; **+14 net**); 97s
+- Pushed `cd86874` to apnex/missioncraft main
+- Surface to architect on thread-550 with slice (ii) milestone + slice (iii) green-light request
 
 ### 2026-05-13 10:18 AEST — W6-new slice (i) SHIPPED — CLI dispatcher restructure: hybrid grammar three-class taxonomy
 
