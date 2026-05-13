@@ -38,14 +38,20 @@
 
 ## In-flight
 
-(W8-new STANDBY — FINAL wave + v1.2.0 ship-gate; cascade-spawned via thread-552 bilateral-converge `create_task`; new coord-thread (thread-553 expected) imminent; 9 architect-suggested slices: closing audit + memory/discipline-fold batch + scenario doc reconciliation + bug disposition + version bump 1.0.7→v1.2.0 + Director Release-gate engagement + pre-publish wire-flow rehearsal + tag-push npm publish + wave-close mission-completed Phase 10 retrospective; substrate-extension wire-flow gate + Director Release-gate both NOT WAIVABLE)
+🎉 **mission-78 ARCHITECTURALLY COMPLETE + v1.2.0 SHIPPED to npm** ✓
+- apnex/missioncraft `main` at `1a8d667` (slice ix.a closing-audit §12 addendum post-publish; tag `v1.2.0` at `e253ca0`)
+- `@apnex/missioncraft@1.2.0` LIVE on npm registry with OIDC-signed provenance; SHA-512 integrity verified
+- mission-78.status FLIPPED `active → completed` via architect-driven `update_mission` MCP per slice (ix.b)
+- thread-553 bilateral-CONVERGED at round 8/15 with bilateral close_no_action stagedActions
+- Phase 10 Retrospective: architect-side parallel-track in progress (docs/retrospectives/mission-78-retrospective.md)
+- Engineer-side: standing by for architect's retrospective doc surface for review
 
 ## Queued / filed
-- ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config — ✅ SHIPPED (thread-548 converged)
-- ⏸ **W5-new** — drop coord-remote: single repo URL per mission + push-cadence config (`on-complete-only` / `every-Ns` / `on-demand`) — ✅ SHIPPED (thread-549 converged)
-- ⏸ **W6-new** — hybrid CLI verb grammar refactor (three-class taxonomy + id-first canonical + --start flag) — ✅ SHIPPED (thread-550 + thread-551 converged)
-- ⏸ **W7-new** — IsoEng removal + `isomorphic-git` npm-dep drop + v4.x carry-forward surface sweep (mc.join + msn leave + dead-code helpers + update-verb-first disposition) — ✅ SHIPPED (thread-552 converged)
-- ▶ **W8-new** — closing audit + version bump 1.0.7 → **v1.2.0** + tag + scenario doc reconciliation + memory/discipline-fold batch + bug-77/78/79/80 disposition + pre-publish wire-flow rehearsal + Director Release-gate + tag-push npm publish — STANDBY for cascade-spawned coord-thread
+- ✅ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config — SHIPPED (thread-548 converged)
+- ✅ **W5-new** — drop coord-remote: single repo URL per mission + push-cadence config (`on-complete-only` / `every-Ns` / `on-demand`) — SHIPPED (thread-549 converged)
+- ✅ **W6-new** — hybrid CLI verb grammar refactor (three-class taxonomy + id-first canonical + --start flag) — SHIPPED (thread-550 + thread-551 converged)
+- ✅ **W7-new** — IsoEng removal + `isomorphic-git` npm-dep drop + v4.x carry-forward surface sweep (mc.join + msn leave + dead-code helpers + update-verb-first disposition) — SHIPPED (thread-552 converged)
+- ✅ **W8-new** — closing audit + version bump 1.0.7 → **v1.2.0** + scenario doc reconciliation + memory/discipline-fold batch + bug-77/78/79/80 disposition + pre-publish wire-flow rehearsal + Director Release-gate + tag-push npm publish + (viii.a) CI-fix arc (Director-direct (a) FIX IT within 60-min time-box) + wave-close mission-completed — SHIPPED (thread-553 converged)
 - ⏸ **bug-74** — original W3 (post-success state-write ordering); fate TBD under new wave structure (architect to disposition)
 - ⏸ **thread-543** — W2-extension coord; will formally close when engineer-turn permits per architect plan
 - ⏸ **idea-N (architect to file inline)** — GitEngine contract extension for `reset` / `diff` / `lsRemote`; deferred per (γ) disposition; post-mission-78 follow-on
@@ -80,6 +86,50 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 16:17 AEST — mission-78 COMPLETE + v1.2.0 SHIPPED to npm 🎉
+
+- thread-553 round_count 8/15 — bilateral-CONVERGED with mutual close_no_action stagedActions at 2026-05-13T06:16:55Z
+- **`@apnex/missioncraft@1.2.0` LIVE on npm registry** with OIDC-signed provenance (SHA-512 integrity verified; .tarball + .integrity attestation per release.yml workflow `25781663783`)
+- mission-78.status FLIPPED `active → completed` via architect-driven `update_mission` MCP call per slice (ix.b)
+- apnex/missioncraft `main` final HEAD: `1a8d667` (slice ix.a closing-audit §12 post-publish addendum); tag `v1.2.0` at `e253ca0`
+- **W8-new shipped 9 slices over 3 surface-batches**:
+  - (i) closing-audit doc 366 LOC (`25df35b`)
+  - (ii) memory + discipline-fold reconciliation 8-item batch + 'leaving' lifecycle removal + snapshotMissionBranches rename + bug-80 .names symlink refresh fix (`0337e53` + `376e442`)
+  - (iii) Scenario 01+02 surgical update against v1.2.0 (`44db0f3`)
+  - (iv) bug-77/78/79/80 disposition (`446e163`; bug-80 fix-in-W8-new; bug-77/78/79 defer-to-post-v1.2.0-hotfix-roadmap)
+  - (v) version bump 1.0.7 → v1.2.0 (`01d4ed0`)
+  - (vi) Director Release-gate engagement — architect-Director-bilateral RATIFIED "Proceed" + bug-disposition ratified + Phase 10 timing accepted post-publish
+  - (vii) pre-publish wire-flow rehearsal cold-start tarball-install against file://-bare-repo upstream VERIFIED clean end-to-end; 3 minor findings deferred (bug-81 Rule 7 coord-parse-too-greedy + bug-82 bare-id+global-flag composition + MSN_WORKSPACE_ROOT documentation-bug)
+  - (viii) tag-push v1.2.0 INITIAL FAILED at release.yml vitest step — STOP-THE-LINE surfaced to architect per architect §5 directive
+  - **(viii.a) CI-fix arc** — Director-direct verdict "Approved for a) fix it" within 60-min time-box; 3-commit fix arc (`8d06444` v1 defensive substrate + `11fffeb` v2 substrate canonical + `e253ca0` v3 TEST ROOT-CAUSE); root-cause = test-fixture regex `/lifecycle-state: \w+/` doesn't match hyphenated states ('in-progress') under CI-deterministic timing → partial-match left YAML as 'completed-progress' → enum invalid_value
+  - (viii) retag-force-push v1.2.0 → release.yml SUCCESS (tsc-build ✓ + vitest ✓ + **npm publish ✓**); t+62min publish-confirmation within 60-min time-box
+  - (ix.a) closing-audit §12 post-publish addendum (`1a8d667`)
+- **Mission-78 cumulative metrics**:
+  - 10 waves shipped (W0–W8-new); ~47 commits to apnex/missioncraft main
+  - Test-suite arc 393 (pre-mission-78) → 559 (v1.2.0 ship) = +166 net
+  - 4 architect-dogfood cycles (W3-new + W4-new + W5-new + W7-new) caught 3 substrate BLOCKERS (Fix #8 + #10 + #12)
+  - 1 CI BLOCKER at W8-new slice (viii) caught + corrected within 60-min Director-authorized time-box
+  - 3-tier risk-precedent empirically confirmed: substrate-rewrite (3 BLOCKERS) > CLI-rewrite (0 BLOCKERS) > cleanup-sweep (0 BLOCKERS) > doc-class + CI-gate (1 BLOCKER at gate)
+  - 6 calibrations filed (#71-#76) + 3 inward-application instances of #73 captured
+  - 3 Director-engagement moments (re-scope 2026-05-12 + Release-gate "Proceed" + (a) FIX IT verdict)
+  - thread-540 → thread-553: 14 coord-threads across mission-arc
+- **Architectural ship-shape (v5.0 substrate-design simplification COMPLETE)**:
+  - Path D2 native-git substrate (NativeGitEngine canonical; IsomorphicGitEngine REMOVED)
+  - Flow B canonical (operator does NOTHING git-related; daemon handles all)
+  - Single-branch architecture (daemon commits direct to `mission/<id>`)
+  - Independent missions (BRANCH-TRACKER + PERSISTENT-TRACKER reader-mission flavors per Design v5.0 §2 row 4)
+  - Symmetric push/pull cadence config (`on-complete-only` / `every-Ns` / `on-demand`)
+  - Force-push complete-flow (Fix #12; complete() squash-rewrites mission/<id> + force-pushes upstream)
+  - Auto-close cascade (reader-mission Loop B detects writer-terminated → cascades to readonly-completed)
+  - Hybrid CLI grammar three-class taxonomy (Class 1 GLOBAL verb-first / Class 2 CREATION with --start / Class 3 MISSION-TARGETED id-first canonical)
+  - v4.x carry-forward surface sweep COMPLETE (IsoEng + mc.join + msn leave + mc.leave + dead-code helpers + set-coordination-remote mutation-kind all REMOVED)
+- **NEW calibrations filed at W8-new slice (viii.a)** for architect-Director-bilateral post-Phase-10:
+  - "CI-deterministic-test-fixture-regex-failed-on-hyphenated-states" (sibling to `feedback_test_assertion_too_permissive_regex.md`)
+  - "Defensive-substrate-hardening-shipped-alongside-root-cause-fix" (engineer-judgment pattern for when defensive layers shipped pre-root-cause-detection REMAIN VALID post-root-cause-fix)
+- **Phase 10 Retrospective**: architect-side parallel-track post-converge per Director "post-publish per engineer-judgment cadence" disposition; doc location `docs/retrospectives/mission-78-retrospective.md` (architect-authored); engineer-side review post-draft
+- **Calibration #76 ship-verify 3-layer discipline UPHELD** throughout: Director-ratified (a) FIX IT vindicated over (b) skip-vitest + (c) manual-bypass expedience options; calibration data-point for retrospective load
+- Engineer-side: signing off W8-new wave + mission-78. Standing by for Phase 10 Retrospective doc surface from architect.
 
 ### 2026-05-13 13:40 AEST — W7-new wave bilateral-CONVERGED + W8-new (FINAL wave + v1.2.0 ship-gate) SPAWNED
 
