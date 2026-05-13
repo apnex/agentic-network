@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W6-new wave slice (vi) shipped at `fa68da3` — HELP_TEXT + verb-docs reconciliation: top-level usage shows BOTH verb-first + id-first forms; 3-class taxonomy headers in HELP_TEXT; 5 mission-targeted verbs (show/start/complete/abandon/workspace/cd) shortDesc/longDesc/examples migrated to id-first form; coord-form exception documented; W6-new operator-DX migration footer note; 4 test files migrated for new shortDesc/usage strings + CLI verb-first calls; 541/541 tests + tsc-strict-build clean; 6+1/9 W6-new slices SHIPPED; round-budget tight (3/15 remaining; thread-spawn likely for vii+viii+ix per W4-new/W5-new precedent))
+(W6-new wave slice (vii) shipped at `5d0b725` — end-to-end transparency-gate test for hybrid grammar; 36 SHAPE-assertion tests across 6+ describe-blocks covering all 3 verb-classes + --start flag + slug-validation defense + verb-first rejection + coord-form exception + DROPPED verbs + update/leave preservation; 577/577 tests + tsc-strict-build clean; thread-551 spillover spawned for vii+viii+ix per W5-new precedent; awaiting architect re-dogfood at slice (viii))
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,24 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 11:36 AEST — W6-new slice (vii) SHIPPED — End-to-end transparency-gate test for hybrid grammar (36 SHAPE-assertion tests)
+
+- thread-550 round_limit at 15/15 post slice (vi); architect spawned thread-551 spillover (sourceThreadId=thread-550) for vii+viii+ix per W4-new/W5-new precedent; fresh 15-round budget per substrate-rewrite-cycle pattern
+- Did NOT burn engineer-turn on START SIGNAL ack; silent into slice (vii) execution per Pattern A
+- **Test architecture**: SDK-direct + parser-direct composition exercising ALL W6-new verb shapes per (i) SDK-composition disposition (W5-new precedent); real-daemon end-to-end deferred to slice (viii) architect-dogfood
+- **36 SHAPE-assertion tests** in new `v1.2.0-w6-new-slice-vii-hybrid-grammar-e2e.test.ts`:
+  - Class (1) GLOBAL VERBS (6): list / version / config get / scope create / tree / shell-init bash
+  - Class (2) CREATION VERBS + --start flag (6): create / join / watch verb-first parse + --start flag detection + SDK slug-validation accept + verb-collision reject
+  - Class (3) MISSION-TARGETED id-first canonical (8): all 7 verbs (show/start/complete/abandon/workspace/cd/update) id-first parse + bare-id-default-to-show
+  - Class (3) verb-first form REJECTED (slice v.b enforcement) (6): show/show-slug/start/complete/abandon/cd verb-first → `requires id-first form` error
+  - Coord-form exception (3): workspace/cd `<id>:<repo>` + `<id>:<repo>/<path>` Rule 7 substrate-coordinate parsing preserved
+  - DROPPED verbs (slice v) (4): apply / tick verb-first + tick id-first → unknown-verb; SDK slug-validation accepts apply/tick names
+  - update verb-first PRESERVED (2): both id + slug forms work
+  - leave verb-first PRESERVED (1): W7-new carry-forward
+- `npm run build` clean (tsc-strict per calibration #76); `npm test` **577/577** (was 541; **+36 net**); 98s
+- Pushed `5d0b725` to apnex/missioncraft main
+- Surface to architect on thread-551 with slice (vii) milestone + standby for slice (viii) architect-dogfood gate
 
 ### 2026-05-13 11:28 AEST — W6-new slice (vi) SHIPPED — HELP_TEXT + verb-docs reconciliation per W6-new hybrid grammar
 
