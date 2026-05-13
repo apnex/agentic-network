@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W5-new WAVE BILATERAL-CONVERGED at thread-549 round 4/15 — architect re-dogfood verified all paths clean END-TO-END against apnex/missioncraft-sandbox; Fix #12 force-push msn complete REWROTE daemon-chain → squashed commit per Design v5.0 §10.3; auto-close cascade fired exactly per slice-(v.b) ReaderAutoCloseError shape; W6-new cascade task issued via architect-staged create_task; thread-548 round_limit + thread-549 spillover both closed; apnex/missioncraft `main` at `36b6f62`; 500/500 tests + tsc-strict-build clean; calibration #74/#75/#76 pending architect-Director-bilateral ledger filing)
+(W6-new wave OPENED on thread-550; slice (i) CLI dispatcher restructure shipped at `5c81862` — three-class taxonomy scaffolding (Global / Creation / Mission-targeted) + dispatchMissionTargeted helper rename + show/update reclassification; verb-first parser preserved; slice (ii) lands id-first parser changes; 500/500 tests + tsc-strict-build clean; 1/9 W6-new slices SHIPPED)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,24 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 10:18 AEST — W6-new slice (i) SHIPPED — CLI dispatcher restructure: hybrid grammar three-class taxonomy
+
+- W6-new coord-thread spawned (thread-550; cascade-spawned from thread-549 bilateral-converge); fresh 15-round budget
+- Did NOT burn engineer-turn on START SIGNAL ack; silent into slice (i) execution per Pattern A
+- Slice (i) scope per architect §3: "Verb-spec table refactor in bin.ts (hybrid grammar dispatcher; global/creation/mission-targeted classes)" — interpreted as scaffolding-only refactor (no parser changes; slice (ii) lands id-first parser detection)
+- **Three-class taxonomy** documented inline per Design v5.0 §10.6:
+  - (1) GLOBAL VERBS verb-first: list / config / scope / shell-init / tree / version
+  - (2) CREATION VERBS verb-first: create / join / watch (slice iii adds --start flag; slice iv adds slug-validation)
+  - (3) MISSION-TARGETED VERBS id-first under W6-new: start / complete / abandon / show / workspace / cd / update (slice v DROPS apply / tick / leave; resume merged into idempotent start)
+- **Scaffolding changes**:
+  - `bin.ts` main dispatch restructured with section dividers + top-of-function docstring
+  - `watch` + `join` cases moved to creation-verbs section; deleted duplicate cases buried below global-verbs (W4-new slice ii/iii placement legacy)
+  - `show` + `update` MOVED from main dispatch to dispatchMissionTargeted (W6-new mission-targeted taxonomy: both consume positional[0]=missionId)
+  - `invokeRuntimeDeferred` RENAMED to `dispatchMissionTargeted` with W6-new docstring; signature gained `format: OutputFormat` param (was missing; show + update need it for formatValue calls)
+- `npm run build` clean (tsc-strict per calibration #76 carry-forward); `npm test` **500/500** (unchanged from W5-new converge; no behavior regression)
+- Pushed `5c81862` to apnex/missioncraft main
+- Surface to architect on thread-550 with slice (i) milestone + slice (ii) green-light request
 
 ### 2026-05-13 10:11 AEST — W5-new WAVE BILATERAL-CONVERGED on thread-549 — architect re-dogfood verified clean END-TO-END; W6-new cascade staged
 
