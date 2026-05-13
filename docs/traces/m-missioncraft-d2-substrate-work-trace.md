@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W6-new wave slice (iv) shipped at `d480c70` — slug-validation guard audit + SDK-defense per (c) disposition: new slug-validation.ts module + validateSlugAtSdk wired into createMission + createScope; engineer-audit verified RESERVED_VERBS complete for W6-new; 22 SHAPE-assertion tests covering verb-collision + namespace + format rejection + ACCEPT regression nets; 541/541 tests + tsc-strict-build clean; 4/9 W6-new slices SHIPPED)
+(W6-new wave slice (v) shipped at `9f67881` — DROP msn apply + msn tick verbs entirely per (i) surgical drop disposition; resume already absent (merged into idempotent start at slice iii); leave preserved (deferred to W7-new); removed from RESERVED_VERBS + VERB_SPECS + bin.ts dispatch + SDK methods + HELP_TEXT + FSM hint matrix + ID_NAME_VERBS + slug-validation SDK set; grammar.test.ts test-fixture migrated; 541/541 tests unchanged; tsc-strict-build clean; 5/9 W6-new slices SHIPPED)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,22 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 10:58 AEST — W6-new slice (v) SHIPPED — DROP msn apply + msn tick verbs (Design v5.0 §10.6 perfection-grade revisions)
+
+- Architect ack'd slice (iv) on thread-550 round 8 + green-lit slice (v) with (i) surgical drop disposition; `leave` PRESERVED (deferred to W7-new "v4.x carry-forward surface cleanup" batch alongside mc.join SDK method retention)
+- Did NOT burn engineer-turn on ack-only; silent into slice (v) execution per Pattern A
+- **`msn apply` DROPPED** (overlap with `msn create -f`; was unimplemented "not yet implemented" SDK throw — documentation-lie):
+  - Removed from VERB_SPECS (`apply: {...}` entry); from RESERVED_VERBS array; from bin.ts main dispatch case `'apply'`; from dispatchMissionTargeted case `'apply'` + mc.apply call; from Missioncraft.apply() SDK method; from HELP_TEXT verb-list; from RESERVED_NAMES_PROTECTED_SDK
+- **`msn <id> tick` DROPPED** (was unimplemented "not yet implemented" SDK throw; W5-new pushCadence/pullCadence subsume cadence-tick semantic at substrate-level):
+  - Removed from VERB_SPECS (`tick: {...}` entry); from RESERVED_VERBS array; from bin.ts main dispatch case `'tick'`; from dispatchMissionTargeted case `'tick'` + mc.tick call; from Missioncraft.tick() SDK method; from HELP_TEXT verb-list; from FSM hint-matrix (per spec thread-537 entry); from parser ID_NAME_VERBS set; from RESERVED_NAMES_PROTECTED_SDK
+- **`msn <id> resume`**: already absent (merged into idempotent start at slice iii)
+- **`msn <id> leave`**: PRESERVED at this slice; W7-new will handle alongside mc.join cleanup
+- Test fixture migration: `test/missioncraft-cli/grammar.test.ts:7` `verbs` array updated (removed apply + tick from reserved-verbs accept-set); no other test files referenced apply/tick (already clean from prior waves)
+- Slug-validation post-drop: future operator naming `apply` or `tick` as mission/scope slug now passes (both removed from RESERVED_NAMES_PROTECTED_SDK + RESERVED_VERBS); clean substrate-currency under W6-new hybrid grammar
+- `npm run build` clean (tsc-strict per calibration #76 carry-forward); `npm test` **541/541** (unchanged from slice (iv); apply/tick removal didn't break any tests); 100s
+- Pushed `9f67881` to apnex/missioncraft main
+- Surface to architect on thread-550 with slice (v) milestone + slice (vi) green-light request
 
 ### 2026-05-13 10:50 AEST — W6-new slice (iv) SHIPPED — Slug-validation guard audit + SDK-defense (Design v5.0 §10.6 perfection-grade revision (d))
 
