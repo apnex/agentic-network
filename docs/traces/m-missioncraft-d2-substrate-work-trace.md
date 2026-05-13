@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W5-new Fix #12 + #12.b SHIPPED at `36b6f62` — complete() force-push substrate (Fix #12) + pushWithRetry options-type extension (Fix #12.b; tsc-compile-error blocked dist-rebuild; vitest+esbuild masked); thread-548 round_limit at 15/15 → thread-549 spillover; npm run build clean + 500/500 tests; awaiting architect re-dogfood)
+(W5-new WAVE BILATERAL-CONVERGED at thread-549 round 4/15 — architect re-dogfood verified all paths clean END-TO-END against apnex/missioncraft-sandbox; Fix #12 force-push msn complete REWROTE daemon-chain → squashed commit per Design v5.0 §10.3; auto-close cascade fired exactly per slice-(v.b) ReaderAutoCloseError shape; W6-new cascade task issued via architect-staged create_task; thread-548 round_limit + thread-549 spillover both closed; apnex/missioncraft `main` at `36b6f62`; 500/500 tests + tsc-strict-build clean; calibration #74/#75/#76 pending architect-Director-bilateral ledger filing)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,30 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 10:11 AEST — W5-new WAVE BILATERAL-CONVERGED on thread-549 — architect re-dogfood verified clean END-TO-END; W6-new cascade staged
+
+- Architect re-dogfood at `36b6f62` vs `apnex/missioncraft-sandbox` real upstream VERIFIED CLEAN END-TO-END:
+  - **Slice (iii) push-cadence**: writer auto-push @ 60s firstFire → upstream `mission/msn-52a50f98 = 81968fc3`
+  - **GAP-2 natural-resolution**: BRANCH-TRACKER reader joined writer-active without msn-complete-prerequisite
+  - **Slice (iv) pullCadence**: writer second-edit → upstream `d0c53fd2`; reader Loop B fetches+resets to match
+  - **Fix #12 force-push (CRITICAL)**: msn complete REWROTE daemon-chain `d0c53fd2` → squashed commit `8b7351b40d` with operator-msg + parent === upstream main `8ea3a4a777` per Design v5.0 §10.3
+  - **Auto-close cascade end-to-end**: reader 'started' → 'abandoned'; abandonMessage matches slice-(v.b) ReaderAutoCloseError shape EXACTLY; daemon SIGTERM-self fired
+  - **Adjacent-ref untouchedness**: local + upstream main unchanged at `8ea3a4a777`
+  - **Branch-namespace**: no wip/<id> refs anywhere
+  - **Build-gate (tsc-strict)**: `npm run build` clean (Fix #12.b resolved TS2353)
+- **Substrate-extension wire-flow gate paid off 3 BLOCKERS this mission** — Fix #8 (W3-new) + Fix #10 (W4-new) + Fix #12 (W5-new). Pattern holds: architect-side real-upstream-real-build dogfood catches what engineer-side test suite can't
+- **Calibration #76 FINAL refinement** (3-layer compositional-gap; canonical W5-new example):
+  - Substrate composition: push-cadence ⊕ squashCommit-publish → force-push design-intent (Fix #12)
+  - Test-stack composition: vitest+esbuild ⊕ tsc-strict-build → type-error masking (Fix #12.b)
+  - Engineer-side discipline: ship-verify-language-vs-actual-command-execution drift (my Fix #12 commit-message claimed "npm run build clean" without re-running)
+  - Composes with #71/#72/#74/#75 at compositional layer
+- **Cascade-action-set** (both convergence-actions committed at thread-549):
+  - action-1 (architect): `create_task` stages W6-new task entity with full inline scope-spec (CLI verb grammar refactor + hybrid grammar + --start flag + slug-validation + DROPPED verbs `msn apply`/tick/resume + no-backward-compat per Design v5.0 §10.6; mission-78.plannedTasks[8]; 15-round budget)
+  - action-2 (engineer): `close_no_action` marks thread-549 resolved
+- Thread-549 status `converged` at round 4/15; W6-new coord-thread expected to spawn next per cascade-handler
+- W5-new wave COMPLETE: 5 dev-slices + Fix #12 + Fix #12.b SHIPPED via thread-548 + thread-549 spillover; slice (iv) DROPPED per Director (idea-291); test-suite arc 514 → 500 (net -14 reflects v4.x test-file deletions in slice ii balanced against slice i/iii/iv/v + Fix #12 additions)
+- Discipline-fold (tsc-strict + ship-verify-language) deferred to W8-new closing-audit per engineer-judgment, batch alongside Flow A retraction + snapshotWipBranches→snapshotMissionBranches rename + bug-77
 
 ### 2026-05-13 09:59 AEST — W5-new Fix #12.b SHIPPED — pushWithRetry options-type extension (architect-surfaced thread-549 spillover; vitest+esbuild type-strip masking)
 
