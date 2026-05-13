@@ -38,13 +38,13 @@
 
 ## In-flight
 
-(W6-new wave slice (vii) shipped at `5d0b725` — end-to-end transparency-gate test for hybrid grammar; 36 SHAPE-assertion tests across 6+ describe-blocks covering all 3 verb-classes + --start flag + slug-validation defense + verb-first rejection + coord-form exception + DROPPED verbs + update/leave preservation; 577/577 tests + tsc-strict-build clean; thread-551 spillover spawned for vii+viii+ix per W5-new precedent; awaiting architect re-dogfood at slice (viii))
+(W7-new IN-FLIGHT on thread-552 — IsoEng removal + isomorphic-git npm-dep drop + v4.x carry-forward surface sweep; 5 sub-task scope across 7 architect-suggested slices; thread-552 spawned via thread-551 bilateral-converge `create_task` cascade; round budget 15; slice (i) IsoEng provider deletion next)
 
 ## Queued / filed
-- ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
-- ⏸ **W5-new** — drop coord-remote: single repo URL per mission + push-cadence config (`on-complete-only` / `every-Ns` / `on-demand`)
-- ⏸ **W6-new** — writer-lock primitive: `refs/missioncraft/lock/<scope>` + heartbeat TTL + `--force-writer` override
-- ⏸ **W7-new** — IsoEng removal + `isomorphic-git` npm-dep drop (was original W4; deferred under new arch)
+- ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config — ✅ SHIPPED (thread-548 converged)
+- ⏸ **W5-new** — drop coord-remote: single repo URL per mission + push-cadence config (`on-complete-only` / `every-Ns` / `on-demand`) — ✅ SHIPPED (thread-549 converged)
+- ⏸ **W6-new** — hybrid CLI verb grammar refactor (three-class taxonomy + id-first canonical + --start flag) — ✅ SHIPPED (thread-550 + thread-551 converged)
+- ▶ **W7-new** — IsoEng removal + `isomorphic-git` npm-dep drop + v4.x carry-forward surface sweep (mc.join + msn leave + dead-code helpers + update-verb-first disposition) — IN-FLIGHT thread-552
 - ⏸ **W8-new** — closing audit + version bump 1.0.7 → **v1.2.0** + tag + scenario doc reconciliation
 - ⏸ **bug-74** — original W3 (post-success state-write ordering); fate TBD under new wave structure (architect to disposition)
 - ⏸ **thread-543** — W2-extension coord; will formally close when engineer-turn permits per architect plan
@@ -80,6 +80,25 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 11:44 AEST — W7-new wave SPAWNED — IsoEng removal + v4.x carry-forward surface sweep (thread-552; cascade-spawned from thread-551 converge)
+
+- thread-551 round_count 4/15 — bilateral-CONVERGED with create_task (architect, action-1) + close_no_action (engineer, action-2) at 2026-05-13T01:43:42Z
+- Architect re-dogfood at `5d0b725` against apnex/missioncraft-sandbox real upstream VERIFIED clean END-TO-END through hybrid grammar; **NO BLOCKERS** caught (CLI-layer lower-risk-than-substrate-waves precedent CONFIRMED — W3-W5 substrate caught 3 BLOCKERS via architect-dogfood; W6-new CLI 0 BLOCKERS as expected)
+- W6-new wave-arc summary: 7+1 dev-slices SHIPPED across thread-550 + thread-551 (i scaffolding `5c81862` / ii id-first parser γ disposition `cd86874` +14 / iii --start flag + idempotent `f44a8af` +5 / iv slug-validation SDK-defense `d480c70` +22 / v DROP apply+tick `9f67881` net-neutral / v.b verb-first removal mission-targeted `a7a77b8` net-neutral / vi HELP_TEXT + verb-docs reconciliation `fa68da3` net-neutral / vii hybrid-grammar transparency-gate test `5d0b725` +36)
+- Test-suite arc since W5-new converge: 500 → 577 (+77 net W6-new contribution); tsc-strict-build clean throughout
+- Mission-78 progress: 6/10 waves complete (W3-new + W4-new + W5-new + Fix-extension W4 + W5 + W6-new); W7-new + W8-new remaining for v1.2.0 ship
+- Calibration carry-forward for W8-new retrospective: #73 inward-application 3-instance pattern (W4-new slice iv Hub-policy deferral + W6-new verb-first-removal scope-gap + W6-new update-exception structural-requirement) + #75 orphan-daemon-cleanup discipline working consistently across slices
+- W7-new task-cascade-spawned: thread-552 spawned by architect at 2026-05-13T01:44:15Z (sourceThreadId=thread-551); fresh 15-round budget per substrate-rewrite-cycle pattern
+- W7-new scope (5 component-changes per architect spec §2):
+  1. IsoEng provider deletion (`defaults/isomorphic-git-engine.ts` + tests + `isomorphic-git` npm dep + PROVIDER_REGISTRY cleanup)
+  2. mc.join SDK stub-throw cleanup (deferred from W5-new slice ii; throws UnsupportedOperationError currently)
+  3. msn leave CLI verb + mc.leave SDK method cleanup (deferred from W6-new slice v.b; verb-first preserved)
+  4. Dead-code helpers cleanup (canonicalizeCoordinationRemote + applyReaderRefUpdate + set-coordination-remote mutation-kind)
+  5. update-verb-first migration disposition (forward-flagged from W6-new slice v.b; engineer + architect-judgment if not pre-resolved at slice start)
+- 7 architect-suggested slices ((i) IsoEng / (ii) mc.join / (iii) msn leave / (iv) dead-code helpers / (v) update-verb-first disposition / (vi) architect-dogfood / (vii) wave-close); per-slice surface cadence preferred per `feedback_surface_cadence_per_slice_class.md`
+- Pattern A turn-discipline: combined ack-and-progress; no engineer-turn-burn on START SIGNAL ack; silent into slice (i) execution
+- Operating rules carry-forward: argv-only / build-gate `npm run build` clean (tsc-strict) MANDATORY pre-ship-verify alongside `npm test` green / ship-verify-language-vs-execution discipline / Pattern A direct-commit-to-main on apnex/missioncraft / substrate-extension wire-flow gate at slice (vi) (architect-dogfood; not waivable)
 
 ### 2026-05-13 11:36 AEST — W6-new slice (vii) SHIPPED — End-to-end transparency-gate test for hybrid grammar (36 SHAPE-assertion tests)
 
