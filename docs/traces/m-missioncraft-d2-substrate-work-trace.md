@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W6-new wave slice (ii) shipped at `cd86874` — id-first parser detection per γ disposition: isMissionId pattern-match (msn-<8hex>) + missionRef field on ParsedCommand + bare-id-default-to-show convenience; 14 SHAPE-assertion tests; 514/514 tests + tsc-strict-build clean; 2/9 W6-new slices SHIPPED)
+(W6-new wave slice (iii) shipped at `f44a8af` — --start flag on creation-verbs + idempotent mc.start: SDK gains idempotent: boolean opt-param (no-op on started/in-progress; preserves throw on terminal); CLI `msn <id> start` always idempotent: true (replaces dropped v1.x resume verb); creation-verbs --start flag for sequential mc.create+start composition (Hub-integration-friendly); 5 SHAPE-assertion tests; 519/519 tests + tsc-strict-build clean; 3/9 W6-new slices SHIPPED)
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,20 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 10:42 AEST — W6-new slice (iii) SHIPPED — --start flag on creation-verbs + idempotent mc.start
+
+- Architect ack'd slice (ii) on thread-550 round 4 + green-lit slice (iii) with (a) sequential composition + idempotent-flag disposition
+- Did NOT burn engineer-turn on ack-only; silent into slice (iii) execution per Pattern A
+- **SDK changes**: mc.start gains optional `idempotent?: boolean` opt-param at `missioncraft.ts:266`. When true + lifecycle in {'started', 'in-progress'} → return existing handle gracefully (no-op; daemon-already-running case). Terminal lifecycles still throw (idempotent only covers running case, not terminal-state-explicit-error). Default behavior preserved when idempotent undefined/false
+- **Arg-spec extensions**: `--start` flag added to all three creation-verbs (create/join/watch) in `grammar/arg-spec.ts`; longDesc updated for `create`; new example `msn create --repo X --start` for operator-DX visibility
+- **CLI dispatch changes** in `bin.ts`:
+  - Creation-verb dispatch (case create/watch/join in main dispatch): post-mc.create checks for --start flag; if present invokes `mc.start(handle.id, { idempotent: true })` for sequential composition
+  - Mission-targeted-verb dispatch (case 'start' in dispatchMissionTargeted): mc.start always passes `idempotent: true` (replaces dropped v1.x `msn <id> resume` verb per Design v5.0 §10.6 perfection-grade revisions)
+- 5 SHAPE-assertion tests in new `v1.2.0-w6-new-slice-iii-start-flag-idempotent.test.ts`: idempotent on already-started returns handle; without idempotent throws preserved; idempotent on never-started normal-spawn; idempotent on terminal STILL throws; named-mission preserves handle.name in idempotent return-path
+- `npm run build` clean (tsc-strict per calibration #76 carry-forward); `npm test` **519/519** (was 514; **+5 net**); 100s
+- Pushed `f44a8af` to apnex/missioncraft main
+- Surface to architect on thread-550 with slice (iii) milestone + slice (iv) green-light request
 
 ### 2026-05-13 10:33 AEST — W6-new slice (ii) SHIPPED — Mission-id-first parser detection (γ disposition)
 
