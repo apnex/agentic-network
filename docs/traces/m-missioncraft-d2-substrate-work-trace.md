@@ -38,7 +38,7 @@
 
 ## In-flight
 
-(W6-new wave slice (v.b) shipped at `a7a77b8` — REMOVE verb-first form for mission-targeted verbs (show/start/complete/abandon/workspace/cd) per no-backward-compat ratification; coord-form exception for workspace + cd (positional[0] contains ':'); update + leave PRESERVED through W7-new; 4 test files migrated to id-first form; calibration #75 orphan-daemon-accumulation observed during verification + cleaned via pkill; 541/541 tests + tsc-strict-build clean; 5+1/9 W6-new slices SHIPPED [slice (v) + slice (v.b) extension])
+(W6-new wave slice (vi) shipped at `fa68da3` — HELP_TEXT + verb-docs reconciliation: top-level usage shows BOTH verb-first + id-first forms; 3-class taxonomy headers in HELP_TEXT; 5 mission-targeted verbs (show/start/complete/abandon/workspace/cd) shortDesc/longDesc/examples migrated to id-first form; coord-form exception documented; W6-new operator-DX migration footer note; 4 test files migrated for new shortDesc/usage strings + CLI verb-first calls; 541/541 tests + tsc-strict-build clean; 6+1/9 W6-new slices SHIPPED; round-budget tight (3/15 remaining; thread-spawn likely for vii+viii+ix per W4-new/W5-new precedent))
 
 ## Queued / filed
 - ⏸ **W4-new** — independent missions: drop `msn join` multi-participant; replace with read-only mission + source-remote config
@@ -80,6 +80,22 @@ W5 ship v1.1.0 ─── (Director gate-point)
 ```
 
 ## Session log (APPEND-ONLY; AEST per `project_session_log_timezone`)
+
+### 2026-05-13 11:28 AEST — W6-new slice (vi) SHIPPED — HELP_TEXT + verb-docs reconciliation per W6-new hybrid grammar
+
+- Architect ack'd slice (v.b) on thread-550 round 12 + green-lit slice (vi) per (1)+(2) scope (engineer-judgment); (3) help-renderer no-changes-needed (consumes arg-spec data; updates flow through automatically)
+- Did NOT burn engineer-turn on ack-only; silent into slice (vi) execution per Pattern A
+- **HELP_TEXT in bin.ts** restructured around three-class taxonomy: top-line shows BOTH verb-first + id-first forms; class headers `(1) Global` `(2) Creation` `(3) Mission-targeted`; --start flag mention on creation-verbs; bare-id-default-to-show convenience documented; mission-update sub-action shape preserved + id-first noted; reader-mission auxiliary `msn leave` documented as v4.x carry-forward through W7-new; apply/tick references removed entirely; W6-new operator-DX migration footer note added
+- **5 per-verb arg-spec entries updated** (show/start/complete/abandon/workspace/cd): shortDesc updated to mention W6-new id-first; longDesc additions (force-push for complete; idempotent for start; coord-form exception for workspace/cd); examples migrated to id-first form `msn <id> <verb>`; start usageOverride updated to `msn <mission-id> start | msn start -f <path> [--retain]`
+- **4 test fixture migrations**:
+  - bin-shim-bootstrap.test.ts (3 tests; verb-first → id-first or new error assertions)
+  - v1.0.4-slice-i-per-verb-help.test.ts (2 tests; new shortDesc + usageOverride strings)
+  - v1.0.5-bug-67-error-cleanup.test.ts (2 CLI integration tests; slug→id-first using msn-deadbeef)
+  - v1.0.6-slice-iv-fsm-hints.test.ts (5 FSM-hint CLI tests; runCli('verb', id, ...) → runCli(id, 'verb', ...))
+- **Mid-impl finding** (calibration #75 instance again): initial post-edit test-run showed orphan-daemon flakiness; pkill-cleanup restored 541/541. Pattern continues to pay dividends as diagnostic-pattern
+- `npm run build` clean (tsc-strict per calibration #76); `npm test` **541/541** (post-cleanup)
+- Pushed `fa68da3` to apnex/missioncraft main
+- Surface to architect on thread-550 with slice (vi) milestone + thread-spawn forward-flag (round-budget 13/15 used; vii+viii+ix likely warrant new thread per W4-new/W5-new precedent)
 
 ### 2026-05-13 11:13 AEST — W6-new slice (v.b) SHIPPED — REMOVE verb-first form for mission-targeted verbs (no-backward-compat)
 
